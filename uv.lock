@@ -7,6 +7,7 @@ members = [
     "jkr-ai-calling",
     "jkr-api",
     "jkr-campaign-worker",
+    "jkr-conversation",
     "jkr-db",
     "jkr-intelligence-worker",
     "jkr-messaging",
@@ -367,6 +368,7 @@ dependencies = [
     { name = "email-validator" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "jkr-conversation" },
     { name = "jkr-db" },
     { name = "jkr-messaging" },
     { name = "phonenumbers" },
@@ -396,6 +398,7 @@ requires-dist = [
     { name = "email-validator", specifier = ">=2.2.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.2" },
+    { name = "jkr-conversation", editable = "packages/conversation" },
     { name = "jkr-db", editable = "packages/db" },
     { name = "jkr-messaging", editable = "packages/messaging" },
     { name = "phonenumbers", specifier = ">=8.13.45" },
@@ -441,6 +444,33 @@ requires-dist = [
     { name = "jkr-db", editable = "packages/db" },
     { name = "jkr-messaging", editable = "packages/messaging" },
     { name = "pydantic-settings", specifier = ">=2.5.2" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.3.3" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
+]
+
+[[package]]
+name = "jkr-conversation"
+version = "0.1.0"
+source = { editable = "packages/conversation" }
+dependencies = [
+    { name = "httpx" },
+    { name = "jkr-db" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27.2" },
+    { name = "jkr-db", editable = "packages/db" },
 ]
 
 [package.metadata.requires-dev]
@@ -547,6 +577,7 @@ source = { editable = "services/voice-worker" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "jkr-conversation" },
     { name = "jkr-db" },
     { name = "jkr-messaging" },
     { name = "pydantic" },
@@ -565,6 +596,7 @@ dev = [
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.2" },
+    { name = "jkr-conversation", editable = "packages/conversation" },
     { name = "jkr-db", editable = "packages/db" },
     { name = "jkr-messaging", editable = "packages/messaging" },
     { name = "pydantic", specifier = ">=2.9.2" },

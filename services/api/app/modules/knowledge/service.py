@@ -12,7 +12,6 @@ from jkr_db.models.knowledge import (
     KnowledgeDocument,
     KnowledgeDocumentVersion,
     KnowledgeReview,
-    RetrievalEvent,
 )
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,12 +24,13 @@ from app.modules.knowledge.extraction import (
     fetch_website_text,
 )
 
-# Cosine distance above this is treated as "no good match" — the agent must
-# ask a clarification or offer a human callback instead of answering (spec
-# §16 knowledge answer policy), never invent an answer from a weak match.
-# Mock embeddings are bag-of-hashed-words (jkr_db.embeddings docstring), so
-# this threshold is tuned generously for that, not for a real semantic model.
-RETRIEVAL_DISTANCE_THRESHOLD = 0.75
+# Retrieval itself (the `search` function that used to live here) has moved
+# to jkr_conversation.rag.search_knowledge — the shared engine's canonical
+# implementation, also used by services/voice-worker and the real Twilio
+# call path. This module kept its own independent copy, which had already
+# drifted (RetrievalEvent.used_in_response was hardcoded False here,
+# disagreeing with voice-worker's correct above_threshold-linked version) —
+# see app/modules/knowledge/router.py's search endpoint for the new call site.
 
 
 async def create_collection(db: AsyncSession, *, workspace_id: uuid.UUID, name: str, description: str | None) -> KnowledgeCollection:
@@ -229,46 +229,3 @@ async def set_review_decision(
     )
     await db.flush()
     return document
-
-
-async def search(
-    db: AsyncSession, *, workspace_id: uuid.UUID, query: str, top_k: int, call_session_id: uuid.UUID | None = None
-) -> tuple[list[dict], bool]:
-    query_embedding = await embed_text(query)
-    distance_expr = KnowledgeChunk.embedding.cosine_distance(query_embedding)
-
-    result = await db.execute(
-        select(KnowledgeChunk, KnowledgeDocument.title, distance_expr.label("distance"))
-        .join(KnowledgeDocument, KnowledgeDocument.id == KnowledgeChunk.document_id)
-        .where(KnowledgeChunk.workspace_id == workspace_id, KnowledgeChunk.approval_state == "approved")
-        .order_by(distance_expr)
-        .limit(top_k)
-    )
-    rows = result.all()
-
-    items = [
-        {
-            "chunk_id": chunk.id,
-            "document_id": chunk.document_id,
-            "document_title": title,
-            "text": chunk.text,
-            "score": max(0.0, 1.0 - float(distance)),
-            "distance": float(distance),
-        }
-        for chunk, title, distance in rows
-    ]
-    above_threshold = bool(items) and items[0]["distance"] <= RETRIEVAL_DISTANCE_THRESHOLD
-
-    db.add(
-        RetrievalEvent(
-            workspace_id=workspace_id,
-            call_session_id=call_session_id,
-            query=query,
-            matched_chunk_ids=[i["chunk_id"] for i in items],
-            top_score=items[0]["score"] if items else None,
-            used_in_response=False,
-        )
-    )
-    await db.flush()
-
-    return items, above_threshold

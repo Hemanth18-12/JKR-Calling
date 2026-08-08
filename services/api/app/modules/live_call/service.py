@@ -1,13 +1,16 @@
 """Service logic for the live real-call test path.
 
-Deliberately does not reuse services/voice-worker's conversation_engine —
-that engine's turn-taking is built around MockLLM's scripted-FSM methods
-(next_question/closing_text/question_text), not a general chat loop, and
-reworking it wasn't in scope for "prove one real call end-to-end." This
-module keeps its own minimal Redis-backed message history for the duration
-of one call and persists turns directly into the same call_sessions/
-call_turns tables everything else uses, so a real call shows up in the
-normal Calls UI/analytics exactly like a mock one — just with is_mock=False.
+Conversation intelligence (field extraction, RAG, next-action planning,
+response generation) now comes from jkr_conversation — the exact same shared
+engine services/voice-worker/app/conversation_engine.py uses for Test Lab
+calls. This module's own job is transport: driving Twilio's webhook loop,
+Sarvam TTS/STT, and persisting turns into the same call_sessions/call_turns
+tables everything else uses, so a real call shows up in the normal Calls
+UI/analytics exactly like a mock one — just with is_mock=False. It keeps a
+minimal Redis-backed cache (recent turns, cached policy) for the duration of
+one call since each webhook is a fresh, stateless HTTP request; the durable
+conversation state (known_fields, objective_status, etc.) lives on
+CallSession.state, same as every other call.
 
 Speaking uses Sarvam TTS (real Telugu/Hindi/English pronunciation), played
 via TwiML <Play> of a briefly-cached audio URL; listening uses Twilio's
@@ -26,28 +29,46 @@ from __future__ import annotations
 import base64
 import json
 import uuid
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, status
-from jkr_db.models.agents import Agent, AgentVersion
+from jkr_conversation.engine import process_turn
+from jkr_conversation.schemas import ConversationPolicySnapshot
+from jkr_conversation.state import classify_provisional_outcome, new_conversation_state
+from jkr_db.models.agents import Agent, AgentVersion, ConversationPolicy
 from jkr_db.models.billing import UsageEvent
-from jkr_db.models.calls import CallEvent, CallOutcome, CallParticipant, CallSession, CallSummary, CallTranscript, CallTurn
+from jkr_db.models.calls import (
+    CallEvent,
+    CallOutcome,
+    CallParticipant,
+    CallSession,
+    CallSummary,
+    CallTranscript,
+    CallTurn,
+)
 from jkr_db.phone import InvalidPhoneNumberError, normalize_e164
 from jkr_db.session import workspace_scoped_session
+from jkr_db.tools_engine import ToolNotDefinedError, ToolNotEnabledError, execute_tool
 from jkr_messaging import enqueue
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.live_providers.openai_llm import NotConfiguredError as LLMNotConfiguredError
-from app.live_providers.openai_llm import OpenAIChat
 from app.live_providers.sarvam_stt import SarvamSTT
 from app.live_providers.sarvam_tts import SarvamTTS
 from app.live_providers.twilio_telephony import NotConfiguredError as TelephonyNotConfiguredError
-from app.live_providers.twilio_telephony import TwilioClient, fetch_recording, validate_twilio_signature
+from app.live_providers.twilio_telephony import (
+    TwilioClient,
+    fetch_recording,
+    validate_twilio_signature,
+)
 
-MAX_AGENT_TURNS = 5  # greeting + up to 3 real exchanges + a forced closing turn — bounds cost/duration
+# Real ending is the shared engine's planner reaching a terminal state
+# (ConversationPolicy.max_turns/max_call_duration_seconds are the safety-net
+# ceiling, enforced inside process_turn) — no local turn cap needed here
+# anymore. agent_turns below is kept only as an observability counter.
 REDIS_KEY_PREFIX = "jkr:live_call:"
 REDIS_TTL_SECONDS = 1800
 AUDIO_KEY_PREFIX = "jkr:live_call_audio:"
@@ -149,6 +170,23 @@ async def start_live_test_call(
     if version is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Published agent version not found")
 
+    policy_result = await db.execute(select(ConversationPolicy).where(ConversationPolicy.agent_version_id == version.id))
+    policy = policy_result.scalar_one_or_none()
+    policy_snapshot = (
+        ConversationPolicySnapshot(
+            max_response_sentences=policy.max_response_sentences,
+            human_transfer_enabled=policy.human_transfer_enabled,
+            do_not_call_behavior=policy.do_not_call_behavior,
+            wrong_number_behavior=policy.wrong_number_behavior,
+            clarification_behavior=policy.clarification_behavior,
+            confirmation_behavior=policy.confirmation_behavior,
+            max_turns=policy.max_turns,
+            max_call_duration_seconds=policy.max_call_duration_seconds,
+        )
+        if policy
+        else ConversationPolicySnapshot()
+    )
+
     try:
         telephony = TwilioClient(
             account_sid=settings.twilio_account_sid, auth_token=settings.twilio_auth_token, from_number=settings.twilio_from_number
@@ -156,12 +194,10 @@ async def start_live_test_call(
     except TelephonyNotConfiguredError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
 
-    # Not used until the webhook fires, but fail fast — a call that connects
-    # and then immediately errors on turn one is worse than never dialing.
-    try:
-        OpenAIChat(api_key=settings.openai_api_key)
-    except LLMNotConfiguredError as exc:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    # No OpenAI fail-fast check here anymore — jkr_conversation degrades
+    # gracefully to deterministic mock-mode responses without a key, same
+    # posture Sarvam TTS already has via its own <Say> fallback. A live call
+    # is placeable either way; it just won't sound as adaptive without a key.
 
     language_code = _sarvam_language_code(agent.primary_language)
 
@@ -173,6 +209,9 @@ async def start_live_test_call(
     # lives for one transaction, so manually committing the request-scoped
     # session mid-request would silently drop RLS on whatever runs after —
     # every fresh workspace_scoped_session sets it up correctly on its own.
+    conversation_state = new_conversation_state(objective=version.primary_objective, language=language_code)
+    conversation_state["live_real_call"] = True
+
     async with workspace_scoped_session(workspace_id) as write_db:
         call_session = CallSession(
             workspace_id=workspace_id,
@@ -182,7 +221,7 @@ async def start_live_test_call(
             agent_version_id=version.id,
             idempotency_key=f"live-{uuid.uuid4()}",
             language=language_code,
-            state={"live_real_call": True},
+            state=conversation_state,
             started_at=datetime.now(UTC),
             is_mock=False,
             disclosure_confirmed=True,
@@ -210,13 +249,6 @@ async def start_live_test_call(
     # disclosure sentence verbatim — blindly prepending it again said the same
     # sentence twice back to back. Only prepend when it isn't already there.
     greeting = greeting_body if (disclosure and disclosure in greeting_body) else (disclosure + " " + greeting_body).strip()
-    system_prompt = (
-        f"You are the AI voice receptionist for {agent.business_identity}, on a real live phone call. "
-        f"Your objective this call: {version.primary_objective.replace('_', ' ')}. "
-        "Speak naturally and briefly, one short sentence or question at a time — this is a live voice "
-        "call, not a chat window. Ask one relevant question, listen, then ask the next. Never invent "
-        "facts you don't actually know — offer to have a team member follow up instead."
-    )
 
     token = uuid.uuid4().hex
     state = {
@@ -224,11 +256,10 @@ async def start_live_test_call(
         "call_session_id": str(call_session_id),
         "closing_text": version.closing_text,
         "language_code": language_code,
+        "business_identity": agent.business_identity,
+        "policy": asdict(policy_snapshot),
         "greeted": False,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "assistant", "content": greeting},
-        ],
+        "recent_turns": [{"speaker": "agent", "text": greeting}],
         "agent_turns": 1,
         "next_sequence_index": 0,
     }
@@ -324,13 +355,15 @@ async def _finalize_call(
 
     db.add(CallTranscript(workspace_id=workspace_id, call_session_id=call_session_id, full_text=full_text, language=language_code, is_final=True))
 
-    category = "interested" if had_exchange else "unreachable"
-    lead_score = "warm" if had_exchange else "not_qualified"
+    conversation_state = call_session.state or {}
+    category, lead_score = classify_provisional_outcome(conversation_state)
+    objective_status = conversation_state.get("objective_status", "in_progress" if had_exchange else "abandoned")
     db.add(
         CallOutcome(
             workspace_id=workspace_id, call_session_id=call_session_id, category=category, lead_score=lead_score,
-            score_reasons=[], objective_status="in_progress" if had_exchange else "abandoned",
-            notes="Real live call via Twilio + a real LLM + Sarvam TTS/STT — see app/modules/live_call/service.py.",
+            score_reasons=[f"{k}: {v}" for k, v in conversation_state.get("known_fields", {}).items()],
+            objective_status=objective_status,
+            notes="Real live call via Twilio + Sarvam TTS/STT + the shared jkr_conversation engine — see app/modules/live_call/service.py.",
         )
     )
     db.add(
@@ -372,7 +405,7 @@ async def handle_voice_webhook(*, token: str, form: dict[str, str], signature: s
     language_code = state.get("language_code", FALLBACK_LANGUAGE)
 
     async with workspace_scoped_session(workspace_id) as db:
-        greeting = state["messages"][-1]["content"]
+        greeting = state["recent_turns"][-1]["text"]
         await _persist_turn(db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="agent", text=greeting)
         session_result = await db.execute(select(CallSession).where(CallSession.id == call_session_id))
         call_session = session_result.scalar_one_or_none()
@@ -431,29 +464,61 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
             return _twiml_speak_and_hangup(kind, content)
 
         await _persist_turn(db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="customer", text=speech_result)
-        state["messages"].append({"role": "user", "content": speech_result})
 
-        force_close = state["agent_turns"] >= MAX_AGENT_TURNS
-        llm_errored = False
-        if force_close:
-            reply = state["closing_text"]
-        else:
+        # Everything from here down — field extraction, knowledge retrieval,
+        # next-action planning, response generation — is the shared engine,
+        # the exact same code path services/voice-worker uses for Test Lab
+        # calls. This module only handles Twilio transport and persistence,
+        # never conversation reasoning itself.
+        session_result = await db.execute(select(CallSession).where(CallSession.id == call_session_id))
+        call_session = session_result.scalar_one_or_none()
+        conversation_state = dict(call_session.state) if call_session is not None and call_session.state else {}
+        policy_snapshot = ConversationPolicySnapshot(**state.get("policy", {}))
+
+        result = await process_turn(
+            db, workspace_id=workspace_id, call_session_id=call_session_id, state=conversation_state,
+            customer_utterance=speech_result, conversation_policy=policy_snapshot,
+            business_identity=state.get("business_identity", ""), recent_turns=state.get("recent_turns", [])[-6:],
+        )
+
+        for tool_call in result.tool_calls_requested:
             try:
-                llm = OpenAIChat(api_key=settings.openai_api_key)
-                reply = await llm.reply(messages=state["messages"])
-            except Exception:  # noqa: BLE001 — a live phone call must still end gracefully on an LLM error
-                reply = state["closing_text"]
-                force_close = True
-                llm_errored = True
+                execution = await execute_tool(
+                    db, workspace_id=workspace_id, tool_name=tool_call.tool_name, tool_input=tool_call.tool_input,
+                    idempotency_key=f"call-{call_session_id}-{tool_call.idempotency_suffix}",
+                    call_session_id=call_session_id, agent_version_id=call_session.agent_version_id if call_session else None,
+                )
+                if execution.status == "succeeded":
+                    result.state.setdefault("tool_results", {})[tool_call.tool_name] = execution.output
+            except (ToolNotDefinedError, ToolNotEnabledError):
+                pass  # tool not configured for this workspace — the call still proceeds, matching prior behavior
 
-        state["messages"].append({"role": "assistant", "content": reply})
+        if call_session is not None:
+            call_session.state = result.state
+
+        reply = result.reply_text
+        state["recent_turns"].append({"speaker": "customer", "text": speech_result})
+        state["recent_turns"].append({"speaker": "agent", "text": reply})
         state["agent_turns"] += 1
         await _persist_turn(db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="agent", text=reply)
 
+        # live_call has no real warm-transfer capability yet, so a human-
+        # handoff decision closes the call here too — unlike Test Lab, which
+        # keeps the session open after an acknowledged handoff.
+        force_close = result.call_should_end or result.planner_action == "HUMAN_HANDOFF"
+
         if force_close:
+            end_reason_by_planner_reason = {
+                "do_not_call_requested": "do_not_call",
+                "wrong_number": "wrong_number",
+                "all_fields_collected": "completed",
+                "max_turns_reached": "completed",
+                "max_duration_reached": "completed",
+            }
+            end_reason = end_reason_by_planner_reason.get(result.planner_reason, "transferred" if result.planner_action == "HUMAN_HANDOFF" else "completed")
             await _finalize_call(
                 db, workspace_id=workspace_id, call_session_id=call_session_id, call_status="completed",
-                end_reason="error" if llm_errored else "completed", had_exchange=True, language_code=language_code,
+                end_reason=end_reason, had_exchange=True, language_code=language_code,
             )
             await redis.delete(_redis_key(token))
             kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis)

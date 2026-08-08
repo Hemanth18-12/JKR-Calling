@@ -1,4 +1,4 @@
-from app.spoken_formatter import SpokenResponseFormatter, build_clarification
+from jkr_conversation.formatter import SpokenResponseFormatter, build_clarification
 
 
 def test_strips_markdown_and_urls():
@@ -59,3 +59,22 @@ def test_build_clarification_english():
     text = build_clarification("date", ["Monday", "Tuesday"], language="en-IN")
     assert text.startswith("Sorry")
     assert "Monday" in text and "Tuesday" in text
+
+
+def test_build_clarification_hindi():
+    text = build_clarification("time", ["5 PM", "6 PM"], language="hi-IN")
+    assert "5 PM" in text and "6 PM" in text
+    assert "या" in text
+
+
+def test_build_clarification_is_reachable_from_planner_and_prompt_builder():
+    # Regression guard for the specific gap found auditing this codebase:
+    # build_clarification existed but was never called from any production
+    # code path (confirmed by grep) before this refactor. planner.py's
+    # CLARIFY action + prompt_builder.py's fallback wire it in for real now.
+    import inspect
+
+    from jkr_conversation import planner, prompt_builder
+
+    assert "build_clarification" in inspect.getsource(prompt_builder)
+    assert "CLARIFY" in inspect.getsource(planner)

@@ -1,5 +1,7 @@
-"""SpokenResponseFormatter — spec §13. Raw LLM output never reaches TTS
-directly; it passes through here first.
+"""SpokenResponseFormatter — promoted verbatim (behavior-preserving) from
+services/voice-worker/app/spoken_formatter.py so both call paths share the
+same implementation. Raw LLM output never reaches TTS directly; it passes
+through here first.
 
 Number-to-words normalization for mixed Telugu/Hindi/English speech is a
 genuinely hard NLP problem on its own; what's implemented here is a real,
@@ -11,6 +13,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+
+from jkr_conversation.language import lang_prefix
 
 _MARKDOWN_BOLD_ITALIC = re.compile(r"[*_]{1,3}([^*_]+)[*_]{1,3}")
 _MARKDOWN_HEADER = re.compile(r"^#{1,6}\s*", re.MULTILINE)
@@ -112,12 +116,15 @@ class SpokenResponseFormatter:
 
 def build_clarification(field_label: str, candidates: list[str], *, language: str = "te-en-IN") -> str:
     """Spec §13 — never silently guess name/date/time/amount/rank/phone/
-    booking/payment/address. Called by the conversation engine when
-    extraction confidence is below threshold, instead of stating a value."""
-    if language.startswith("te"):
+    booking/payment/address. Called by planner.py when extraction confidence
+    is below threshold, instead of stating a value. Previously written but
+    never actually called from production code (confirmed by grep) — the
+    shared engine's planner.py is what finally wires this in."""
+    prefix = lang_prefix(language)
+    if prefix == "te":
         joined = " అన్నారా, ".join(candidates)
         return f"Sorry అండి, {joined} అన్నారా?"
-    if language.startswith("hi"):
+    if prefix == "hi":
         joined = " या ".join(candidates)
         return f"Sorry, {joined}?"
     joined = " or ".join(candidates)

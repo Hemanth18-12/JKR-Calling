@@ -1,0 +1,98 @@
+"""ONE canonical knowledge-retrieval implementation — replaces two
+independently-maintained, near-duplicate copies that had already drifted:
+services/voice-worker/app/knowledge_retrieval.py::search_knowledge() (set
+RetrievalEvent.used_in_response = above_threshold, correct) and
+services/api/app/modules/knowledge/service.py::search() (hardcoded
+used_in_response=False unconditionally — a real, confirmed bug). Both call
+sites now import from here instead.
+"""
+
+from __future__ import annotations
+
+import re
+import uuid
+
+from jkr_db.embeddings import embed_text
+from jkr_db.models.knowledge import KnowledgeChunk, KnowledgeDocument, RetrievalEvent
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from jkr_conversation.schemas import RagChunk
+
+# Tuned for REAL OpenAI text-embedding-3-small cosine distances, not the
+# mock hash-bucket embedder's — a hash-based embedder needed a generous
+# 0.75 because it only clusters on shared vocabulary; real embeddings
+# cluster tighter on genuine semantic similarity, so a looser threshold
+# there would let weakly-related chunks answer confidently, which is the
+# exact failure mode spec §16 forbids. 0.4 is a reasoned starting point,
+# not a labeled-eval-tuned one — a real retrieval eval dataset (deferred
+# this pass) should replace this constant with a measured value.
+RETRIEVAL_DISTANCE_THRESHOLD = 0.4
+
+# Deliberately broad/multilingual — a customer question can arrive as
+# "ధర ఎంత?" or "cost enta untundi" or plain "?" with no other marker.
+QUESTION_TRIGGERS = [
+    "?", "ఎంత", "enta", "entha", "ధర", "dhara", "cost", "price", "ఎప్పుడు", "eppudu",
+    "when", "టైమ్", "time", "ఎలా", "ela", "how", "timing", "hours", "available", "undha", "unda",
+]
+
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
+
+
+def looks_like_a_question(text: str) -> bool:
+    lowered = text.lower()
+    return any(trigger in lowered for trigger in QUESTION_TRIGGERS)
+
+
+def first_sentence(text: str, max_chars: int = 180) -> str:
+    parts = _SENTENCE_END.split(text.strip())
+    snippet = parts[0] if parts else text
+    return snippet[:max_chars].strip()
+
+
+async def search_knowledge(
+    db: AsyncSession, *, workspace_id: uuid.UUID, query: str, call_session_id: uuid.UUID | None = None, top_k: int = 4
+) -> tuple[list[RagChunk], bool]:
+    """Returns (chunks, above_threshold) — chunks ordered by relevance, best
+    first. Always logs a RetrievalEvent, even on a miss (knowledge-grounding-
+    rate analytics needs the misses as much as the hits), with
+    used_in_response correctly reflecting whether the top result actually
+    cleared the confidence threshold."""
+    query_embedding = await embed_text(query)
+    distance_expr = KnowledgeChunk.embedding.cosine_distance(query_embedding)
+
+    result = await db.execute(
+        select(KnowledgeChunk, KnowledgeDocument.title, distance_expr.label("distance"))
+        .join(KnowledgeDocument, KnowledgeDocument.id == KnowledgeChunk.document_id)
+        .where(KnowledgeChunk.workspace_id == workspace_id, KnowledgeChunk.approval_state == "approved")
+        .order_by(distance_expr)
+        .limit(top_k)
+    )
+    rows = result.all()
+
+    chunks = [
+        RagChunk(
+            chunk_id=chunk.id,
+            document_id=chunk.document_id,
+            document_title=title,
+            text=chunk.text,
+            score=max(0.0, 1.0 - float(distance)),
+            distance=float(distance),
+        )
+        for chunk, title, distance in rows
+    ]
+    above_threshold = bool(chunks) and chunks[0].distance <= RETRIEVAL_DISTANCE_THRESHOLD
+
+    db.add(
+        RetrievalEvent(
+            workspace_id=workspace_id,
+            call_session_id=call_session_id,
+            query=query,
+            matched_chunk_ids=[c.chunk_id for c in chunks],
+            top_score=chunks[0].score if chunks else None,
+            used_in_response=above_threshold,
+        )
+    )
+    await db.flush()
+
+    return chunks, above_threshold

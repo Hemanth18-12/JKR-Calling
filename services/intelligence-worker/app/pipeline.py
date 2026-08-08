@@ -142,7 +142,11 @@ async def run_post_call_pipeline(db: AsyncSession, *, workspace_id: uuid.UUID, c
     full_transcript_text = " ".join(t.text for t in turns).lower()
 
     # --- extraction_validator ---------------------------------------------
-    await _validate_extracted_fields(db, workspace_id=workspace_id, call_id=call_id, known_fields=known_fields, customer_turns=customer_turns)
+    field_confidence: dict[str, float] = state.get("field_confidence", {})
+    await _validate_extracted_fields(
+        db, workspace_id=workspace_id, call_id=call_id, known_fields=known_fields,
+        field_confidence=field_confidence, customer_turns=customer_turns,
+    )
 
     # --- outcome_classifier -------------------------------------------------
     category, lead_score, reasons = _classify_outcome(
@@ -188,10 +192,18 @@ async def run_post_call_pipeline(db: AsyncSession, *, workspace_id: uuid.UUID, c
     return {"call_id": call_id, "outcome_category": category, "lead_score": lead_score, "overall_score": quality["overall_score"]}
 
 
-async def _validate_extracted_fields(db, *, workspace_id, call_id, known_fields, customer_turns) -> None:
+async def _validate_extracted_fields(db, *, workspace_id, call_id, known_fields, field_confidence, customer_turns) -> None:
+    """Confidence comes from jkr_conversation's extractor first (real,
+    per-field confidence from either a real LLM extraction or the mock
+    heuristic) — the old exact-text-match against customer_turns is only a
+    fallback for calls whose state predates this refactor and never had a
+    `field_confidence` key at all."""
     text_to_confidence = {t.text: (t.confidence or 0.0) for t in customer_turns}
     for field_key, field_value in known_fields.items():
-        confidence = text_to_confidence.get(field_value, 0.0)
+        if field_key in field_confidence:
+            confidence = field_confidence[field_key]
+        else:
+            confidence = text_to_confidence.get(field_value, 0.0)
         existing = await db.execute(
             select(ExtractedField).where(ExtractedField.call_session_id == call_id, ExtractedField.field_key == field_key)
         )

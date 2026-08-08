@@ -1,7 +1,13 @@
-"""Orchestrates TurnManager + MockLLM + SpokenResponseFormatter + persistence
+"""Orchestrates TurnManager + the shared jkr_conversation engine + persistence
 for one call. This is the text-simulated stand-in for the real-time pipeline
 in docs/VOICE_ARCHITECTURE.md §1 — every stage after the STT boundary is real
 logic, only the transport is simulated (docs/DECISIONS/0002-voice-runtime.md).
+
+Conversation intelligence (field extraction, RAG, next-action planning,
+response generation) lives in jkr_conversation and is shared verbatim with
+the real Twilio call path (services/api/app/modules/live_call/service.py) —
+this module's job is transport/turn-taking (TurnManager, persistence,
+tool execution), never business conversation reasoning itself.
 """
 
 from __future__ import annotations
@@ -10,6 +16,10 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from jkr_conversation.engine import process_turn
+from jkr_conversation.formatter import SpokenResponseFormatter
+from jkr_conversation.schemas import ConversationPolicySnapshot
+from jkr_conversation.state import classify_provisional_outcome, new_conversation_state
 from jkr_db.models.agents import Agent, AgentVersion, ConversationPolicy, VoicePersona
 from jkr_db.models.billing import UsageEvent
 from jkr_db.models.calls import (
@@ -28,44 +38,30 @@ from jkr_messaging import enqueue
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.knowledge_retrieval import first_sentence, looks_like_a_question, search_knowledge
-from app.providers.mock import MockLLM, MockSTT, MockTTS
+from app.providers.mock import MockSTT, MockTTS
 from app.session_registry import CallRuntime
 from app.session_registry import discard as registry_discard
 from app.session_registry import get as registry_get
 from app.session_registry import put as registry_put
-from app.spoken_formatter import SpokenResponseFormatter
 from app.turn_manager import InterruptionClassification, TurnManager, estimate_speaking_duration_ms
-
-# Spec §16: never invent pricing/medical/eligibility/etc. — if the customer
-# asks something knowledge-lookup-shaped and nothing approved matches well
-# enough, say so and defer to a human rather than guessing.
-NO_MATCH_FALLBACK = {
-    "te": "ఆ విషయం గురించి ఖచ్చితంగా చెప్పలేను అండి, మా టీమ్ మీకు వివరాలు తెలియజేస్తుంది.",
-    "hi": "उस बारे में मैं अभी पूरी तरह नहीं बता पाऊँगा, हमारी टीम आपको बताएगी।",
-    "en": "I'm not fully sure about that — our team will confirm the details with you.",
-}
-
-# Deliberately small keyword list, not real intent detection — mirrors
-# NO_MATCH_FALLBACK's approach. HandoffReason.CUSTOMER_REQUESTED (spec §18).
-HUMAN_HANDOFF_TRIGGERS = [
-    "talk to a person", "talk to someone", "real person", "human agent", "speak to a manager",
-    "మనిషితో మాట్లాడాలి", "మనిషిని కలపండి", "इंसान से बात", "किसी आदमी से बात करनी है",
-]
-
-HUMAN_HANDOFF_ACK = {
-    "te": "సరే అండి, నేను మా టీమ్ మెంబర్‌ని కలుపుతున్నాను, ఒక్క నిమిషం.",
-    "hi": "ठीक है, मैं आपको हमारी टीम के किसी सदस्य से जोड़ रहा हूँ, एक मिनट रुकिए।",
-    "en": "Sure, let me connect you with a member of our team — one moment.",
-}
-
-
-def _wants_human_handoff(text: str) -> bool:
-    lowered = text.lower()
-    return any(trigger in lowered for trigger in HUMAN_HANDOFF_TRIGGERS)
 
 _stt = MockSTT()
 _tts = MockTTS()
+
+
+def _policy_snapshot(policy: ConversationPolicy | None) -> ConversationPolicySnapshot:
+    if policy is None:
+        return ConversationPolicySnapshot()
+    return ConversationPolicySnapshot(
+        max_response_sentences=policy.max_response_sentences,
+        human_transfer_enabled=policy.human_transfer_enabled,
+        do_not_call_behavior=policy.do_not_call_behavior,
+        wrong_number_behavior=policy.wrong_number_behavior,
+        clarification_behavior=policy.clarification_behavior,
+        confirmation_behavior=policy.confirmation_behavior,
+        max_turns=policy.max_turns,
+        max_call_duration_seconds=policy.max_call_duration_seconds,
+    )
 
 
 @dataclass
@@ -169,23 +165,7 @@ async def start_session(
     voice = voice_result.scalar_one_or_none()
 
     language = voice.language if voice else agent.primary_language
-
-    conversation_state = {
-        "objective": version.primary_objective,
-        "language": language,
-        "intent": None,
-        "sentiment": "neutral",
-        "known_fields": {},
-        "missing_fields": [s["field"] for s in MockLLM(version.primary_objective, language).script()],
-        "uncertain_fields": [],
-        "risk_flags": [],
-        "customer_requested_human": False,
-        "do_not_call": False,
-        "next_best_action": "ask_question",
-        "objective_status": "in_progress",
-        "asked_count": 0,
-        "awaiting_field": None,
-    }
+    conversation_state = new_conversation_state(objective=version.primary_objective, language=language)
 
     call_session = CallSession(
         workspace_id=workspace_id,
@@ -226,12 +206,12 @@ async def start_session(
         accidental_interruption_phrases=policy.accidental_interruption_phrases if policy else [],
         min_interruption_ms=policy.min_interruption_ms if policy else 250,
     )
-    llm = MockLLM(objective=version.primary_objective, language=language)
     registry_put(
         call_session.id,
         CallRuntime(
-            turn_manager=turn_manager, llm=llm, language=language,
+            turn_manager=turn_manager, language=language,
             human_transfer_enabled=policy.human_transfer_enabled if policy else True,
+            policy=_policy_snapshot(policy), business_identity=agent.business_identity,
         ),
     )
 
@@ -335,131 +315,41 @@ async def submit_user_turn(
             call_status=call_session.status,
         )
 
-    formatter = SpokenResponseFormatter(language=runtime.language, max_sentences=3)
+    # Everything from here down — field extraction, knowledge retrieval,
+    # next-action planning, response generation — is the shared engine, the
+    # exact same code path the real Twilio call path uses (see
+    # services/api/app/modules/live_call/service.py). This module only
+    # handles transport/turn-taking and persistence, never conversation
+    # reasoning itself.
+    result = await process_turn(
+        db, workspace_id=workspace_id, call_session_id=call_id, state=state,
+        customer_utterance=transcript.text, conversation_policy=runtime.policy,
+        business_identity=runtime.business_identity, transcript_confidence=transcript.confidence,
+        now=now,
+    )
+    state = result.state
 
-    if (
-        runtime.human_transfer_enabled
-        and not state.get("customer_requested_human")
-        and _wants_human_handoff(transcript.text)
-    ):
-        # Spec §18: an explicit request for a human takes priority over
-        # script progression — no more scripted questions, hand off instead.
-        state["customer_requested_human"] = True
-        state["next_best_action"] = "human_handoff"
-        state["objective_status"] = "needs_human"
-
+    for tool_call in result.tool_calls_requested:
         try:
-            await execute_tool(
-                db, workspace_id=workspace_id, tool_name="create_human_callback",
-                tool_input={
-                    "reason": "customer_requested",
-                    "packet": {"known_fields": state["known_fields"], "last_customer_utterance": transcript.text},
-                },
-                idempotency_key=f"call-{call_id}-human_callback", call_session_id=call_id,
-                agent_version_id=call_session.agent_version_id,
+            execution = await execute_tool(
+                db, workspace_id=workspace_id, tool_name=tool_call.tool_name, tool_input=tool_call.tool_input,
+                idempotency_key=f"call-{call_id}-{tool_call.idempotency_suffix}", call_session_id=call_id,
+                contact_id=call_session.contact_id, agent_version_id=call_session.agent_version_id,
             )
+            if execution.status == "succeeded":
+                state.setdefault("tool_results", {})[tool_call.tool_name] = execution.output
         except (ToolNotDefinedError, ToolNotEnabledError):
-            pass  # tool not configured for this workspace — the spoken handoff still happens, just unaudited
-
-        lang_prefix = runtime.language.split("-")[0] if runtime.language.split("-")[0] in ("te", "hi") else "en"
-        formatted = formatter.format(HUMAN_HANDOFF_ACK.get(lang_prefix, HUMAN_HANDOFF_ACK["en"]), prepend_acknowledgement=False)
-
-        agent_sequence_index = sequence_index + 1
-        turn_record = runtime.turn_manager.start_agent_turn(formatted.text)
-        await _persist_agent_turn(
-            db, workspace_id=workspace_id, call_id=call_id, sequence_index=agent_sequence_index,
-            turn_ref=turn_record.turn_ref, text=formatted.text, language=runtime.language,
-        )
-        call_session.state = state
-        await db.flush()
-        return UserTurnOut(
-            user_turn=TurnOut(turn_ref=user_turn_ref, speaker="customer", text=transcript.text),
-            interruption_classification=classification.classification.value,
-            stop_latency_ms=stop_latency_ms,
-            agent_turn=TurnOut(
-                turn_ref=turn_record.turn_ref, speaker="agent", text=formatted.text,
-                estimated_duration_ms=estimate_speaking_duration_ms(formatted.text),
-            ),
-            conversation_state=state,
-            call_status=call_session.status,
-        )
-
-    # Advance conversation state.
-    awaiting_field = state.get("awaiting_field")
-    if awaiting_field is None and state["asked_count"] == 0:
-        # First customer utterance after the greeting. The greeting's own
-        # "is now a good time?" beat already prompted them, so whatever they
-        # volunteer here answers the FIRST script question implicitly (spec
-        # §9's dental example has the customer's reason arrive unprompted
-        # the same way) — attribute it directly rather than asking a
-        # redundant, already-answered question right back at them.
-        first_step = runtime.llm.next_question(asked_count=0)
-        if first_step is not None:
-            awaiting_field = first_step["field"]
-            state["asked_count"] = 1
-
-    if awaiting_field:
-        state["known_fields"][awaiting_field] = transcript.text
-        state["missing_fields"] = [f for f in state["missing_fields"] if f != awaiting_field]
-
-    next_step = runtime.llm.next_question(asked_count=state["asked_count"])
-    agent_turn_out: TurnOut | None = None
-    call_status = call_session.status
-
-    # Spec §16 knowledge answer policy: if the customer asked something
-    # knowledge-shaped, answer from approved knowledge, or say so and defer
-    # to a human — never guess. Checked against the raw utterance, not the
-    # value just captured into known_fields (a factual question and a
-    # scripted-field answer are different things even in the same turn).
-    knowledge_prefix = ""
-    if looks_like_a_question(transcript.text):
-        lang_prefix = runtime.language.split("-")[0] if runtime.language.split("-")[0] in ("te", "hi") else "en"
-        match_text, above_threshold = await search_knowledge(
-            db, workspace_id=workspace_id, query=transcript.text, call_session_id=call_id
-        )
-        db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_id, event_type="knowledge_lookup", payload={"query": transcript.text, "matched": above_threshold}))
-        if above_threshold and match_text:
-            snippet = first_sentence(match_text)
-            knowledge_prefix = snippet + ("" if snippet.endswith((".", "!", "?")) else ".") + " "
-        else:
-            knowledge_prefix = NO_MATCH_FALLBACK.get(lang_prefix, NO_MATCH_FALLBACK["en"]) + " "
-
-    if next_step is not None:
-        state["asked_count"] += 1
-        state["awaiting_field"] = next_step["field"]
-        state["next_best_action"] = "ask_question"
-        raw = knowledge_prefix + runtime.llm.question_text(next_step)
-        formatted = formatter.format(raw, prepend_acknowledgement=True)
-    else:
-        state["awaiting_field"] = None
-        state["objective_status"] = "completed"
-        state["next_best_action"] = "close_conversation"
-        raw = knowledge_prefix + runtime.llm.closing_text()
-        formatted = formatter.format(raw, prepend_acknowledgement=False)
-
-        if state["objective"] == "book_appointment" and call_session.contact_id is not None:
-            # Spec §33 demo beat 13-15: completing the booking script fields
-            # actually books the appointment, not just marks the script done.
-            try:
-                execution = await execute_tool(
-                    db, workspace_id=workspace_id, tool_name="book_appointment", tool_input=state["known_fields"],
-                    idempotency_key=f"call-{call_id}-book_appointment", call_session_id=call_id, contact_id=call_session.contact_id,
-                    agent_version_id=call_session.agent_version_id,
-                )
-                if execution.status == "succeeded":
-                    state["tool_results"] = {"book_appointment": execution.output}
-            except (ToolNotDefinedError, ToolNotEnabledError):
-                pass  # tool not configured for this workspace — the call still closes normally, just unbooked
+            pass  # tool not configured for this workspace — the call still proceeds, matching prior behavior
 
     agent_sequence_index = sequence_index + 1
-    turn_record = runtime.turn_manager.start_agent_turn(formatted.text)
+    turn_record = runtime.turn_manager.start_agent_turn(result.reply_text)
     await _persist_agent_turn(
         db, workspace_id=workspace_id, call_id=call_id, sequence_index=agent_sequence_index,
-        turn_ref=turn_record.turn_ref, text=formatted.text, language=runtime.language,
+        turn_ref=turn_record.turn_ref, text=result.reply_text, language=runtime.language,
     )
     agent_turn_out = TurnOut(
-        turn_ref=turn_record.turn_ref, speaker="agent", text=formatted.text,
-        estimated_duration_ms=estimate_speaking_duration_ms(formatted.text),
+        turn_ref=turn_record.turn_ref, speaker="agent", text=result.reply_text,
+        estimated_duration_ms=estimate_speaking_duration_ms(result.reply_text),
     )
 
     call_session.state = state
@@ -471,7 +361,7 @@ async def submit_user_turn(
         stop_latency_ms=stop_latency_ms,
         agent_turn=agent_turn_out,
         conversation_state=state,
-        call_status=call_status,
+        call_status=call_session.status,
     )
 
 
@@ -502,19 +392,7 @@ async def end_session(db: AsyncSession, *, workspace_id: uuid.UUID, call_id: uui
     objective_status = state.get("objective_status", "in_progress")
     objective = state.get("objective", "")
     known_fields = state.get("known_fields", {})
-
-    if objective_status == "completed" and objective == "book_appointment":
-        category = "appointment_booked"
-        lead_score = "hot"
-    elif objective_status == "completed" and known_fields:
-        category = "qualified"
-        lead_score = "warm"
-    elif known_fields:
-        category = "interested"
-        lead_score = "warm"
-    else:
-        category = "unreachable"
-        lead_score = "not_qualified"
+    category, lead_score = classify_provisional_outcome(state)
 
     db.add(
         CallOutcome(

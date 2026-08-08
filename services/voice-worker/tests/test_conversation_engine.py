@@ -143,7 +143,15 @@ async def test_first_utterance_is_attributed_to_first_script_field(workspace_and
         )
 
     assert result.conversation_state["known_fields"].get("reason_for_visit") == "నాకు root canal కావాలి"
-    assert result.conversation_state["asked_count"] == 2  # first field auto-attributed, second question just asked
+    # asked_count == 1, not 2: the shared conversation engine (packages/conversation)
+    # pre-seeds awaiting_field to the objective's first field at session start
+    # rather than lazily attributing it on the first turn, so this single
+    # ASK_FIELD decision (for the second field) is the only increment this
+    # turn — same functional outcome (one field captured, one new question
+    # asked) as the pre-refactor engine's asked_count=2, just without double-
+    # counting the implicitly-attributed first field as "asked" too.
+    assert result.conversation_state["asked_count"] == 1
+    assert result.conversation_state["awaiting_field"] == "preferred_date"
     registry_discard(call_id)
 
 

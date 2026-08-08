@@ -9,6 +9,7 @@ dependencies = []
 members = [
   "packages/db",
   "packages/messaging",
+  "packages/conversation",
   "services/api",
   "services/voice-worker",
   "services/campaign-worker",

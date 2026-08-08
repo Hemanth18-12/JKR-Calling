@@ -123,6 +123,13 @@ class ConversationPolicy(Base, TenantMixin):
     call_later_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     wrong_number_behavior: Mapped[str] = mapped_column(String(32), nullable=False, default="apologize_and_suppress")
     do_not_call_behavior: Mapped[str] = mapped_column(String(32), nullable=False, default="immediate_suppress")
+    # Safety-net ceilings for the shared conversation engine (packages/conversation)
+    # — a normal call ends when the objective reaches a terminal state on its
+    # own; these only fire if something goes wrong and a call would otherwise
+    # run unbounded. Replaces the old hardcoded MAX_AGENT_TURNS=5 module
+    # constant in services/api/app/modules/live_call/service.py.
+    max_turns: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    max_call_duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
 
 
 class ToolDefinition(Base, TenantMixin):

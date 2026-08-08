@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends
+from jkr_conversation.rag import search_knowledge
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import AuthContext, require_permission, workspace_db_for
@@ -165,11 +166,11 @@ async def search(
     auth: AuthContext = Depends(require_permission("knowledge:view")),
     db: AsyncSession = Depends(workspace_db_for("knowledge:view")),
 ) -> SearchResponse:
-    items, above_threshold = await service.search(db, workspace_id=auth.workspace_id, query=payload.query, top_k=payload.top_k)
+    chunks, above_threshold = await search_knowledge(db, workspace_id=auth.workspace_id, query=payload.query, top_k=payload.top_k)
     return SearchResponse(
         results=[
-            SearchResultItem(chunk_id=i["chunk_id"], document_id=i["document_id"], document_title=i["document_title"], text=i["text"], score=i["score"])
-            for i in items
+            SearchResultItem(chunk_id=c.chunk_id, document_id=c.document_id, document_title=c.document_title, text=c.text, score=c.score)
+            for c in chunks
         ],
         above_threshold=above_threshold,
     )
