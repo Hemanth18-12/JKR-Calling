@@ -1,0 +1,46 @@
+# Claude / editor
+.claude/
+.vscode/
+.idea/
+
+# Node
+node_modules/
+.pnpm-store/
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+.turbo/
+coverage/
+playwright-report/
+test-results/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.venv*/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.uv-cache/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# OS
+.DS_Store
+
+# Docker volumes / local data
+infra/docker/data/
+*.sqlite3
+
+# Logs
+*.log
+npm-debug.log*

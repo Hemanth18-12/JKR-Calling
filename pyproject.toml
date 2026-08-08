@@ -1,0 +1,52 @@
+[project]
+name = "jkr-ai-calling"
+version = "0.1.0"
+description = "JKR AI Calling — India-first multilingual AI revenue agent platform (workspace root)"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[tool.uv.workspace]
+members = [
+  "packages/db",
+  "packages/messaging",
+  "services/api",
+  "services/voice-worker",
+  "services/campaign-worker",
+  "services/intelligence-worker",
+  "services/integration-worker",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["packages", "services"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom (`Depends(...)`, `Query(...)`, etc. as
+# argument defaults) is the framework's intended pattern, not the mutable-
+# default-argument footgun B008 exists to catch. Same reasoning applies to
+# this codebase's own dependency-factory functions (app.deps.require_permission,
+# app.deps.workspace_db_for) — they exist specifically to be called inline as
+# a `Depends(...)` argument default, once per route, with a route-specific
+# permission key.
+extend-immutable-calls = [
+  "fastapi.Depends", "fastapi.Query", "fastapi.Cookie", "fastapi.Header",
+  "fastapi.Path", "fastapi.Body", "fastapi.Form", "fastapi.File",
+  "app.deps.require_permission", "app.deps.workspace_db_for",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["packages", "services", "tests"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+disallow_untyped_defs = false

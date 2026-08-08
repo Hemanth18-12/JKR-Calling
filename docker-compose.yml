@@ -1,0 +1,179 @@
+name: jkr-ai-calling
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jkr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jkr_local_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-jkr_ai_calling}
+    ports:
+      # Host 55432 -> container 5432: this machine already runs a native
+      # Postgres on 5432, so the compose stack is remapped to avoid clashing
+      # with it. Internal service-to-service traffic still uses port 5432.
+      - "55432:5432"
+    volumes:
+      - jkr_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jkr} -d ${POSTGRES_DB:-jkr_ai_calling}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      # Host 16379 -> container 6379: this machine already runs a native Redis
+      # on 6379. Internal service-to-service traffic still uses port 6379.
+      - "16379:6379"
+    volumes:
+      - jkr_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-jkr_minio}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-jkr_minio_local_dev}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - jkr_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # LiveKit ships for architectural completeness (spec §4/§10/§32). The local
+  # demo path does not require this to be healthy — voice-worker defaults to
+  # MockMediaRuntime. See docs/DECISIONS/0002-voice-runtime.md.
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --dev --bind 0.0.0.0
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-change_me_dev_only_livekit_secret}"
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "50000-50100:50000-50100/udp"
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-jkr_app}:${APP_DB_PASSWORD:-jkr_app_local_dev}@postgres:5432/${POSTGRES_DB:-jkr_ai_calling}
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT_URL: http://minio:9000
+      VOICE_WORKER_BASE_URL: http://voice-worker:8100
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - ./services/api:/app/services/api
+      - ./packages/db:/app/packages/db
+
+  voice-worker:
+    build:
+      context: .
+      dockerfile: infra/docker/voice-worker.Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-jkr_app}:${APP_DB_PASSWORD:-jkr_app_local_dev}@postgres:5432/${POSTGRES_DB:-jkr_ai_calling}
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8100:8100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/voice-worker:/app/services/voice-worker
+      - ./packages/db:/app/packages/db
+
+  campaign-worker:
+    build:
+      context: .
+      dockerfile: infra/docker/campaign-worker.Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-jkr_app}:${APP_DB_PASSWORD:-jkr_app_local_dev}@postgres:5432/${POSTGRES_DB:-jkr_ai_calling}
+      REDIS_URL: redis://redis:6379/0
+      VOICE_WORKER_BASE_URL: http://voice-worker:8100
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/campaign-worker:/app/services/campaign-worker
+      - ./packages/db:/app/packages/db
+
+  intelligence-worker:
+    build:
+      context: .
+      dockerfile: infra/docker/intelligence-worker.Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-jkr_app}:${APP_DB_PASSWORD:-jkr_app_local_dev}@postgres:5432/${POSTGRES_DB:-jkr_ai_calling}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/intelligence-worker:/app/services/intelligence-worker
+      - ./packages/db:/app/packages/db
+
+  integration-worker:
+    build:
+      context: .
+      dockerfile: infra/docker/integration-worker.Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${APP_DB_USER:-jkr_app}:${APP_DB_PASSWORD:-jkr_app_local_dev}@postgres:5432/${POSTGRES_DB:-jkr_ai_calling}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/integration-worker:/app/services/integration-worker
+      - ./packages/db:/app/packages/db
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_APP_ENV: local
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web:/app/apps/web
+      - ./packages:/app/packages
+
+volumes:
+  jkr_postgres_data:
+  jkr_redis_data:
+  jkr_minio_data:

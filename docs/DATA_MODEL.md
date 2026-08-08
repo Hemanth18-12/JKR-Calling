@@ -1,0 +1,103 @@
+# Data Model
+
+Schema lives in `packages/db/jkr_db/models/`, one module per domain, migrated with Alembic from
+`packages/db/alembic/`. This is the single source of truth imported by every Python service —
+no service defines its own models.
+
+## 1. Conventions
+
+- Primary keys: UUID v7-shaped (time-ordered) via `uuid.uuid4()` generated application-side by
+  default (Postgres `gen_random_uuid()` as column default too, for inserts outside the ORM).
+- Every tenant-owned table has `workspace_id` (FK → `workspaces.id`, indexed), `created_at`,
+  `updated_at` (both `timestamptz`, server-side defaults / `onupdate`).
+- Platform-level tables (`users`, `organizations`, `workspaces`, `feature_flags`, provider
+  catalog rows) are not workspace-scoped themselves but everything hanging off them is.
+- Soft state transitions (call/campaign/contact status) are enums backed by Postgres native
+  `ENUM` types, mirrored as Python `enum.StrEnum` in `packages/db`.
+- Money: integer minor units (paise) + ISO currency code column, never floats.
+- All `workspace_id`-bearing tables get a Postgres RLS policy
+  (`USING (workspace_id = current_setting('app.current_workspace_id')::uuid)`); see
+  `docs/DECISIONS/0004-tenant-isolation.md`.
+
+## 2. Entity groups (module → tables)
+
+**identity** (`packages/db/jkr_db/models/identity.py`)
+`users`, `sessions`, `password_credentials`, `oauth_identities`
+
+**tenancy** (`tenancy.py`)
+`organizations`, `workspaces`, `workspace_members`, `roles`, `permissions`,
+`role_permissions`
+
+**agents** (`agents.py`)
+`agents`, `agent_versions`, `voice_personas`, `pronunciation_entries`,
+`conversation_policies`, `tool_definitions`, `agent_tools`
+
+**providers** (`providers.py`)
+`phone_numbers`, `provider_accounts`, `provider_credentials`, `provider_health`
+
+**contacts** (`contacts.py`)
+`contacts`, `contact_fields`, `contact_tags`, `segments`, `segment_members`,
+`consent_events`, `suppression_entries`
+
+**campaigns** (`campaigns.py`)
+`campaigns`, `campaign_versions`, `campaign_contacts`, `campaign_schedules`,
+`campaign_attempts`, `retry_jobs`
+
+**calls** (`calls.py`)
+`call_sessions`, `call_participants`, `call_turns`, `call_events`, `call_recordings`,
+`call_transcripts`, `call_latency_metrics`, `interruption_events`, `call_outcomes`,
+`extracted_fields`, `call_summaries`, `quality_evaluations`
+
+**knowledge** (`knowledge.py`)
+`knowledge_collections`, `knowledge_documents`, `knowledge_document_versions`,
+`knowledge_chunks` (has `embedding vector(1536)` pgvector column), `knowledge_reviews`,
+`retrieval_events`
+
+**tools** (`tools.py`)
+`tool_executions`, `appointments`, `human_handoffs`, `follow_up_tasks`, `messages`
+
+**integrations** (`integrations.py`)
+`integrations`, `integration_credentials`, `webhook_endpoints`, `webhook_deliveries`
+
+**experiments** (`experiments.py`)
+`experiments`, `experiment_variants`, `experiment_assignments`, `conversion_events`,
+`revenue_events`
+
+**billing** (`billing.py`)
+`usage_events`, `provider_costs`, `invoices`, `subscription_plans`
+
+**audit** (`audit.py`)
+`audit_logs`, `security_events`, `feature_flags`
+
+This is the complete table list from the master spec §24 — implemented in full as schema in this
+pass (see `docs/IMPLEMENTATION_CHECKLIST.md` for which tables additionally have full business
+logic vs. CRUD-only in this pass).
+
+## 3. Notable relationships / invariants
+
+- `agents` → `agent_versions` (1:N, one `published_version_id` pointer back on `agents`); a
+  `campaigns.agent_version_id` pins a campaign to an immutable version, so editing an agent never
+  changes the behavior of an already-launched campaign.
+- `campaign_contacts` is the join between `campaigns` and `contacts` and carries per-contact
+  dial state (`pending/reserved/dialing/ringing/in_progress/completed/no_answer/busy/failed/
+  retry_scheduled/human_review/suppressed/converted`) plus a unique `(campaign_id, contact_id)`
+  constraint — this, plus a Redis lock keyed on the same pair during dispatch, is what prevents
+  duplicate calls.
+- `call_sessions.idempotency_key` is unique — campaign-worker generates it deterministically from
+  `(campaign_id, contact_id, attempt_number)` so a retried dispatch can never create two sessions
+  for the same attempt.
+- `suppression_entries` has no expiry by default and is checked before every dispatch regardless
+  of `consent_events` state — suppression always wins.
+- `knowledge_chunks.approval_state` gates retrieval: the retrieval query filters
+  `approval_state = 'approved'` unconditionally; there is no code path that can retrieve
+  unapproved content into a live call.
+- `call_outcomes` is written exactly once per `call_sessions` row (unique FK); post-call
+  intelligence and campaign-worker's retry decision both read from it, never from raw transcript
+  heuristics, so their view of "what happened" cannot diverge.
+
+## 4. Migrations
+
+Alembic autogenerate is used for iteration, but every autogenerated migration is hand-reviewed
+before commit — particularly for the RLS policies and the pgvector index, which Alembic
+autogenerate does not produce correctly on its own and are added as explicit `op.execute(...)`
+statements.
