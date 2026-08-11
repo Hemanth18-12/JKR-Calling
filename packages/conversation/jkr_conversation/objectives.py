@@ -31,14 +31,20 @@ class FieldDefinition:
 class ObjectiveDefinition:
     id: str
     fields: list[FieldDefinition]
-    closing_text: dict[str, str]  # canned, per-language — safety-net fallback if generation fails
+    # Canned, per-language — this is the text ALWAYS used to close a call
+    # once the objective completes (see jkr_conversation.closing), not just
+    # a fallback. Every string here must contain an explicit finality
+    # phrase (see closing.has_finality_marker) — this is what fixes the
+    # abrupt-hangup bug: a free-form LLM closing could sound like the
+    # conversation was continuing right before the call hung up.
+    closing_text: dict[str, str]
     tool_on_completion: str | None = None
 
 
 DEFAULT_CLOSING = {
-    "te": "ధన్యవాదాలు అండి, మీ వివరాలు నోట్ చేసుకున్నాను. మా టీమ్ మిమ్మల్ని త్వరలో సంప్రదిస్తుంది.",
-    "hi": "धन्यवाद, मैंने आपकी जानकारी नोट कर ली है। हमारी टीम जल्द ही आपसे संपर्क करेगी।",
-    "en": "Thank you, I've noted that down. Our team will follow up with you shortly.",
+    "te": "ధన్యవాదాలు అండి, మీ వివరాలు నోట్ చేసుకున్నాను. మా టీమ్ మిమ్మల్ని త్వరలో సంప్రదిస్తుంది. మంచి రోజు జరగాలి, ఉంటాను!",
+    "hi": "धन्यवाद, मैंने आपकी जानकारी नोट कर ली है। हमारी टीम जल्द ही आपसे संपर्क करेगी। आपका दिन शुभ हो, नमस्ते!",
+    "en": "Thank you, I've noted that down. Our team will follow up with you shortly. Have a good day, goodbye!",
 }
 
 OBJECTIVES: dict[str, ObjectiveDefinition] = {
@@ -122,9 +128,9 @@ OBJECTIVES: dict[str, ObjectiveDefinition] = {
             ),
         ],
         closing_text={
-            "te": "సరే అండి, మీ అపాయింట్‌మెంట్ వివరాలు నోట్ చేసుకున్నాను. మా టీమ్ confirm చేసి మీకు తెలియజేస్తుంది.",
-            "hi": "ठीक है, मैंने आपकी अपॉइंटमेंट की जानकारी नोट कर ली है। हमारी टीम कन्फर्म करके आपको बताएगी।",
-            "en": "Great, I've noted your appointment details. Our team will confirm and follow up with you.",
+            "te": "సరే అండి, మీ అపాయింట్‌మెంట్ వివరాలు నోట్ చేసుకున్నాను. మా టీమ్ confirm చేసి మీకు తెలియజేస్తుంది. ధన్యవాదాలు, శుభదినం!",
+            "hi": "ठीक है, मैंने आपकी अपॉइंटमेंट की जानकारी नोट कर ली है। हमारी टीम कन्फर्म करके आपको बताएगी। धन्यवाद, आपका दिन शुभ हो!",
+            "en": "Great, I've noted your appointment details. Our team will confirm and follow up with you. Thank you, have a good day!",
         },
         tool_on_completion="book_appointment",
     ),

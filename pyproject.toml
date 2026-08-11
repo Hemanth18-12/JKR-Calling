@@ -43,9 +43,17 @@ extend-immutable-calls = [
   "app.deps.require_permission", "app.deps.workspace_db_for",
 ]
 
+# NOTE: testpaths intentionally excludes "services". Each service under services/*
+# ships its own top-level `app` package (needed for its `uvicorn app.main:app` /
+# `dramatiq app.tasks` entrypoint), and every service names that package `app`.
+# All workspace members share one venv, so Python can only ever have one module
+# named `app` loaded at a time — collecting two services' tests in the same
+# pytest process makes the second service's `from app.x import y` resolve
+# against the first service's `app` package and fail. Each service's tests must
+# run in their own process; `make test` does this by looping per service.
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["packages", "services", "tests"]
+testpaths = ["packages", "tests"]
 
 [tool.mypy]
 python_version = "3.12"

@@ -61,6 +61,7 @@ def _policy_snapshot(policy: ConversationPolicy | None) -> ConversationPolicySna
         confirmation_behavior=policy.confirmation_behavior,
         max_turns=policy.max_turns,
         max_call_duration_seconds=policy.max_call_duration_seconds,
+        accidental_interruption_phrases=policy.accidental_interruption_phrases,
     )
 
 
@@ -325,7 +326,7 @@ async def submit_user_turn(
         db, workspace_id=workspace_id, call_session_id=call_id, state=state,
         customer_utterance=transcript.text, conversation_policy=runtime.policy,
         business_identity=runtime.business_identity, transcript_confidence=transcript.confidence,
-        now=now,
+        agent_id=call_session.agent_id, now=now,
     )
     state = result.state
 

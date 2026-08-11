@@ -36,6 +36,11 @@ class Agent(Base, TenantMixin):
         UUID(as_uuid=True), ForeignKey("phone_numbers.id", ondelete="SET NULL"), nullable=True
     )
     persona_template: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # No vocabulary assigned is a normal, valid state — extraction simply
+    # skips domain normalization for this agent. See DomainVocabulary below.
+    domain_vocabulary_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("domain_vocabularies.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class AgentVersion(Base, TenantMixin):
@@ -130,6 +135,40 @@ class ConversationPolicy(Base, TenantMixin):
     # constant in services/api/app/modules/live_call/service.py.
     max_turns: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     max_call_duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=300)
+
+
+class DomainVocabulary(Base, TenantMixin):
+    """A named set of business-domain terms (dental, admissions, real
+    estate, ...) an agent can be assigned to, so extraction can recognize
+    when a transcribed value is probably a mis-hearing of a real domain
+    term — see jkr_conversation.domain_normalizer. Not agent-exclusive by
+    FK direction (Agent -> DomainVocabulary) so one vocabulary can be
+    shared across multiple agents in a workspace."""
+
+    __tablename__ = "domain_vocabularies"
+
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class DomainTerm(Base, TenantMixin):
+    __tablename__ = "domain_terms"
+
+    vocabulary_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("domain_vocabularies.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    canonical: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Alternate spellings/mishearings — no independent lifecycle of their
+    # own this pass (no per-alias approval state), so a plain array column
+    # rather than a join table, matching restricted_phrases/
+    # accidental_interruption_phrases elsewhere in this same file.
+    aliases: Mapped[list[str]] = mapped_column(ARRAY(String(200)), nullable=False, default=list)
+    category: Mapped[str] = mapped_column(String(64), nullable=False, default="general")
+    # "standard" | "critical" — critical terms get confirmed before being
+    # trusted under the default confirm_critical policy; see
+    # jkr_conversation.engine's confirmation decision table.
+    criticality: Mapped[str] = mapped_column(String(16), nullable=False, default="standard")
+    languages: Mapped[list[str]] = mapped_column(ARRAY(String(16)), nullable=False, default=list)
 
 
 class ToolDefinition(Base, TenantMixin):

@@ -23,6 +23,8 @@ from jkr_db.models.agents import (
     AgentTool,
     AgentVersion,
     ConversationPolicy,
+    DomainTerm,
+    DomainVocabulary,
     ToolDefinition,
     VoicePersona,
 )
@@ -86,6 +88,34 @@ WORKSPACES = [
                 "We accept walk-ins but appointments are recommended to avoid waiting."
             ),
         },
+        "domain_vocabulary": {
+            "name": "Dental Procedures",
+            "description": "Common dental procedure/treatment terms, including known STT mis-transcriptions from real calls.",
+            "attach": True,
+            "terms": [
+                {
+                    "canonical": "root canal treatment", "category": "procedure", "criticality": "critical",
+                    "languages": ["te", "en"],
+                    # "ఫ్రూట్ కెనాల్స్"/"fruit canals" is the literal
+                    # mis-transcription from real call
+                    # 1482f303-3dc9-4fa2-b32c-83f43f24d7c0 — seeded as a
+                    # known alias, the direct fix for that bug.
+                    "aliases": ["ఫ్రూట్ కెనాల్స్", "ఫ్రూట్ కెనాల్", "fruit canal", "fruit canals", "RCT", "root kenal"],
+                },
+                {
+                    "canonical": "teeth cleaning and scaling", "category": "procedure", "criticality": "standard",
+                    "languages": ["te", "en"], "aliases": ["scaling", "cleaning", "టీత్ క్లీనింగ్"],
+                },
+                {
+                    "canonical": "filling", "category": "procedure", "criticality": "standard",
+                    "languages": ["te", "en"], "aliases": ["dental filling", "ఫిల్లింగ్"],
+                },
+                {
+                    "canonical": "extraction", "category": "procedure", "criticality": "critical",
+                    "languages": ["te", "en"], "aliases": ["tooth extraction", "పన్ను తీయడం", "extract"],
+                },
+            ],
+        },
         "contacts": [
             {"name": "Ravi Kumar", "phone": "9876500101"},
             {"name": "Lakshmi Devi", "phone": "9876500102"},
@@ -117,6 +147,29 @@ WORKSPACES = [
                 "Admission office hours are Monday to Saturday, 9 AM to 5 PM."
             ),
         },
+        "domain_vocabulary": {
+            "name": "Admissions & Programs",
+            "description": "Admissions and academic program terminology for enquiry qualification.",
+            "attach": True,
+            "terms": [
+                {
+                    "canonical": "merit scholarship", "category": "admissions", "criticality": "critical",
+                    "languages": ["hi", "en"], "aliases": ["scholarship", "मेरिट स्कॉलरशिप", "merit scholorship"],
+                },
+                {
+                    "canonical": "undergraduate program", "category": "academics", "criticality": "standard",
+                    "languages": ["hi", "en"], "aliases": ["UG program", "undergraduate course", "अंडरग्रेजुएट"],
+                },
+                {
+                    "canonical": "hostel facility", "category": "campus", "criticality": "standard",
+                    "languages": ["hi", "en"], "aliases": ["hostel", "छात्रावास", "hostel facilities"],
+                },
+                {
+                    "canonical": "entrance exam", "category": "admissions", "criticality": "critical",
+                    "languages": ["hi", "en"], "aliases": ["entrance test", "प्रवेश परीक्षा", "qualifying exam"],
+                },
+            ],
+        },
         "contacts": [
             {"name": "Suresh Reddy", "phone": "9876500201"},
             {"name": "Priya Sharma", "phone": "9876500202"},
@@ -147,6 +200,35 @@ WORKSPACES = [
                 "New client enquiries can book a discovery call through our website or by calling the studio directly. "
                 "Studio hours are Monday to Friday, 10 AM to 7 PM."
             ),
+        },
+        # Real estate is not JKR Creatives' business — this vocabulary is
+        # seeded under its workspace_id (every DomainVocabulary is
+        # workspace-scoped) but deliberately left unattached to any seeded
+        # agent (`"attach": False`), to prove the schema generalizes to a
+        # third, unrelated domain without forcing an artificial fit onto one
+        # of the two already-attached use cases.
+        "domain_vocabulary": {
+            "name": "Real Estate Listings",
+            "description": "Real estate terminology — proves domain vocabularies generalize beyond dental/education; not assigned to any seeded agent.",
+            "attach": False,
+            "terms": [
+                {
+                    "canonical": "RERA registration", "category": "compliance", "criticality": "critical",
+                    "languages": ["en"], "aliases": ["RERA number", "RERA reg", "rera registeration"],
+                },
+                {
+                    "canonical": "carpet area", "category": "specification", "criticality": "standard",
+                    "languages": ["en"], "aliases": ["carpet area sqft", "usable area"],
+                },
+                {
+                    "canonical": "possession date", "category": "timeline", "criticality": "critical",
+                    "languages": ["en"], "aliases": ["handover date", "possession", "possesion date"],
+                },
+                {
+                    "canonical": "sale deed", "category": "legal", "criticality": "critical",
+                    "languages": ["en"], "aliases": ["sale agreement", "saledeed"],
+                },
+            ],
         },
         "contacts": [
             {"name": "Arjun Mehta", "phone": "9876500301"},
@@ -257,6 +339,25 @@ async def _seed_workspace(spec: dict) -> None:
         agent.status = "active"
         agent.published_version_id = version.id
         await db.flush()
+
+        domain_vocab_spec = spec.get("domain_vocabulary")
+        if domain_vocab_spec is not None:
+            vocabulary = DomainVocabulary(
+                workspace_id=workspace_id, name=domain_vocab_spec["name"], description=domain_vocab_spec["description"],
+            )
+            db.add(vocabulary)
+            await db.flush()
+            for term_spec in domain_vocab_spec["terms"]:
+                db.add(
+                    DomainTerm(
+                        workspace_id=workspace_id, vocabulary_id=vocabulary.id, canonical=term_spec["canonical"],
+                        aliases=term_spec["aliases"], category=term_spec["category"],
+                        criticality=term_spec["criticality"], languages=term_spec["languages"],
+                    )
+                )
+            if domain_vocab_spec["attach"]:
+                agent.domain_vocabulary_id = vocabulary.id
+            await db.flush()
 
         knowledge_spec = spec["knowledge"]
         document = KnowledgeDocument(

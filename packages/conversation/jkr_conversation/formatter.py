@@ -53,6 +53,23 @@ class FormattedResponse:
     original_sentence_count: int
 
 
+def strip_for_streaming_chunk(text: str) -> str:
+    """P5 §29-31 — the streaming-safe subset of SpokenResponseFormatter's
+    full pipeline: markdown/URL stripping and whitespace normalization are
+    all per-fragment-safe (pure regex substitution, no cross-chunk state),
+    so a SpeakableChunk can be cleaned before being handed onward without
+    waiting for the full response. Sentence-count enforcement and
+    acknowledgement-prepending both need whole-response context and are
+    deliberately NOT here — they still run once, on the fully assembled
+    text, exactly as SpokenResponseFormatter.format() already does."""
+    text = _URL.sub("", text)
+    text = _MARKDOWN_CODE.sub(r"\1", text)
+    text = _MARKDOWN_BOLD_ITALIC.sub(r"\1", text)
+    text = _MARKDOWN_HEADER.sub("", text)
+    text = _MARKDOWN_BULLET.sub("", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 @dataclass
 class SpokenResponseFormatter:
     language: str = "te-en-IN"
@@ -129,3 +146,16 @@ def build_clarification(field_label: str, candidates: list[str], *, language: st
         return f"Sorry, {joined}?"
     joined = " or ".join(candidates)
     return f"Sorry, did you say {joined}?"
+
+
+def build_confirmation(candidate_value: str, *, language: str = "te-en-IN") -> str:
+    """Natural, mid-conversation double-check for a domain-corrected or
+    critical value — deliberately NOT "you said X, is that correct?", which
+    reads as robotic form-filling rather than a real person confirming
+    something they half-heard."""
+    prefix = lang_prefix(language)
+    if prefix == "te":
+        return f"{candidate_value} గురించే అంటున్నారు కదా అండి?"
+    if prefix == "hi":
+        return f"आपका मतलब {candidate_value} से है ना?"
+    return f"Just to be sure — you mean {candidate_value}, right?"

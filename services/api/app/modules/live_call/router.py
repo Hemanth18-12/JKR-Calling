@@ -69,6 +69,18 @@ async def twilio_recording_webhook(
     return Response(content=twiml, media_type="application/xml")
 
 
+@router.post("/webhooks/twilio/closing-grace/{token}")
+async def twilio_closing_grace_webhook(
+    token: str,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    form = {k: str(v) for k, v in (await request.form()).items()}
+    signature = request.headers.get("X-Twilio-Signature")
+    twiml = await service.handle_closing_grace_webhook(token=token, form=form, signature=signature, settings=settings, redis=get_redis())
+    return Response(content=twiml, media_type="application/xml")
+
+
 @router.post("/webhooks/twilio/status/{token}")
 async def twilio_status_webhook(
     token: str,

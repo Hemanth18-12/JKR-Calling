@@ -30,6 +30,15 @@ HUMAN_HANDOFF_TRIGGERS = [
     "మనిషితో మాట్లాడాలి", "మనిషిని కలపండి", "इंसान से बात", "किसी आदमी से बात करनी है",
 ]
 
+# Used when a field's candidate correction is pending confirmation — a short
+# yes/no reply resolves it without needing a full extraction call in mock
+# mode. Real mode also uses these as a hint alongside the LLM's own
+# classification (see extractor.py's _build_prompt).
+CONFIRMATION_YES_TRIGGERS = ["yes", "avunu", "అవును", "correct", "ha", "haan", "sari", "సరే", "yeah", "yup"]
+CONFIRMATION_NO_TRIGGERS = ["no", "kaadu", "కాదు", "nahi", "not that", "wrong", "nope"]
+
+ACKNOWLEDGEMENT_MAX_WORDS = 3  # mirrors services/voice-worker/app/turn_manager.py's FALSE_INTERRUPTION_MAX_WORDS
+
 DO_NOT_CALL_ACK = {
     "te": "సరే అండి, మిమ్మల్ని మళ్ళీ కాల్ చేయము. ఇబ్బంది కలిగించినందుకు క్షమించండి.",
     "hi": "ठीक है, हम आपको दोबारा कॉल नहीं करेंगे। परेशानी के लिए माफ़ी चाहते हैं।",
@@ -78,6 +87,32 @@ def detect_wrong_number(text: str) -> bool:
 def detect_human_handoff(text: str) -> bool:
     lowered = text.lower()
     return any(trigger in lowered for trigger in HUMAN_HANDOFF_TRIGGERS)
+
+
+def detect_confirmation_response(text: str) -> str | None:
+    """Only meaningful when a field is actually pending confirmation —
+    callers check state["pending_confirmation"] before using this. Returns
+    "confirm"/"reject"/None; a genuine correction (customer says something
+    else entirely) is the caller's fallback when neither matches."""
+    lowered = text.strip().lower()
+    if any(t in lowered for t in CONFIRMATION_YES_TRIGGERS):
+        return "confirm"
+    if any(t in lowered for t in CONFIRMATION_NO_TRIGGERS):
+        return "reject"
+    return None
+
+
+def is_acknowledgement_only(text: str, *, phrases: list[str]) -> bool:
+    """A short filler ("achha achha", "hmm", "okay") that isn't a real
+    answer to whatever's pending — mirrors
+    services/voice-worker/app/turn_manager.py's TurnManager._is_false_interruption
+    word-count + phrase-list logic (that module works over simulated
+    real-time timing which this turn-based path doesn't have; the
+    phrase-list classification itself is directly portable)."""
+    normalized = text.strip().lower()
+    if not normalized or len(normalized.split()) > ACKNOWLEDGEMENT_MAX_WORDS:
+        return False
+    return any(normalized == p.strip().lower() for p in phrases)
 
 
 def apply_backstop(extraction: ExtractionResult, *, raw_text: str) -> ExtractionResult:

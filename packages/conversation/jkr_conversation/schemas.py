@@ -29,6 +29,51 @@ class ConversationPolicySnapshot:
     confirmation_behavior: str = "confirm_critical"
     max_turns: int = 30
     max_call_duration_seconds: int = 300
+    # Matches ConversationPolicy.accidental_interruption_phrases' own DB
+    # default exactly — short phrases that mean "go on, I'm listening," not
+    # a real answer to whatever's pending. Already used by TurnManager in
+    # the mock voice-worker path; now also used for acknowledgement
+    # detection in extractor.py, shared by both call paths.
+    accidental_interruption_phrases: list[str] = field(
+        default_factory=lambda: ["hmm", "okay", "haa", "అవును", "achha", "theek hai", "right"]
+    )
+
+
+@dataclass(frozen=True)
+class DomainTermSnapshot:
+    """Plain-dict-constructible snapshot of one DomainTerm row — mirrors
+    ConversationPolicySnapshot's own reasoning for why this package doesn't
+    hold ORM objects directly."""
+
+    canonical: str
+    aliases: list[str] = field(default_factory=list)
+    category: str = "general"
+    criticality: str = "standard"  # "standard" | "critical"
+    languages: list[str] = field(default_factory=list)
+    # None for a snapshot built directly in a test/mock context (no real DB
+    # row behind it) — engine.py only links a TranscriptCorrectionEvent to
+    # this when it's actually set.
+    id: uuid.UUID | None = None
+
+
+@dataclass(frozen=True)
+class FieldExtraction:
+    """Per-field detail behind a single flat `field_confidence` number —
+    what was literally transcribed, what it's probably supposed to be (if a
+    domain-vocabulary candidate was found), and how confident each of those
+    two separate judgments is. `requires_confirmation` is always False out
+    of extractor.py itself (extractor stays policy-agnostic); engine.py
+    applies ConversationPolicySnapshot.confirmation_behavior x criticality
+    to decide the real value — see engine.py's confirmation decision table."""
+
+    raw_value: str
+    confidence: float
+    candidate_value: str | None = None
+    semantic_confidence: float | None = None
+    correction_method: str | None = None  # "fuzzy_alias_match" today
+    criticality: str | None = None  # copied from the matched DomainTerm, if any
+    requires_confirmation: bool = False
+    domain_term_id: uuid.UUID | None = None  # for TranscriptCorrectionEvent linkage
 
 
 @dataclass(frozen=True)
@@ -50,7 +95,7 @@ class ExtractionResult:
     kavali, rank 28000, hostel kuda kavali" fill three fields at once instead
     of one per turn."""
 
-    turn_intent: str  # "answer" | "question" | "objection" | "small_talk" | "silence" | "other"
+    turn_intent: str  # "answer" | "question" | "objection" | "small_talk" | "silence" | "acknowledgement" | "other"
     extracted_fields: dict[str, str] = field(default_factory=dict)
     field_confidence: dict[str, float] = field(default_factory=dict)
     uncertain_fields: dict[str, list[str]] = field(default_factory=dict)
@@ -63,6 +108,17 @@ class ExtractionResult:
     sentiment: str = "neutral"  # "positive" | "neutral" | "negative"
     is_mock: bool = True
     raw_model_output: dict | None = None
+    # Additive: per-field detail (including domain-normalization candidates)
+    # behind the flat field_confidence dict above — see FieldExtraction.
+    field_extractions: dict[str, FieldExtraction] = field(default_factory=dict)
+    # Set only when state["pending_confirmation"] was active this turn:
+    # "confirm" | "reject" | "correction" | None.
+    confirmation_response: str | None = None
+    # P3.5 observability only — never branches downstream logic (planner.py/
+    # prompt_builder.py are completely unaware of this field). "llm" | "mock"
+    # | "fast_path" — which of engine.py's three extraction sources produced
+    # this turn's result. See jkr_conversation.fast_router.
+    turn_path: str = "llm"
 
 
 @dataclass(frozen=True)
@@ -74,7 +130,7 @@ class PlannerDecision:
     same way the mock engine already prepends a knowledge answer in front of
     the next scripted question today)."""
 
-    action: str  # "SAFETY_STOP" | "HUMAN_HANDOFF" | "CLARIFY" | "ASK_FIELD" | "COMPLETE_OBJECTIVE"
+    action: str  # "SAFETY_STOP" | "HUMAN_HANDOFF" | "CLARIFY" | "CONFIRM_FIELD" | "ASK_FIELD" | "DEFER_QUESTION" | "COMPLETE_OBJECTIVE"
     reason: str
     target_field: str | None = None
     answer_question_first: bool = False

@@ -18,9 +18,29 @@ import hashlib
 import math
 import os
 import re
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import httpx
 
 EMBEDDING_DIM = 1536
 _TOKEN_RE = re.compile(r"[\w']+", re.UNICODE)
+
+# P3.5 §34 — same connection-reuse fix as jkr_conversation.llm_client: one
+# process-lifetime client instead of a new httpx.AsyncClient (and TCP+TLS
+# handshake) per embedding call. See docs/CONVERSATION_ENGINE_LATENCY_AUDIT.md
+# §3 for why this is a correctness fix with a modest, not dominant, measured
+# effect on this specific network path.
+_shared_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _shared_http_client
+    import httpx
+
+    if _shared_http_client is None:
+        _shared_http_client = httpx.AsyncClient(timeout=15.0)
+    return _shared_http_client
 
 
 def _tokenize(text: str) -> list[str]:
@@ -65,15 +85,13 @@ async def embed_text(text: str) -> list[float]:
 
 
 async def _openai_embed(text: str) -> list[float]:
-    import httpx
-
     api_key = os.environ["OPENAI_API_KEY"]
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        response = await client.post(
-            "https://api.openai.com/v1/embeddings",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": "text-embedding-3-small", "input": text},
-        )
-        response.raise_for_status()
-        data = response.json()
-        return data["data"][0]["embedding"]
+    client = _get_http_client()
+    response = await client.post(
+        "https://api.openai.com/v1/embeddings",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json={"model": "text-embedding-3-small", "input": text},
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data["data"][0]["embedding"]

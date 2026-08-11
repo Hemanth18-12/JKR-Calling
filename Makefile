@@ -36,8 +36,15 @@ logs:
 	docker compose logs -f
 
 ## test — run all test suites (Python pytest across the uv workspace, TS via turbo)
+## Each services/* package is run as its own pytest process: they all ship a
+## top-level `app` package (see pyproject.toml's testpaths comment), so two of
+## them can never be collected in the same interpreter.
 test:
 	uv run pytest
+	@for svc in api campaign-worker intelligence-worker voice-worker; do \
+		echo "==> pytest services/$$svc"; \
+		(cd services/$$svc && uv run pytest) || exit 1; \
+	done
 	pnpm test
 
 ## lint — ruff for Python, eslint for TS

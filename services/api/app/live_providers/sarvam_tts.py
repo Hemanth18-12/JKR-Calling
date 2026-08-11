@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import base64
 
-import httpx
+from app.live_providers._shared_http import get_shared_http_client
 
 
 class NotConfiguredError(RuntimeError):
@@ -27,12 +27,12 @@ class SarvamTTS:
         at 2500 characters — callers on a phone call should already be well
         under that (SpokenResponseFormatter-style short turns), so no
         chunking is implemented here."""
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.post(
-                "https://api.sarvam.ai/text-to-speech",
-                headers={"api-subscription-key": self._api_key, "Content-Type": "application/json"},
-                json={"text": text, "language_code": language_code, "speaker": self._speaker, "model": self._model},
-            )
+        client = get_shared_http_client()
+        response = await client.post(
+            "https://api.sarvam.ai/text-to-speech",
+            headers={"api-subscription-key": self._api_key, "Content-Type": "application/json"},
+            json={"text": text, "language_code": language_code, "speaker": self._speaker, "model": self._model},
+        )
         response.raise_for_status()
         data = response.json()
         return base64.b64decode(data["audios"][0])

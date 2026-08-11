@@ -147,6 +147,34 @@ class InterruptionEvent(Base, TenantMixin):
     details: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
 
+class TranscriptCorrectionEvent(Base, TenantMixin):
+    """One row per domain-term candidate correction the shared conversation
+    engine surfaced — real telemetry now (raw vs. candidate vs. what was
+    actually accepted, and whether the customer confirmed it), so a
+    workspace's vocabulary can be reviewed/extended from real mishearings
+    over time. Not auto-learned into vocabulary — that stays a manual
+    admin action, deliberately, per docs on this upgrade."""
+
+    __tablename__ = "transcript_correction_events"
+
+    call_session_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("call_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    domain_term_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("domain_terms.id", ondelete="SET NULL"), nullable=True
+    )
+    sequence_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_term: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    candidate_term: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    accepted_term: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    normalized_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    correction_method: Mapped[str] = mapped_column(String(32), nullable=False, default="fuzzy_alias_match")
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    customer_confirmed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+
 class CallOutcome(Base, TenantMixin):
     __tablename__ = "call_outcomes"
 

@@ -80,6 +80,20 @@ def decide(
 
     field_ask_counts = state.get("field_ask_counts", {})
 
+    # 3b. A field has a pending domain-correction/critical-value confirmation
+    # staged (by engine.py, before decide() is even called) — resolve that
+    # before asking anything new. If it's already been asked past the cap
+    # with no resolution, fall through: engine.py accepts the raw value as a
+    # safe fallback once it sees a non-CONFIRM_FIELD decision, same
+    # "ask twice, then accept what was literally said" philosophy as the
+    # ask-cap elsewhere.
+    pending = state.get("pending_confirmation")
+    if pending and field_ask_counts.get(pending["field"], 0) < MAX_ASKS_PER_FIELD:
+        return PlannerDecision(
+            action="CONFIRM_FIELD", reason="pending_domain_confirmation", target_field=pending["field"],
+            answer_question_first=bool(rag_query), rag_query=rag_query, objection=extraction.objection,
+        )
+
     # 4. Ask the highest-priority still-missing required field, skipping any
     # that have already been asked past the cap without ever filling.
     askable_required = [f for f in compute_missing_required_fields(state) if field_ask_counts.get(f, 0) < MAX_ASKS_PER_FIELD]

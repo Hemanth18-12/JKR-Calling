@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -21,6 +23,8 @@ from app.modules.identity.router import router as identity_router
 from app.modules.integrations.router import router as integrations_router
 from app.modules.knowledge.router import router as knowledge_router
 from app.modules.live_call.router import router as live_call_router
+from app.modules.live_call.transport.event_loop_lag import event_loop_lag_monitor
+from app.modules.live_call.transport.twilio_media_stream import router as twilio_media_stream_router
 from app.modules.operations.router import router as operations_router
 from app.modules.providers.router import router as providers_router
 from app.modules.tenancy.router import router as tenancy_router
@@ -28,7 +32,16 @@ from app.modules.tools.router import router as tools_router
 
 settings = get_settings()
 
-app = FastAPI(title="JKR AI Calling API", version="0.1.0", root_path="")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # P7 §49 — process-wide, started once; see transport/event_loop_lag.py.
+    event_loop_lag_monitor.start()
+    yield
+    event_loop_lag_monitor.stop()
+
+
+app = FastAPI(title="JKR AI Calling API", version="0.1.0", root_path="", lifespan=_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -75,12 +88,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "env": settings.app_env}
+    return {
+        "status": "ok", "env": settings.app_env,
+        "event_loop_lag_ms": event_loop_lag_monitor.current_lag_ms,
+        "event_loop_max_lag_ms": event_loop_lag_monitor.max_lag_ms,
+    }
 
 
 for r in (
     identity_router, tenancy_router, providers_router, agents_router, calls_router, knowledge_router,
     contacts_router, campaigns_router, tools_router, operations_router, analytics_router, experiments_router,
-    compliance_router, billing_router, integrations_router, live_call_router,
+    compliance_router, billing_router, integrations_router, live_call_router, twilio_media_stream_router,
 ):
     app.include_router(r, prefix="/api/v1")

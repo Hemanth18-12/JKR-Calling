@@ -26,8 +26,10 @@ gracefully.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
+import time
 import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -35,12 +37,14 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from jkr_conversation.engine import process_turn
-from jkr_conversation.schemas import ConversationPolicySnapshot
+from jkr_conversation.schemas import ConversationPolicySnapshot, ConversationTurnResult
 from jkr_conversation.state import classify_provisional_outcome, new_conversation_state
-from jkr_db.models.agents import Agent, AgentVersion, ConversationPolicy
+from jkr_db.enums import ProviderName
+from jkr_db.models.agents import Agent, AgentVersion, ConversationPolicy, VoicePersona
 from jkr_db.models.billing import UsageEvent
 from jkr_db.models.calls import (
     CallEvent,
+    CallLatencyMetric,
     CallOutcome,
     CallParticipant,
     CallSession,
@@ -75,6 +79,23 @@ AUDIO_KEY_PREFIX = "jkr:live_call_audio:"
 AUDIO_TTL_SECONDS = 300  # only needs to survive until Twilio's <Play> fetches it, once
 FALLBACK_LANGUAGE = "en-IN"  # only used if Sarvam TTS errors and we fall back to Twilio's <Say>
 
+# <Record>'s "timeout" is seconds of trailing silence Twilio waits before it
+# ends the recording and POSTs it to us. Real conversational voice AI
+# systems benchmark much lower than Twilio's 5s default (LiveKit VAD
+# 0.25-0.55s, OpenAI Realtime 500ms, Deepgram ~1s, Vapi 0.1-1.5s) — but
+# those are all real VAD, which separately tracks "waiting for speech to
+# start" vs. "silence after speech ended." <Record> has only ONE timer for
+# both. Confirmed by a real call: a customer who paused to think before
+# answering an open-ended question ("describe your issue") had their
+# recording end in total silence at timeout=2s — before they'd said a
+# word — and the call was abandoned as a false "lost your response."
+# Tuned up to prioritize never losing a genuine reply over shaving off
+# dead-air; a dropped call is a far worse outcome than an extra second of
+# gap. This whole class of bug goes away once real streaming VAD (which
+# can tell "still thinking" apart from "done talking") replaces <Record> —
+# see docs/REALTIME_VOICE_MIGRATION_AUDIT.md.
+RECORD_SILENCE_TIMEOUT_SECONDS = 4
+
 
 def _sarvam_language_code(primary_language: str | None) -> str:
     """Maps this codebase's agent.primary_language values (e.g. "te-IN",
@@ -89,6 +110,39 @@ def _sarvam_language_code(primary_language: str | None) -> str:
     return "en-IN"
 
 
+def _resolve_tts_speaker(voice: VoicePersona | None) -> str | None:
+    """None means "use SarvamTTS's own default (priya)" — the safe choice
+    for every agent that isn't explicitly configured for provider=
+    sarvam_tts, since VoicePersona.voice_id otherwise holds a provider-
+    specific placeholder (e.g. the seed/demo default "mock-warm-female-te")
+    that would break a real Sarvam TTS call if sent as a literal speaker
+    name. Only pass voice_id through when the persona was actually set up
+    for Sarvam — see docs/REALTIME_VOICE_MIGRATION_AUDIT.md."""
+    if voice is not None and voice.provider == ProviderName.SARVAM_TTS and voice.voice_id:
+        return voice.voice_id
+    return None
+
+
+# P7 — bulbul:v3's own verified pace range (docs/SARVAM_STREAMING_TTS_CONTRACT.md);
+# bulbul:v2 supports a wider 0.3-3.0 range, but this codebase's streaming
+# path is pinned to v3 (see sarvam_streaming_tts.py), so v3's tighter range
+# is the one that actually matters — clamping here means an out-of-range
+# VoicePersona.speaking_speed value degrades to the nearest valid pace
+# rather than the provider rejecting the whole config message.
+SARVAM_V3_MIN_PACE = 0.5
+SARVAM_V3_MAX_PACE = 2.0
+
+
+def _resolve_tts_pace(voice: VoicePersona | None) -> float:
+    """Only meaningful for a persona actually configured for Sarvam — same
+    gating _resolve_tts_speaker already applies, for the same reason (a
+    non-Sarvam persona's speaking_speed wasn't necessarily authored with
+    Sarvam's pace semantics/range in mind)."""
+    if voice is None or voice.provider != ProviderName.SARVAM_TTS:
+        return 1.0
+    return max(SARVAM_V3_MIN_PACE, min(SARVAM_V3_MAX_PACE, voice.speaking_speed))
+
+
 def _redis_key(token: str) -> str:
     return f"{REDIS_KEY_PREFIX}{token}"
 
@@ -97,12 +151,13 @@ def _audio_redis_key(audio_id: str) -> str:
     return f"{AUDIO_KEY_PREFIX}{audio_id}"
 
 
-def _webhook_urls(settings: Settings, token: str) -> tuple[str, str, str]:
+def _webhook_urls(settings: Settings, token: str) -> tuple[str, str, str, str]:
     base = settings.effective_public_webhook_base_url.rstrip("/")
     return (
         f"{base}/api/v1/live-call/webhooks/twilio/voice/{token}",
         f"{base}/api/v1/live-call/webhooks/twilio/status/{token}",
         f"{base}/api/v1/live-call/webhooks/twilio/recording/{token}",
+        f"{base}/api/v1/live-call/webhooks/twilio/closing-grace/{token}",
     )
 
 
@@ -127,13 +182,20 @@ async def get_cached_audio(redis: Any, *, audio_id: str) -> bytes | None:
 
 
 async def _speak(
-    text: str, *, language_code: str, settings: Settings, redis: Any
+    text: str, *, language_code: str, settings: Settings, redis: Any, speaker: str | None = None
 ) -> tuple[str, str]:
     """Returns ("play", audio_url) on successful Sarvam synthesis, or
     ("say", text) to fall back to Twilio's own English voice — never raises,
-    since a TTS provider hiccup must not silently kill a live phone call."""
+    since a TTS provider hiccup must not silently kill a live phone call.
+
+    `speaker` is the agent's configured VoicePersona.voice_id (see
+    start_live_test_call), only ever passed through when that persona is
+    actually configured for provider=sarvam_tts — SarvamTTS's own "priya"
+    default covers every agent that isn't (which today is all of them; see
+    docs/REALTIME_VOICE_MIGRATION_AUDIT.md — this used to be silently
+    ignored regardless of configuration)."""
     try:
-        tts = SarvamTTS(api_key=settings.sarvam_tts_api_key or settings.sarvam_api_key)
+        tts = SarvamTTS(api_key=settings.sarvam_tts_api_key or settings.sarvam_api_key, **({"speaker": speaker} if speaker else {}))
         audio_bytes = await tts.synthesize(text=text, language_code=language_code)
     except Exception:  # noqa: BLE001 — deliberately broad, see docstring (covers TTSNotConfiguredError too)
         return ("say", text)
@@ -186,6 +248,15 @@ async def start_live_test_call(
         if policy
         else ConversationPolicySnapshot()
     )
+
+    # The agent's configured voice — previously loaded from the DB and then
+    # silently discarded; every real call used SarvamTTS's hardcoded "priya"
+    # default regardless of what was configured (see
+    # docs/REALTIME_VOICE_MIGRATION_AUDIT.md).
+    voice_result = await db.execute(select(VoicePersona).where(VoicePersona.agent_version_id == version.id))
+    voice = voice_result.scalar_one_or_none()
+    tts_speaker = _resolve_tts_speaker(voice)
+    tts_pace = _resolve_tts_pace(voice)
 
     try:
         telephony = TwilioClient(
@@ -251,24 +322,20 @@ async def start_live_test_call(
     greeting = greeting_body if (disclosure and disclosure in greeting_body) else (disclosure + " " + greeting_body).strip()
 
     token = uuid.uuid4().hex
-    state = {
-        "workspace_id": str(workspace_id),
-        "call_session_id": str(call_session_id),
-        "closing_text": version.closing_text,
-        "language_code": language_code,
-        "business_identity": agent.business_identity,
-        "policy": asdict(policy_snapshot),
-        "greeted": False,
-        "recent_turns": [{"speaker": "agent", "text": greeting}],
-        "agent_turns": 1,
-        "next_sequence_index": 0,
-    }
-    await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
+    webhook_url, status_callback_url, _recording_url, _closing_grace_url = _webhook_urls(settings, token)
 
-    webhook_url, status_callback_url, _recording_url = _webhook_urls(settings, token)
-
+    # Synthesize the greeting concurrently with placing the call, rather
+    # than only after the customer has already picked up (the old behavior
+    # — handle_voice_webhook called _speak() itself, so the customer sat in
+    # silence through a full TTS round-trip AFTER answering). Twilio's own
+    # ring time is several seconds of otherwise-wasted lead time; neither
+    # task depends on the other's result, so they run in parallel here, not
+    # back-to-back.
     try:
-        call_sid = await telephony.create_call(to=to_e164, webhook_url=webhook_url, status_callback_url=status_callback_url)
+        (greeting_kind, greeting_content), call_sid = await asyncio.gather(
+            _speak(greeting, language_code=language_code, settings=settings, redis=redis, speaker=tts_speaker),
+            telephony.create_call(to=to_e164, webhook_url=webhook_url, status_callback_url=status_callback_url),
+        )
     except Exception as exc:  # noqa: BLE001 — surface Twilio's own error text as-is
         async with workspace_scoped_session(workspace_id) as write_db:
             result = await write_db.execute(select(CallSession).where(CallSession.id == call_session_id))
@@ -276,8 +343,29 @@ async def start_live_test_call(
             if failed_session is not None:
                 failed_session.status = "failed"
                 failed_session.end_reason = "error"
-        await redis.delete(_redis_key(token))
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Twilio call creation failed: {exc}") from exc
+
+    state = {
+        "workspace_id": str(workspace_id),
+        "call_session_id": str(call_session_id),
+        "closing_text": version.closing_text,
+        "language_code": language_code,
+        "business_identity": agent.business_identity,
+        "policy": asdict(policy_snapshot),
+        # None for every agent still on the mock/default voice persona —
+        # SarvamTTS's own "priya" default covers that case, see _speak().
+        "tts_speaker": tts_speaker,
+        "tts_pace": tts_pace,
+        "greeted": False,
+        "recent_turns": [{"speaker": "agent", "text": greeting}],
+        "agent_turns": 1,
+        "next_sequence_index": 0,
+        # Pre-synthesized above — handle_voice_webhook uses this directly
+        # instead of calling _speak() again once the customer answers.
+        "greeting_kind": greeting_kind,
+        "greeting_content": greeting_content,
+    }
+    await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
 
     async with workspace_scoped_session(workspace_id) as write_db:
         result = await write_db.execute(select(CallSession).where(CallSession.id == call_session_id))
@@ -302,11 +390,18 @@ def _speak_element(kind: str, content: str) -> str:
 
 
 def _twiml_speak_and_record(kind: str, content: str, *, action_url: str) -> str:
+    # playBeep=true (was false): <Record> has no volume/sensitivity
+    # parameter at all — "must speak loudly to be heard" was never
+    # fixable via any silence-threshold tuning. The real, documented-
+    # adjacent cause is the customer having no cue for exactly when
+    # recording starts without a beep, so they likely began speaking
+    # right as/before the verb transitioned, clipping their utterance's
+    # onset — a beep gives them an explicit "go" signal instead.
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         f"<Response>{_speak_element(kind, content)}"
-        f'<Record action="{action_url}" method="POST" maxLength="20" timeout="3" '
-        f'trim="trim-silence" playBeep="false"/>'
+        f'<Record action="{action_url}" method="POST" maxLength="20" timeout="{RECORD_SILENCE_TIMEOUT_SECONDS}" '
+        f'trim="trim-silence" playBeep="true"/>'
         f'<Say language="{FALLBACK_LANGUAGE}">We did not catch a response. Thank you, goodbye.</Say><Hangup/></Response>'
     )
 
@@ -315,8 +410,86 @@ def _twiml_speak_and_hangup(kind: str, content: str) -> str:
     return f'<?xml version="1.0" encoding="UTF-8"?><Response>{_speak_element(kind, content)}<Hangup/></Response>'
 
 
+def _twiml_speak_then_grace_listen(kind: str, content: str, *, action_url: str) -> str:
+    """The closing line, followed by a short listening window instead of an
+    immediate hangup. Twilio's <Play> always finishes before <Record> starts
+    (sequential TwiML execution — confirmed, not assumed), so this alone is
+    what guarantees the closing audio fully plays before any hangup logic
+    can run. Real speech within the window routes to
+    handle_closing_grace_webhook, which either resumes the conversation or
+    (for a do-not-call/wrong-number closing) still ends the call — see that
+    handler. Silence there finalizes for real. The trailing <Say>/<Hangup>
+    is a defensive fallback only: action_url always fires once <Record>
+    completes, silence or not, so this line normally never executes.
+    playBeep=true for the same reason as _twiml_speak_and_record — without
+    it, a customer speaking up right after the closing line risks having
+    its onset clipped."""
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        f"<Response>{_speak_element(kind, content)}"
+        f'<Record action="{action_url}" method="POST" maxLength="6" timeout="{RECORD_SILENCE_TIMEOUT_SECONDS}" '
+        f'trim="trim-silence" playBeep="true"/>'
+        f'<Say language="{FALLBACK_LANGUAGE}">Goodbye.</Say><Hangup/></Response>'
+    )
+
+
+def _twiml_hangup_only() -> str:
+    return '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'
+
+
+def _reopen_conversation_state(state: dict) -> dict:
+    """Called only when the customer speaks again during the closing grace
+    window for a genuinely resumable closing (objective completion / human
+    handoff) — the call isn't actually over yet. Flips objective_status back
+    to in_progress so the shared engine treats this as a live turn again.
+    Deliberately does NOT reset do_not_call/wrong_number — those are never
+    reached from here in the first place (handle_closing_grace_webhook
+    short-circuits before calling this for that case), but even so, this
+    function must never be the thing that could silently undo either flag."""
+    reopened = dict(state)
+    if reopened.get("objective_status") == "completed":
+        reopened["objective_status"] = "in_progress"
+    reopened["awaiting_field"] = None
+    reopened["next_best_action"] = "ask_question"
+    reopened["reopened_from_closing"] = True
+    return reopened
+
+
+_END_REASON_BY_PLANNER_REASON = {
+    "do_not_call_requested": "do_not_call",
+    "wrong_number": "wrong_number",
+    "all_fields_collected": "completed",
+    "max_turns_reached": "completed",
+    "max_duration_reached": "completed",
+}
+
+
+def _end_reason_for(result: ConversationTurnResult) -> str:
+    return _END_REASON_BY_PLANNER_REASON.get(
+        result.planner_reason, "transferred" if result.planner_action == "HUMAN_HANDOFF" else "completed"
+    )
+
+
+async def _record_latency(
+    db: AsyncSession, *, workspace_id: uuid.UUID, call_session_id: uuid.UUID, stage: str, duration_ms: int, provider: str | None = None
+) -> None:
+    """Real (is_simulated=False) per-stage timing for the batch Twilio
+    <Record> pipeline — this is the baseline instrumentation the real-time
+    migration audit (docs/REALTIME_VOICE_MIGRATION_AUDIT.md) is measured
+    against, mirroring services/voice-worker/app/conversation_engine.py's
+    own _record_latency (same CallLatencyMetric table, is_simulated=True
+    there since that path has no real audio at all)."""
+    db.add(
+        CallLatencyMetric(
+            workspace_id=workspace_id, call_session_id=call_session_id, provider=provider,
+            stage=stage, duration_ms=duration_ms, is_simulated=False, recorded_at=datetime.now(UTC),
+        )
+    )
+
+
 async def _persist_turn(
-    db: AsyncSession, *, workspace_id: uuid.UUID, call_session_id: uuid.UUID, state: dict, speaker: str, text: str
+    db: AsyncSession, *, workspace_id: uuid.UUID, call_session_id: uuid.UUID, state: dict, speaker: str, text: str,
+    metadata: dict | None = None,
 ) -> None:
     now = datetime.now(UTC)
     seq = state["next_sequence_index"]
@@ -327,7 +500,8 @@ async def _persist_turn(
             confidence=None, is_interrupted=False, started_at=now, ended_at=now,
         )
     )
-    db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session_id, event_type=f"{speaker}_turn", payload={"text": text}))
+    payload = {"text": text, **(metadata or {})}
+    db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session_id, event_type=f"{speaker}_turn", payload=payload))
     state["next_sequence_index"] = seq + 1
 
 
@@ -391,7 +565,7 @@ async def handle_voice_webhook(*, token: str, form: dict[str, str], signature: s
     starts recording the customer's reply. All subsequent turns go through
     `handle_recording_webhook` instead, since <Record> (not <Gather>) is now
     what captures customer speech."""
-    webhook_url, _, recording_url = _webhook_urls(settings, token)
+    webhook_url, _, recording_url, _closing_grace_url = _webhook_urls(settings, token)
     if not signature or not validate_twilio_signature(auth_token=settings.twilio_auth_token, url=webhook_url, params=form, signature=signature):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid Twilio signature")
 
@@ -404,6 +578,23 @@ async def handle_voice_webhook(*, token: str, form: dict[str, str], signature: s
     call_session_id = uuid.UUID(state["call_session_id"])
     language_code = state.get("language_code", FALLBACK_LANGUAGE)
 
+    if settings.twilio_voice_transport == "media_stream":
+        # P2: hand off to the persistent bidirectional Media Stream —
+        # everything else (greeting, in_progress/answered_at, listening for
+        # customer turns) happens inside the WebSocket handler once Twilio's
+        # `start` event arrives (transport/twilio_media_stream.py), not
+        # here. This webhook's only job in this mode is producing the
+        # <Connect><Stream> TwiML with a signed session token.
+        from app.modules.live_call.transport.media_tokens import create_media_session_token
+        from app.modules.live_call.transport.twilio_media_stream import build_media_stream_twiml
+
+        session_token = create_media_session_token(
+            secret=settings.session_secret, call_session_id=call_session_id, workspace_id=workspace_id,
+            twilio_call_sid=form.get("CallSid", ""), redis_state_token=token,
+        )
+        ws_url = f"{settings.effective_media_stream_ws_base_url}/api/v1/live-call/ws/twilio/media/{session_token}"
+        return build_media_stream_twiml(ws_url)
+
     async with workspace_scoped_session(workspace_id) as db:
         greeting = state["recent_turns"][-1]["text"]
         await _persist_turn(db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="agent", text=greeting)
@@ -415,15 +606,30 @@ async def handle_voice_webhook(*, token: str, form: dict[str, str], signature: s
         state["greeted"] = True
         await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
 
-    kind, content = await _speak(greeting, language_code=language_code, settings=settings, redis=redis)
+    # Normally already synthesized during dialing (start_live_test_call) —
+    # this only re-synthesizes as a defensive fallback (e.g. redis state
+    # written by an older code path mid-deploy).
+    greeting_kind = state.get("greeting_kind")
+    greeting_content = state.get("greeting_content")
+    if greeting_kind and greeting_content:
+        kind, content = greeting_kind, greeting_content
+    else:
+        kind, content = await _speak(greeting, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
     return _twiml_speak_and_record(kind, content, action_url=recording_url)
 
 
 async def handle_recording_webhook(*, token: str, form: dict[str, str], signature: str | None, settings: Settings, redis: Any) -> str:
     """Handles every turn after the greeting: downloads what <Record> just
     captured, transcribes it via Sarvam STT, gets the next reply, and either
-    continues (speak + record again) or ends the call (speak + hangup)."""
-    _, _, recording_url = _webhook_urls(settings, token)
+    continues (speak + record again) or ends the call (speak + hangup).
+
+    Instrumented (CallLatencyMetric, is_simulated=False) as the real-time
+    migration's Phase 1 baseline — see docs/REALTIME_VOICE_MIGRATION_AUDIT.md.
+    Every stage here is a blocking, sequential network round-trip; this is
+    exactly what real numbers from this instrumentation quantify,
+    turn_total_backend most of all."""
+    turn_t0 = time.perf_counter()
+    _, _, recording_url, closing_grace_url = _webhook_urls(settings, token)
     if not signature or not validate_twilio_signature(auth_token=settings.twilio_auth_token, url=recording_url, params=form, signature=signature):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid Twilio signature")
 
@@ -440,17 +646,35 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
     recording_duration = int(form.get("RecordingDuration") or "0")
 
     speech_result = ""
+    stt_metadata: dict = {}
+    fetch_recording_ms: int | None = None
+    stt_transcribe_ms: int | None = None
     if twilio_recording_url and recording_duration > 0:
         try:
+            t0 = time.perf_counter()
             audio_bytes = await fetch_recording(
                 account_sid=settings.twilio_account_sid, auth_token=settings.twilio_auth_token, recording_url=twilio_recording_url
             )
+            fetch_recording_ms = int((time.perf_counter() - t0) * 1000)
             stt = SarvamSTT(api_key=settings.sarvam_api_key or settings.sarvam_tts_api_key)
-            speech_result = await stt.transcribe(audio_bytes=audio_bytes)
+            t0 = time.perf_counter()
+            transcript = await stt.transcribe(audio_bytes=audio_bytes, language_code=language_code)
+            stt_transcribe_ms = int((time.perf_counter() - t0) * 1000)
+            speech_result = transcript.text
+            stt_metadata = {
+                "stt_detected_language_code": transcript.detected_language_code,
+                "stt_language_probability": transcript.language_probability,
+                "stt_requested_language_code": language_code,
+            }
         except Exception:  # noqa: BLE001 — same reasoning as _speak: never kill the call over a transcription hiccup (covers STTNotConfiguredError too)
             speech_result = ""
 
     async with workspace_scoped_session(workspace_id) as db:
+        if fetch_recording_ms is not None:
+            await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="twilio_recording_fetch", duration_ms=fetch_recording_ms, provider="twilio")
+        if stt_transcribe_ms is not None:
+            await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="stt_transcribe", duration_ms=stt_transcribe_ms, provider="sarvam")
+
         if not speech_result:
             closing = "We seem to have lost your response. Thank you for your time, goodbye."
             await _persist_turn(db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="agent", text=closing)
@@ -460,10 +684,13 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
                 language_code=language_code,
             )
             await redis.delete(_redis_key(token))
-            kind, content = await _speak(closing, language_code=language_code, settings=settings, redis=redis)
+            kind, content = await _speak(closing, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
             return _twiml_speak_and_hangup(kind, content)
 
-        await _persist_turn(db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="customer", text=speech_result)
+        await _persist_turn(
+            db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="customer",
+            text=speech_result, metadata=stt_metadata,
+        )
 
         # Everything from here down — field extraction, knowledge retrieval,
         # next-action planning, response generation — is the shared engine,
@@ -478,8 +705,15 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
         result = await process_turn(
             db, workspace_id=workspace_id, call_session_id=call_session_id, state=conversation_state,
             customer_utterance=speech_result, conversation_policy=policy_snapshot,
+            agent_id=call_session.agent_id if call_session else None,
             business_identity=state.get("business_identity", ""), recent_turns=state.get("recent_turns", [])[-6:],
+            engine_mode=settings.conversation_engine_mode, response_mode=settings.llm_response_mode,
         )
+        # jkr_conversation's own internal stage breakdown (domain_vocabulary,
+        # extraction, planning, rag if it ran, generation) — process_turn
+        # already measures this; just persisting it here, for free.
+        for stage, duration_ms in result.latency_ms.items():
+            await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage=f"engine_{stage}", duration_ms=duration_ms, provider="jkr_conversation")
 
         for tool_call in result.tool_calls_requested:
             try:
@@ -508,34 +742,167 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
         force_close = result.call_should_end or result.planner_action == "HUMAN_HANDOFF"
 
         if force_close:
-            end_reason_by_planner_reason = {
-                "do_not_call_requested": "do_not_call",
-                "wrong_number": "wrong_number",
-                "all_fields_collected": "completed",
-                "max_turns_reached": "completed",
-                "max_duration_reached": "completed",
-            }
-            end_reason = end_reason_by_planner_reason.get(result.planner_reason, "transferred" if result.planner_action == "HUMAN_HANDOFF" else "completed")
-            await _finalize_call(
-                db, workspace_id=workspace_id, call_session_id=call_session_id, call_status="completed",
-                end_reason=end_reason, had_exchange=True, language_code=language_code,
-            )
-            await redis.delete(_redis_key(token))
-            kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis)
-            return _twiml_speak_and_hangup(kind, content)
+            # Never finalize the instant a closing is decided — the closing
+            # audio must fully play, then a short grace window gives the
+            # customer a real chance to speak before the call actually ends
+            # (this is the direct fix for the abrupt-hangup bug: previously
+            # this hung up immediately after speaking, so a customer reply
+            # captured nothing). handle_closing_grace_webhook does the real
+            # finalize (on silence) or resumes the conversation (on speech).
+            state["pending_end_reason"] = _end_reason_for(result)
+            await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
+            t0 = time.perf_counter()
+            kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
+            await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="tts_synthesize", duration_ms=int((time.perf_counter() - t0) * 1000), provider="sarvam")
+            await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="turn_total_backend", duration_ms=int((time.perf_counter() - turn_t0) * 1000))
+            return _twiml_speak_then_grace_listen(kind, content, action_url=closing_grace_url)
 
         await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
-        kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis)
+        t0 = time.perf_counter()
+        kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
+        await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="tts_synthesize", duration_ms=int((time.perf_counter() - t0) * 1000), provider="sarvam")
+        await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="turn_total_backend", duration_ms=int((time.perf_counter() - turn_t0) * 1000))
+        return _twiml_speak_and_record(kind, content, action_url=recording_url)
+
+
+async def handle_closing_grace_webhook(*, token: str, form: dict[str, str], signature: str | None, settings: Settings, redis: Any) -> str:
+    """Handles what happened during the short listening window after a
+    closing line played. Silence means the call genuinely ends now — the
+    closing already played in full, so this is the real finalize. Real
+    speech means the customer had more to say: for a do-not-call/wrong-
+    number closing, that never resumes the conversation (same "the LLM
+    can't override do-not-call" guarantee extended to this mechanism — it's
+    acknowledged, but the call still ends); for every other closing reason,
+    it's fed back through process_turn on a reopened conversation state,
+    exactly like any other turn, and may itself end in another closing
+    (handled by recursing into this same grace flow again)."""
+    _, _, recording_url, closing_grace_url = _webhook_urls(settings, token)
+    if not signature or not validate_twilio_signature(auth_token=settings.twilio_auth_token, url=closing_grace_url, params=form, signature=signature):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid Twilio signature")
+
+    raw = await redis.get(_redis_key(token))
+    if raw is None:
+        return _twiml_hangup_only()
+
+    state = json.loads(raw)
+    workspace_id = uuid.UUID(state["workspace_id"])
+    call_session_id = uuid.UUID(state["call_session_id"])
+    language_code = state.get("language_code", FALLBACK_LANGUAGE)
+
+    twilio_recording_url = form.get("RecordingUrl") or ""
+    recording_duration = int(form.get("RecordingDuration") or "0")
+
+    speech_result = ""
+    stt_metadata: dict = {}
+    if twilio_recording_url and recording_duration > 0:
+        try:
+            audio_bytes = await fetch_recording(
+                account_sid=settings.twilio_account_sid, auth_token=settings.twilio_auth_token, recording_url=twilio_recording_url
+            )
+            stt = SarvamSTT(api_key=settings.sarvam_api_key or settings.sarvam_tts_api_key)
+            transcript = await stt.transcribe(audio_bytes=audio_bytes, language_code=language_code)
+            speech_result = transcript.text
+            stt_metadata = {
+                "stt_detected_language_code": transcript.detected_language_code,
+                "stt_language_probability": transcript.language_probability,
+                "stt_requested_language_code": language_code,
+            }
+        except Exception:  # noqa: BLE001 — same reasoning as _speak: never kill the call over a transcription hiccup
+            speech_result = ""
+
+    async with workspace_scoped_session(workspace_id) as db:
+        if not speech_result:
+            # Silence within the grace window — the closing already fully
+            # played; now really end the call.
+            await _finalize_call(
+                db, workspace_id=workspace_id, call_session_id=call_session_id, call_status="completed",
+                end_reason=state.get("pending_end_reason", "completed"), had_exchange=True, language_code=language_code,
+            )
+            await redis.delete(_redis_key(token))
+            return _twiml_hangup_only()
+
+        session_result = await db.execute(select(CallSession).where(CallSession.id == call_session_id))
+        call_session = session_result.scalar_one_or_none()
+        conversation_state = dict(call_session.state) if call_session is not None and call_session.state else {}
+
+        await _persist_turn(
+            db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="customer",
+            text=speech_result, metadata=stt_metadata,
+        )
+
+        if conversation_state.get("do_not_call") or conversation_state.get("wrong_number"):
+            # Compliance-critical: speaking up during the grace window after
+            # a do-not-call/wrong-number closing never undoes it.
+            await _finalize_call(
+                db, workspace_id=workspace_id, call_session_id=call_session_id, call_status="completed",
+                end_reason=state.get("pending_end_reason", "completed"), had_exchange=True, language_code=language_code,
+            )
+            await redis.delete(_redis_key(token))
+            return _twiml_hangup_only()
+
+        # A genuine resume — reopen the conversation state and feed this
+        # utterance back through the shared engine like any other turn.
+        conversation_state = _reopen_conversation_state(conversation_state)
+        policy_snapshot = ConversationPolicySnapshot(**state.get("policy", {}))
+
+        result = await process_turn(
+            db, workspace_id=workspace_id, call_session_id=call_session_id, state=conversation_state,
+            customer_utterance=speech_result, conversation_policy=policy_snapshot,
+            agent_id=call_session.agent_id if call_session else None,
+            business_identity=state.get("business_identity", ""), recent_turns=state.get("recent_turns", [])[-6:],
+            engine_mode=settings.conversation_engine_mode, response_mode=settings.llm_response_mode,
+        )
+        # jkr_conversation's own internal stage breakdown (domain_vocabulary,
+        # extraction, planning, rag if it ran, generation) — process_turn
+        # already measures this; just persisting it here, for free.
+        for stage, duration_ms in result.latency_ms.items():
+            await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage=f"engine_{stage}", duration_ms=duration_ms, provider="jkr_conversation")
+
+        for tool_call in result.tool_calls_requested:
+            try:
+                execution = await execute_tool(
+                    db, workspace_id=workspace_id, tool_name=tool_call.tool_name, tool_input=tool_call.tool_input,
+                    idempotency_key=f"call-{call_session_id}-{tool_call.idempotency_suffix}",
+                    call_session_id=call_session_id, agent_version_id=call_session.agent_version_id if call_session else None,
+                )
+                if execution.status == "succeeded":
+                    result.state.setdefault("tool_results", {})[tool_call.tool_name] = execution.output
+            except (ToolNotDefinedError, ToolNotEnabledError):
+                pass
+
+        if call_session is not None:
+            call_session.state = result.state
+
+        reply = result.reply_text
+        state["recent_turns"].append({"speaker": "customer", "text": speech_result})
+        state["recent_turns"].append({"speaker": "agent", "text": reply})
+        state["agent_turns"] += 1
+        await _persist_turn(db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="agent", text=reply)
+
+        force_close = result.call_should_end or result.planner_action == "HUMAN_HANDOFF"
+        if force_close:
+            state["pending_end_reason"] = _end_reason_for(result)
+            await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
+            kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
+            return _twiml_speak_then_grace_listen(kind, content, action_url=closing_grace_url)
+
+        await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
+        kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
         return _twiml_speak_and_record(kind, content, action_url=recording_url)
 
 
 async def handle_status_webhook(*, token: str, form: dict[str, str], signature: str | None, settings: Settings, redis: Any) -> None:
     """Closes out the call record for outcomes the earlier webhooks never see
     at all — no-answer/busy/failed/the customer hanging up before Twilio ever
-    reaches <Record>. A completed call is already finalized by
-    handle_recording_webhook, so this is a no-op for the normal path (guarded
-    by _finalize_call's own idempotency check)."""
-    _, status_callback_url, _recording_url = _webhook_urls(settings, token)
+    reaches <Record>. A completed call is normally already finalized by
+    handle_recording_webhook/handle_closing_grace_webhook, so the "completed"
+    branch below is a no-op then (guarded by _finalize_call's own idempotency
+    check) — it only does real work if Twilio's "completed" status fires
+    without ever reaching those webhooks (e.g. the customer hangs up their
+    phone entirely during the grace window instead of staying silent or
+    speaking), which would otherwise leave that session stuck in_progress
+    forever."""
+    _, status_callback_url, _recording_url, _closing_grace_url = _webhook_urls(settings, token)
     if not signature or not validate_twilio_signature(auth_token=settings.twilio_auth_token, url=status_callback_url, params=form, signature=signature):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid Twilio signature")
 
@@ -547,8 +914,18 @@ async def handle_status_webhook(*, token: str, form: dict[str, str], signature: 
     workspace_id = uuid.UUID(state["workspace_id"])
     call_session_id = uuid.UUID(state["call_session_id"])
 
-    if call_status in {"completed", "in-progress", "ringing", "queued"}:
-        return  # "completed" here still means the voice webhook path already (or will) finalize it
+    if call_status in {"in-progress", "ringing", "queued"}:
+        return
+
+    if call_status == "completed":
+        async with workspace_scoped_session(workspace_id) as db:
+            await _finalize_call(
+                db, workspace_id=workspace_id, call_session_id=call_session_id, call_status="completed",
+                end_reason=state.get("pending_end_reason", "completed"), had_exchange=state["agent_turns"] > 1,
+                language_code=state.get("language_code", FALLBACK_LANGUAGE),
+            )
+        await redis.delete(_redis_key(token))
+        return
 
     status_and_reason = {
         "no-answer": ("no_answer", "timeout"),

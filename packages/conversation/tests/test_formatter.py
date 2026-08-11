@@ -1,4 +1,8 @@
-from jkr_conversation.formatter import SpokenResponseFormatter, build_clarification
+from jkr_conversation.formatter import (
+    SpokenResponseFormatter,
+    build_clarification,
+    strip_for_streaming_chunk,
+)
 
 
 def test_strips_markdown_and_urls():
@@ -78,3 +82,29 @@ def test_build_clarification_is_reachable_from_planner_and_prompt_builder():
 
     assert "build_clarification" in inspect.getsource(prompt_builder)
     assert "CLARIFY" in inspect.getsource(planner)
+
+
+def test_strip_for_streaming_chunk_strips_markdown_and_urls():
+    result = strip_for_streaming_chunk("Check **this** out at https://example.com for `details`.")
+    assert "**" not in result
+    assert "https://" not in result
+    assert "`" not in result
+    assert "this" in result and "details" in result
+
+
+def test_strip_for_streaming_chunk_collapses_whitespace():
+    result = strip_for_streaming_chunk("Two   spaces\nand a newline")
+    assert result == "Two spaces and a newline"
+
+
+def test_strip_for_streaming_chunk_is_per_fragment_safe():
+    """No cross-chunk state — the same fragment produces the same result
+    whether it's the first chunk of a response or the last."""
+    assert strip_for_streaming_chunk("root canal") == strip_for_streaming_chunk("root canal")
+    assert strip_for_streaming_chunk("") == ""
+
+
+def test_strip_for_streaming_chunk_strips_headers_and_bullets():
+    result = strip_for_streaming_chunk("# Heading\n- bullet one\n- bullet two")
+    assert "#" not in result
+    assert "- " not in result

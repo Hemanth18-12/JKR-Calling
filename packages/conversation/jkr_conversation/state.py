@@ -49,6 +49,10 @@ def new_conversation_state(*, objective: str, language: str) -> dict:
         "started_at": datetime.now(UTC).isoformat(),
         "wrong_number": False,
         "last_turn_debug": None,
+        # {"field": str, "raw_value": str, "candidate_value": str, "semantic_confidence": float} | None —
+        # at most one field pending confirmation at a time, mirroring the
+        # existing single-target-field pattern already used by CLARIFY/ASK_FIELD.
+        "pending_confirmation": None,
     }
 
 
