@@ -1,6 +1,6 @@
-"""P10 — real-call quality report tool. Given a `call_session_id`, prints
-the turn transcript, the persisted latency waterfall, and coarse call
-events for a call that has already happened. See
+"""P10 — real-call quality report tool. Given a `workspace_id` and
+`call_session_id`, prints the turn transcript, the persisted latency
+waterfall, and coarse call events for a call that has already happened. See
 docs/P10_REAL_CALL_BENCHMARK.md for the full harness this tool is part of,
 and specifically its "Turn waterfall: what's actually captured, honestly"
 section for why some spec-requested stages (the detailed barge-in/replay
@@ -9,7 +9,18 @@ the server's own structured logs, never in `CallEvent` rows, and this tool
 says so explicitly rather than silently omitting them.
 
 Usage:
-    uv run --package jkr-db python tests/tools/real_call_quality_report.py <call_session_id>
+    uv run --package jkr-db python tests/tools/real_call_quality_report.py \\
+        --workspace-id <workspace-id> --call-id <call-id>
+
+`workspace_id` is required, not discovered: `call_sessions` carries FORCE ROW
+LEVEL SECURITY (migration cc55370bda3d) and this tool connects as `jkr_app`,
+which is NOBYPASSRLS — the same tenant_isolation policy every request
+handler in this codebase is subject to via `workspace_scoped_session`/
+`workspace_db_from_path` (see services/api/app/db.py). There is no
+lower-privilege way to resolve "which workspace does this call_session_id
+belong to" than already knowing the answer, and there shouldn't be: a CLI
+tool that could look up any call_session_id across every tenant just by
+guessing/knowing the UUID would itself be a tenant-isolation bypass.
 
 Tested (against seeded/synthetic data in this environment — see
 services/api/tests/test_real_call_quality_report.py) but NOT YET run
@@ -31,7 +42,7 @@ from datetime import datetime
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://jkr_app:jkr_app_local_dev@localhost:55432/jkr_ai_calling")
 
 from jkr_db.models.calls import CallEvent, CallLatencyMetric, CallSession, CallTurn  # noqa: E402
-from jkr_db.session import get_session, workspace_scoped_session  # noqa: E402
+from jkr_db.session import workspace_scoped_session  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 # Every stage this codebase currently persists as a CallLatencyMetric row —
@@ -66,20 +77,21 @@ class CallReport:
     events: list[dict] = field(default_factory=list)
 
 
-async def build_report(call_session_id: uuid.UUID) -> CallReport:
-    """Two-phase lookup, same pattern this codebase's own test helpers
-    already use for cross-tenant setup: an unscoped get_session() to find
-    WHICH workspace this call belongs to (a call_session_id alone doesn't
-    tell you that), then a workspace_scoped_session() for every tenant-
-    owned row after that — never the reverse, since RLS requires the
-    workspace context to already be set before querying tenant tables."""
-    async with get_session() as db:
+async def build_report(workspace_id: uuid.UUID, call_session_id: uuid.UUID) -> CallReport:
+    """Single workspace-scoped session for everything, including the initial
+    CallSession lookup — call_sessions is FORCE ROW LEVEL SECURITY, so a
+    lookup by id alone (no workspace context set) legally sees zero rows no
+    matter which workspace the call actually belongs to. The caller must
+    supply workspace_id explicitly; if call_session_id belongs to a
+    different workspace, RLS makes it indistinguishable from "doesn't
+    exist" rather than leaking its existence to a workspace that shouldn't
+    know about it."""
+    async with workspace_scoped_session(workspace_id) as db:
         result = await db.execute(select(CallSession).where(CallSession.id == call_session_id))
         call = result.scalar_one_or_none()
-    if call is None:
-        raise ValueError(f"No call_sessions row found with id={call_session_id}")
+        if call is None:
+            raise ValueError(f"No call_sessions row found with id={call_session_id} in workspace={workspace_id}")
 
-    async with workspace_scoped_session(call.workspace_id) as db:
         turns_result = await db.execute(
             select(CallTurn).where(CallTurn.call_session_id == call_session_id).order_by(CallTurn.sequence_index)
         )
@@ -176,16 +188,18 @@ def render_report(report: CallReport) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("call_session_id", help="UUID of the call_sessions row to report on")
+    parser.add_argument("--workspace-id", required=True, help="UUID of the workspace the call belongs to")
+    parser.add_argument("--call-id", required=True, dest="call_session_id", help="UUID of the call_sessions row to report on")
     args = parser.parse_args(argv)
     try:
+        workspace_id = uuid.UUID(args.workspace_id)
         call_session_id = uuid.UUID(args.call_session_id)
     except ValueError:
-        print(f"'{args.call_session_id}' is not a valid UUID", file=sys.stderr)
+        print(f"--workspace-id/--call-id must both be valid UUIDs (got '{args.workspace_id}', '{args.call_session_id}')", file=sys.stderr)
         raise SystemExit(2) from None
 
     try:
-        report = asyncio.run(build_report(call_session_id))
+        report = asyncio.run(build_report(workspace_id, call_session_id))
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from None

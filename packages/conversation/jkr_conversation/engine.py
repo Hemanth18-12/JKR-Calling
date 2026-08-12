@@ -372,10 +372,24 @@ async def process_turn(
     latency_ms["generation"] = int((time.perf_counter() - t0) * 1000)
 
     prepend_ack = decision.action in ("ASK_FIELD", "CLARIFY", "CONFIRM_FIELD")
+    # Seeded from new_state (persisted on CallSession.state, reloaded fresh
+    # every turn by both call sites — see state.py/session_registry.py) so
+    # the "don't repeat the last acknowledgement" rotation survives across
+    # turns of the SAME call, not just within one SpokenResponseFormatter
+    # instance. Previously this constructor never carried it over, so a
+    # fresh instance every turn reset _last_acknowledgement to None each
+    # time — pick_acknowledgement() then deterministically picked the same
+    # (first) pool entry on every ASK_FIELD/CLARIFY/CONFIRM_FIELD turn of a
+    # call (spec: "సరే అండి" / "Sure." repeating verbatim). Call-scoped, not
+    # global — new_state is this call's own dict, never shared with another
+    # call's state. See docs/STAGE2_REAL_CALL_FIXES.md Fix 2.
     fmt = formatter.SpokenResponseFormatter(
-        language=new_state.get("language", "en-IN"), max_sentences=conversation_policy.max_response_sentences
+        language=new_state.get("language", "en-IN"), max_sentences=conversation_policy.max_response_sentences,
+        _last_acknowledgement=new_state.get("last_acknowledgement"),
     )
     formatted = fmt.format(raw_reply, prepend_acknowledgement=prepend_ack)
+    if formatted.acknowledgement_used is not None:
+        new_state["last_acknowledgement"] = formatted.acknowledgement_used
 
     tool_calls: list[ToolCallRequest] = []
     if decision.action == "HUMAN_HANDOFF":

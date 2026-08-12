@@ -183,7 +183,7 @@ def test_build_report_reconstructs_a_real_seeded_call():
     workspace_id, call_session_id = asyncio.run(_seed_call_with_data())
     try:
         _reset_db_engine()
-        report = asyncio.run(build_report(call_session_id))
+        report = asyncio.run(build_report(workspace_id, call_session_id))
 
         assert report.call_session_id == call_session_id
         assert report.workspace_id == workspace_id
@@ -205,12 +205,47 @@ def test_build_report_reconstructs_a_real_seeded_call():
 
 def test_build_report_raises_a_clear_error_for_an_unknown_call_id():
     _reset_db_engine()
+    workspace_id, _call_session_id = asyncio.run(_seed_call_with_data())
     try:
+        _reset_db_engine()
         try:
-            asyncio.run(build_report(uuid.uuid4()))
+            asyncio.run(build_report(workspace_id, uuid.uuid4()))
         except ValueError as exc:
             assert "No call_sessions row found" in str(exc)
         else:
             raise AssertionError("expected a ValueError for an unknown call_session_id")
     finally:
         _reset_db_engine()
+        asyncio.run(_cleanup(workspace_id))
+
+
+def test_build_report_refuses_a_call_from_a_different_workspace():
+    """The actual security property the RLS bug threatened: knowing another
+    tenant's call_session_id must not be enough to read it, even if you
+    supply your OWN (real, valid) workspace_id. FORCE ROW LEVEL SECURITY
+    makes workspace A's call invisible to a workspace-B-scoped session —
+    proven here through the ordinary jkr_app tenant-scoped session, no
+    superuser/BYPASSRLS role involved."""
+    _reset_db_engine()
+    workspace_a, call_a = asyncio.run(_seed_call_with_data())
+    _reset_db_engine()
+    workspace_b, call_b = asyncio.run(_seed_call_with_data())
+    try:
+        _reset_db_engine()
+        try:
+            asyncio.run(build_report(workspace_b, call_a))
+        except ValueError as exc:
+            assert "No call_sessions row found" in str(exc)
+        else:
+            raise AssertionError("expected a ValueError — workspace B must not see workspace A's call")
+
+        # Sanity check: workspace B *can* see its own call, so the failure
+        # above is RLS scoping the query correctly, not a broken connection.
+        _reset_db_engine()
+        report = asyncio.run(build_report(workspace_b, call_b))
+        assert report.call_session_id == call_b
+    finally:
+        _reset_db_engine()
+        asyncio.run(_cleanup(workspace_a))
+        _reset_db_engine()
+        asyncio.run(_cleanup(workspace_b))

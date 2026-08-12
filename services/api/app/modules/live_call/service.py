@@ -52,9 +52,10 @@ from jkr_db.models.calls import (
     CallTranscript,
     CallTurn,
 )
+from jkr_db.models.contacts import Contact
 from jkr_db.phone import InvalidPhoneNumberError, normalize_e164
 from jkr_db.session import workspace_scoped_session
-from jkr_db.tools_engine import ToolNotDefinedError, ToolNotEnabledError, execute_tool
+from jkr_db.tools_engine import REAL_SIDE_EFFECT_TOOLS, ToolNotDefinedError, ToolNotEnabledError, execute_tool
 from jkr_messaging import enqueue
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -182,7 +183,7 @@ async def get_cached_audio(redis: Any, *, audio_id: str) -> bytes | None:
 
 
 async def _speak(
-    text: str, *, language_code: str, settings: Settings, redis: Any, speaker: str | None = None
+    text: str, *, language_code: str, settings: Settings, redis: Any, speaker: str | None = None, pace: float = 1.0
 ) -> tuple[str, str]:
     """Returns ("play", audio_url) on successful Sarvam synthesis, or
     ("say", text) to fall back to Twilio's own English voice — never raises,
@@ -193,14 +194,46 @@ async def _speak(
     actually configured for provider=sarvam_tts — SarvamTTS's own "priya"
     default covers every agent that isn't (which today is all of them; see
     docs/REALTIME_VOICE_MIGRATION_AUDIT.md — this used to be silently
-    ignored regardless of configuration)."""
+    ignored regardless of configuration).
+
+    `pace` is _resolve_tts_pace(voice)'s result — previously computed and
+    cached in Redis state as "tts_pace" but never actually forwarded to
+    SarvamTTS itself (dead computation; see docs/STAGE2_REAL_CALL_FIXES.md
+    Fix 3), so a configured VoicePersona.speaking_speed had no real effect
+    on this transport. Always passed through (unlike speaker) since 1.0 is
+    Sarvam's own natural-pace default — there is no "omit it" case to
+    preserve here."""
     try:
-        tts = SarvamTTS(api_key=settings.sarvam_tts_api_key or settings.sarvam_api_key, **({"speaker": speaker} if speaker else {}))
+        tts = SarvamTTS(
+            api_key=settings.sarvam_tts_api_key or settings.sarvam_api_key, pace=pace,
+            **({"speaker": speaker} if speaker else {}),
+        )
         audio_bytes = await tts.synthesize(text=text, language_code=language_code)
     except Exception:  # noqa: BLE001 — deliberately broad, see docstring (covers TTSNotConfiguredError too)
         return ("say", text)
     audio_id = await cache_audio(redis, audio_bytes=audio_bytes)
     return ("play", _audio_url(settings, audio_id))
+
+
+async def _get_or_create_contact(db: AsyncSession, *, workspace_id: uuid.UUID, phone_e164: str) -> Contact:
+    """The canonical contact_id this call's tool requests must carry all the
+    way through — resolved once, here, at call creation, from the one real
+    identity a live call actually has at that point (the number being
+    dialed). Previously never resolved at all: CallSession.contact_id stayed
+    None for every /api/v1/live-call call, so book_appointment always
+    received contact_id=None and could never legally succeed (see
+    docs/STAGE2_REAL_CALL_FIXES.md Fix 1). full_name is a placeholder — the
+    real name isn't known until/unless the conversation captures one — same
+    placeholder spirit as the CallParticipant display_name already used for
+    this call below."""
+    existing = await db.execute(select(Contact).where(Contact.workspace_id == workspace_id, Contact.phone_e164 == phone_e164))
+    contact = existing.scalar_one_or_none()
+    if contact is not None:
+        return contact
+    contact = Contact(workspace_id=workspace_id, full_name="Live test call", phone_e164=phone_e164)
+    db.add(contact)
+    await db.flush()
+    return contact
 
 
 async def start_live_test_call(
@@ -284,12 +317,14 @@ async def start_live_test_call(
     conversation_state["live_real_call"] = True
 
     async with workspace_scoped_session(workspace_id) as write_db:
+        contact = await _get_or_create_contact(write_db, workspace_id=workspace_id, phone_e164=to_e164)
         call_session = CallSession(
             workspace_id=workspace_id,
             direction="outbound",
             status="queued",
             agent_id=agent.id,
             agent_version_id=version.id,
+            contact_id=contact.id,
             idempotency_key=f"live-{uuid.uuid4()}",
             language=language_code,
             state=conversation_state,
@@ -333,7 +368,7 @@ async def start_live_test_call(
     # back-to-back.
     try:
         (greeting_kind, greeting_content), call_sid = await asyncio.gather(
-            _speak(greeting, language_code=language_code, settings=settings, redis=redis, speaker=tts_speaker),
+            _speak(greeting, language_code=language_code, settings=settings, redis=redis, speaker=tts_speaker, pace=tts_pace),
             telephony.create_call(to=to_e164, webhook_url=webhook_url, status_callback_url=status_callback_url),
         )
     except Exception as exc:  # noqa: BLE001 — surface Twilio's own error text as-is
@@ -468,6 +503,60 @@ def _end_reason_for(result: ConversationTurnResult) -> str:
     return _END_REASON_BY_PLANNER_REASON.get(
         result.planner_reason, "transferred" if result.planner_action == "HUMAN_HANDOFF" else "completed"
     )
+
+
+# Spoken ONLY when a REAL_SIDE_EFFECT_TOOLS call (book_appointment etc.)
+# actually failed this turn — never the canned objective closing_text
+# (objectives.py), which is unconditionally success-flavored and, before
+# this fix, was spoken regardless of whether the tool succeeded. See
+# docs/STAGE2_REAL_CALL_FIXES.md Fix 1: the customer must never hear a
+# false success.
+_TOOL_FAILURE_REPLY = {
+    "te-IN": "క్షమించండి అండి, మీ అపాయింట్‌మెంట్ ఇప్పుడే book చేయలేకపోయాను. దయచేసి కొద్దిసేపటి తర్వాత మళ్ళీ ప్రయత్నించండి, లేదా మమ్మల్ని నేరుగా సంప్రదించండి.",
+    "hi-IN": "माफ़ कीजिए, आपकी अपॉइंटमेंट अभी बुक नहीं हो पाई। कृपया थोड़ी देर बाद फिर कोशिश करें, या हमसे सीधे संपर्क करें।",
+    "en-IN": "Sorry, I wasn't able to book your appointment just now. Please try again shortly, or contact us directly.",
+}
+
+
+def _tool_failure_reply(language_code: str) -> str:
+    return _TOOL_FAILURE_REPLY.get(language_code, _TOOL_FAILURE_REPLY["en-IN"])
+
+
+async def _execute_tool_calls(
+    db: AsyncSession, *, workspace_id: uuid.UUID, call_session_id: uuid.UUID,
+    call_session: CallSession | None, result: ConversationTurnResult,
+) -> bool:
+    """Executes every tool the planner requested this turn, folding
+    successful outputs into result.state (mutated in place, same as before
+    this fix). Returns True if any REAL_SIDE_EFFECT_TOOLS call — one with
+    genuine business consequences, e.g. book_appointment — failed, so the
+    caller can override the spoken reply: the canned COMPLETE_OBJECTIVE
+    closing line is built by process_turn() before any tool call is even
+    constructed, let alone executed (see engine.py), so it cannot itself
+    reflect the tool's real outcome. A tool the workspace hasn't configured
+    (ToolNotDefinedError/ToolNotEnabledError) is not a failure of THIS
+    call's booking attempt — the call proceeds exactly as before this fix.
+
+    contact_id now always comes from call_session.contact_id, resolved once
+    at call creation by _get_or_create_contact — previously omitted
+    entirely here, which is the other half of the same audit finding (see
+    docs/STAGE2_REAL_CALL_FIXES.md Fix 1)."""
+    any_real_tool_failed = False
+    for tool_call in result.tool_calls_requested:
+        try:
+            execution = await execute_tool(
+                db, workspace_id=workspace_id, tool_name=tool_call.tool_name, tool_input=tool_call.tool_input,
+                idempotency_key=f"call-{call_session_id}-{tool_call.idempotency_suffix}",
+                call_session_id=call_session_id, contact_id=call_session.contact_id if call_session else None,
+                agent_version_id=call_session.agent_version_id if call_session else None,
+            )
+            if execution.status == "succeeded":
+                result.state.setdefault("tool_results", {})[tool_call.tool_name] = execution.output
+            elif tool_call.tool_name in REAL_SIDE_EFFECT_TOOLS:
+                any_real_tool_failed = True
+        except (ToolNotDefinedError, ToolNotEnabledError):
+            pass  # tool not configured for this workspace — the call still proceeds, matching prior behavior
+    return any_real_tool_failed
 
 
 async def _record_latency(
@@ -614,7 +703,7 @@ async def handle_voice_webhook(*, token: str, form: dict[str, str], signature: s
     if greeting_kind and greeting_content:
         kind, content = greeting_kind, greeting_content
     else:
-        kind, content = await _speak(greeting, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
+        kind, content = await _speak(greeting, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"), pace=state.get("tts_pace", 1.0))
     return _twiml_speak_and_record(kind, content, action_url=recording_url)
 
 
@@ -684,7 +773,7 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
                 language_code=language_code,
             )
             await redis.delete(_redis_key(token))
-            kind, content = await _speak(closing, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
+            kind, content = await _speak(closing, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"), pace=state.get("tts_pace", 1.0))
             return _twiml_speak_and_hangup(kind, content)
 
         await _persist_turn(
@@ -715,22 +804,14 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
         for stage, duration_ms in result.latency_ms.items():
             await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage=f"engine_{stage}", duration_ms=duration_ms, provider="jkr_conversation")
 
-        for tool_call in result.tool_calls_requested:
-            try:
-                execution = await execute_tool(
-                    db, workspace_id=workspace_id, tool_name=tool_call.tool_name, tool_input=tool_call.tool_input,
-                    idempotency_key=f"call-{call_session_id}-{tool_call.idempotency_suffix}",
-                    call_session_id=call_session_id, agent_version_id=call_session.agent_version_id if call_session else None,
-                )
-                if execution.status == "succeeded":
-                    result.state.setdefault("tool_results", {})[tool_call.tool_name] = execution.output
-            except (ToolNotDefinedError, ToolNotEnabledError):
-                pass  # tool not configured for this workspace — the call still proceeds, matching prior behavior
+        tool_failed = await _execute_tool_calls(
+            db, workspace_id=workspace_id, call_session_id=call_session_id, call_session=call_session, result=result,
+        )
 
         if call_session is not None:
             call_session.state = result.state
 
-        reply = result.reply_text
+        reply = _tool_failure_reply(language_code) if tool_failed else result.reply_text
         state["recent_turns"].append({"speaker": "customer", "text": speech_result})
         state["recent_turns"].append({"speaker": "agent", "text": reply})
         state["agent_turns"] += 1
@@ -752,14 +833,14 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
             state["pending_end_reason"] = _end_reason_for(result)
             await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
             t0 = time.perf_counter()
-            kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
+            kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"), pace=state.get("tts_pace", 1.0))
             await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="tts_synthesize", duration_ms=int((time.perf_counter() - t0) * 1000), provider="sarvam")
             await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="turn_total_backend", duration_ms=int((time.perf_counter() - turn_t0) * 1000))
             return _twiml_speak_then_grace_listen(kind, content, action_url=closing_grace_url)
 
         await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
         t0 = time.perf_counter()
-        kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
+        kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"), pace=state.get("tts_pace", 1.0))
         await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="tts_synthesize", duration_ms=int((time.perf_counter() - t0) * 1000), provider="sarvam")
         await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="turn_total_backend", duration_ms=int((time.perf_counter() - turn_t0) * 1000))
         return _twiml_speak_and_record(kind, content, action_url=recording_url)
@@ -858,22 +939,14 @@ async def handle_closing_grace_webhook(*, token: str, form: dict[str, str], sign
         for stage, duration_ms in result.latency_ms.items():
             await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage=f"engine_{stage}", duration_ms=duration_ms, provider="jkr_conversation")
 
-        for tool_call in result.tool_calls_requested:
-            try:
-                execution = await execute_tool(
-                    db, workspace_id=workspace_id, tool_name=tool_call.tool_name, tool_input=tool_call.tool_input,
-                    idempotency_key=f"call-{call_session_id}-{tool_call.idempotency_suffix}",
-                    call_session_id=call_session_id, agent_version_id=call_session.agent_version_id if call_session else None,
-                )
-                if execution.status == "succeeded":
-                    result.state.setdefault("tool_results", {})[tool_call.tool_name] = execution.output
-            except (ToolNotDefinedError, ToolNotEnabledError):
-                pass
+        tool_failed = await _execute_tool_calls(
+            db, workspace_id=workspace_id, call_session_id=call_session_id, call_session=call_session, result=result,
+        )
 
         if call_session is not None:
             call_session.state = result.state
 
-        reply = result.reply_text
+        reply = _tool_failure_reply(language_code) if tool_failed else result.reply_text
         state["recent_turns"].append({"speaker": "customer", "text": speech_result})
         state["recent_turns"].append({"speaker": "agent", "text": reply})
         state["agent_turns"] += 1
@@ -883,11 +956,11 @@ async def handle_closing_grace_webhook(*, token: str, form: dict[str, str], sign
         if force_close:
             state["pending_end_reason"] = _end_reason_for(result)
             await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
-            kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
+            kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"), pace=state.get("tts_pace", 1.0))
             return _twiml_speak_then_grace_listen(kind, content, action_url=closing_grace_url)
 
         await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
-        kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"))
+        kind, content = await _speak(reply, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"), pace=state.get("tts_pace", 1.0))
         return _twiml_speak_and_record(kind, content, action_url=recording_url)
 
 

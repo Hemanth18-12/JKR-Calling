@@ -138,6 +138,23 @@ def test_resolve_tts_speaker_ignores_sarvam_tts_with_empty_voice_id():
     assert service._resolve_tts_speaker(voice) is None
 
 
+def test_resolve_tts_speaker_differs_between_two_agents_with_different_personas():
+    # Stage 2 Fix 3: the resolution logic itself must be genuinely
+    # per-agent, not accidentally hardcoded/memoized to one value.
+    voice_a = VoicePersona(provider=ProviderName.SARVAM_TTS, voice_id="shubh")
+    voice_b = VoicePersona(provider=ProviderName.SARVAM_TTS, voice_id="anushka")
+    assert service._resolve_tts_speaker(voice_a) == "shubh"
+    assert service._resolve_tts_speaker(voice_b) == "anushka"
+    assert service._resolve_tts_speaker(voice_a) != service._resolve_tts_speaker(voice_b)
+
+
+def test_resolve_tts_pace_differs_between_two_agents_with_different_personas():
+    voice_a = VoicePersona(provider=ProviderName.SARVAM_TTS, voice_id="shubh", speaking_speed=0.8)
+    voice_b = VoicePersona(provider=ProviderName.SARVAM_TTS, voice_id="anushka", speaking_speed=1.6)
+    assert service._resolve_tts_pace(voice_a) == 0.8
+    assert service._resolve_tts_pace(voice_b) == 1.6
+
+
 class _FakeRedis:
     async def set(self, *args, **kwargs):
         pass
@@ -173,3 +190,57 @@ async def test_speak_omits_speaker_kwarg_entirely_when_none(monkeypatch):
 
     await service._speak("hello", language_code="te-IN", settings=settings, redis=_FakeRedis(), speaker=None)
     assert "speaker" not in _CapturingSarvamTTS.captured_kwargs
+
+
+async def test_speak_passes_the_resolved_pace_through_to_sarvam_tts(monkeypatch):
+    # Stage 2 Fix 3: _resolve_tts_pace()'s result used to be computed and
+    # cached in Redis state but never actually reached SarvamTTS — a
+    # configured VoicePersona.speaking_speed had zero effect on this
+    # transport. See docs/STAGE2_REAL_CALL_FIXES.md.
+    monkeypatch.setattr(service, "SarvamTTS", _CapturingSarvamTTS)
+    settings = Settings(sarvam_tts_api_key="fake-key")
+
+    await service._speak("hello", language_code="te-IN", settings=settings, redis=_FakeRedis(), speaker="shubh", pace=1.4)
+    assert _CapturingSarvamTTS.captured_kwargs.get("pace") == 1.4
+
+
+async def test_speak_defaults_pace_to_natural_speed_when_omitted(monkeypatch):
+    monkeypatch.setattr(service, "SarvamTTS", _CapturingSarvamTTS)
+    settings = Settings(sarvam_tts_api_key="fake-key")
+
+    await service._speak("hello", language_code="te-IN", settings=settings, redis=_FakeRedis())
+    assert _CapturingSarvamTTS.captured_kwargs.get("pace") == 1.0
+
+
+def test_sarvam_tts_stores_pace_for_the_outgoing_request():
+    from app.live_providers.sarvam_tts import SarvamTTS
+
+    tts = SarvamTTS(api_key="fake-key", pace=1.7)
+    assert tts._pace == 1.7
+
+
+def test_sarvam_tts_defaults_pace_to_one_when_omitted():
+    from app.live_providers.sarvam_tts import SarvamTTS
+
+    tts = SarvamTTS(api_key="fake-key")
+    assert tts._pace == 1.0
+
+
+# --- _tool_failure_reply — Stage 2 Fix 1: never let a canned success line
+# escape a real tool failure. See docs/STAGE2_REAL_CALL_FIXES.md.
+
+
+def test_tool_failure_reply_is_language_specific_and_never_claims_success():
+    for lang in ("te-IN", "hi-IN", "en-IN"):
+        text = service._tool_failure_reply(lang)
+        assert text  # non-empty
+        lowered = text.lower()
+        for claim in ("booked", "confirmed", "scheduled", "noted"):
+            assert claim not in lowered
+
+    texts = {service._tool_failure_reply(lang) for lang in ("te-IN", "hi-IN", "en-IN")}
+    assert len(texts) == 3  # genuinely distinct per language, not one string reused
+
+
+def test_tool_failure_reply_falls_back_to_english_for_an_unknown_language_code():
+    assert service._tool_failure_reply("fr-FR") == service._tool_failure_reply("en-IN")

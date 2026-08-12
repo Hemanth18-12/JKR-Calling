@@ -15,12 +15,13 @@ class NotConfiguredError(RuntimeError):
 
 
 class SarvamTTS:
-    def __init__(self, *, api_key: str, speaker: str = "priya", model: str = "bulbul:v3"):
+    def __init__(self, *, api_key: str, speaker: str = "priya", model: str = "bulbul:v3", pace: float = 1.0):
         if not api_key:
             raise NotConfiguredError("SARVAM_TTS_API_KEY is not set")
         self._api_key = api_key
         self._speaker = speaker
         self._model = model
+        self._pace = pace
 
     async def synthesize(self, *, text: str, language_code: str) -> bytes:
         """Returns raw WAV bytes for the given text. Sarvam caps REST requests
@@ -31,7 +32,7 @@ class SarvamTTS:
         response = await client.post(
             "https://api.sarvam.ai/text-to-speech",
             headers={"api-subscription-key": self._api_key, "Content-Type": "application/json"},
-            json={"text": text, "language_code": language_code, "speaker": self._speaker, "model": self._model},
+            json={"text": text, "language_code": language_code, "speaker": self._speaker, "model": self._model, "pace": self._pace},
         )
         response.raise_for_status()
         data = response.json()

@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jkr_db.models.agents import AgentTool, ToolDefinition
+from jkr_db.models.contacts import Contact
 from jkr_db.models.tools import Appointment, HumanHandoff, Message, ToolExecution
 
 REAL_SIDE_EFFECT_TOOLS = {
@@ -183,11 +184,27 @@ def _run_check_calendar_slots() -> dict:
     return {"available_slots": slots}
 
 
+async def _get_workspace_contact(db: AsyncSession, *, workspace_id: uuid.UUID, contact_id: uuid.UUID) -> Contact:
+    """Same shape as _get_workspace_appointment below — a contact_id alone
+    is never trusted as proof it belongs to this workspace (RLS scopes what
+    a SELECT can *see*, but a blind INSERT using a caller-supplied
+    contact_id would otherwise create a row in this workspace that
+    references another tenant's contact). Raises the same ToolInputError a
+    missing contact_id already raises, so a cross-tenant contact_id and a
+    nonexistent one fail identically — never leaking which case it was."""
+    result = await db.execute(select(Contact).where(Contact.id == contact_id, Contact.workspace_id == workspace_id))
+    contact = result.scalar_one_or_none()
+    if contact is None:
+        raise ToolInputError(f"Contact {contact_id} not found in this workspace")
+    return contact
+
+
 async def _run_book_appointment(
     db: AsyncSession, *, workspace_id: uuid.UUID, call_session_id: uuid.UUID | None, contact_id: uuid.UUID | None, tool_input: dict,
 ) -> dict:
     if contact_id is None:
         raise ToolInputError("book_appointment requires a contact_id (no real contact attached to this call)")
+    await _get_workspace_contact(db, workspace_id=workspace_id, contact_id=contact_id)
     scheduled_for = parse_fuzzy_datetime(tool_input.get("preferred_date"), tool_input.get("preferred_time"))
     appointment = Appointment(
         workspace_id=workspace_id, contact_id=contact_id, call_session_id=call_session_id,
@@ -242,6 +259,7 @@ async def _run_create_human_callback(db: AsyncSession, *, workspace_id: uuid.UUI
 async def _run_send_message(db: AsyncSession, *, channel: str, workspace_id: uuid.UUID, contact_id: uuid.UUID | None, tool_input: dict) -> dict:
     if contact_id is None:
         raise ToolInputError(f"send_{channel} requires a contact_id")
+    await _get_workspace_contact(db, workspace_id=workspace_id, contact_id=contact_id)
     now = datetime.now(UTC)
     message = Message(
         workspace_id=workspace_id, contact_id=contact_id, channel=channel, direction="outbound",

@@ -868,3 +868,158 @@ async def test_streaming_response_mode_generation_ids_never_cross_between_two_ca
     finally:
         await _cleanup(workspace_id_a)
         await _cleanup(workspace_id_b)
+
+
+# --- Stage 2 Fix 2 — acknowledgement rotation must survive across turns of
+# ONE call, never reset every turn, and never leak between calls. See
+# docs/STAGE2_REAL_CALL_FIXES.md.
+
+
+@pytest.mark.asyncio
+async def test_acknowledgement_does_not_repeat_across_ask_field_and_clarify_turns():
+    """The exact bug from the audit: three consecutive ASK_FIELD/CLARIFY
+    turns of the SAME call used to each get a freshly-constructed
+    SpokenResponseFormatter, so _last_acknowledgement reset to None every
+    time and pick_acknowledgement() deterministically returned the pool's
+    first entry on every single turn ("సరే అండి" / "Sure." verbatim,
+    repeatedly). new_conversation_state() pre-seeds awaiting_field to the
+    objective's first required field, and mock-mode extraction
+    (_mock_extract) dumps customer_utterance straight into whatever field
+    is awaiting_field with confidence 0.6 (>2 chars) or 0.4 (<=2 chars) — a
+    short reply therefore deterministically produces CLARIFY
+    (LOW_CONFIDENCE_THRESHOLD=0.5), not ASK_FIELD, letting one call exercise
+    both action types that gate prepend_acknowledgement."""
+    from jkr_db.session import workspace_scoped_session
+
+    workspace_id, call_id = await _seed_workspace_with_knowledge_and_call()
+    try:
+        state = new_conversation_state(objective="book_appointment", language="en-IN")
+        acks: list[str | None] = []
+
+        async with workspace_scoped_session(workspace_id) as db:
+            result1 = await engine.process_turn(
+                db, workspace_id=workspace_id, call_session_id=call_id, state=state,
+                customer_utterance="I need a filling", conversation_policy=ConversationPolicySnapshot(),
+                business_identity="Aaha Dental Care", now=datetime.now(UTC),
+            )
+        assert result1.planner_action == "ASK_FIELD"
+        acks.append(result1.formatted.acknowledgement_used)
+        state = result1.state
+
+        async with workspace_scoped_session(workspace_id) as db:
+            result2 = await engine.process_turn(
+                db, workspace_id=workspace_id, call_session_id=call_id, state=state,
+                customer_utterance="ok", conversation_policy=ConversationPolicySnapshot(),
+                business_identity="Aaha Dental Care", now=datetime.now(UTC),
+            )
+        assert result2.planner_action == "CLARIFY"  # confidence 0.4 < LOW_CONFIDENCE_THRESHOLD
+        acks.append(result2.formatted.acknowledgement_used)
+        state = result2.state
+
+        async with workspace_scoped_session(workspace_id) as db:
+            result3 = await engine.process_turn(
+                db, workspace_id=workspace_id, call_session_id=call_id, state=state,
+                customer_utterance="Tomorrow evening works", conversation_policy=ConversationPolicySnapshot(),
+                business_identity="Aaha Dental Care", now=datetime.now(UTC),
+            )
+        assert result3.planner_action == "ASK_FIELD"
+        acks.append(result3.formatted.acknowledgement_used)
+
+        assert all(a is not None for a in acks)
+        # pick_acknowledgement()'s actual contract is "never repeat the
+        # immediately-previous one" (not full-history uniqueness) — that is
+        # exactly what proves the state survived the turn boundary.
+        assert acks[0] != acks[1]
+        assert acks[1] != acks[2]
+    finally:
+        await _cleanup(workspace_id)
+
+
+@pytest.mark.asyncio
+async def test_acknowledgement_does_not_repeat_between_confirm_field_and_ask_field_turns():
+    """Same rotation-survives-the-turn-boundary proof, but for CONFIRM_FIELD
+    specifically — chains the two already-proven single-turn domain-
+    confirmation scenarios (test_domain_mistranscription_is_flagged_for_
+    confirmation_not_silently_trusted, then test_customer_confirms_domain_
+    correction_writes_canonical_value) with the SAME state threaded
+    through, rather than each starting fresh."""
+    from jkr_db.session import workspace_scoped_session
+
+    workspace_id, call_id, agent_id = await _seed_workspace_with_dental_vocabulary()
+    try:
+        state = new_conversation_state(objective="book_appointment", language="te-en-IN")
+
+        async with workspace_scoped_session(workspace_id) as db:
+            result1 = await engine.process_turn(
+                db, workspace_id=workspace_id, call_session_id=call_id, state=state,
+                customer_utterance="నాకు ఫ్రూట్ కెనాల్స్ కావాలి", conversation_policy=ConversationPolicySnapshot(),
+                business_identity="Aaha Dental Care", agent_id=agent_id, now=datetime.now(UTC),
+            )
+        assert result1.planner_action == "CONFIRM_FIELD"
+        ack1 = result1.formatted.acknowledgement_used
+        state = result1.state
+
+        async with workspace_scoped_session(workspace_id) as db:
+            result2 = await engine.process_turn(
+                db, workspace_id=workspace_id, call_session_id=call_id, state=state,
+                customer_utterance="avunu andi", conversation_policy=ConversationPolicySnapshot(),
+                business_identity="Aaha Dental Care", agent_id=agent_id, now=datetime.now(UTC),
+            )
+        assert result2.planner_action == "ASK_FIELD"
+        ack2 = result2.formatted.acknowledgement_used
+
+        assert ack1 is not None
+        assert ack2 is not None
+        assert ack1 != ack2
+    finally:
+        await _cleanup(workspace_id)
+
+
+@pytest.mark.asyncio
+async def test_acknowledgement_history_does_not_leak_between_two_calls():
+    """Cross-call isolation, same two-independent-workspaces pattern as
+    test_streaming_response_mode_generation_ids_never_cross_between_two_calls
+    above. If rotation state ever became a module-level/shared singleton,
+    call B's first acknowledgement would be forced to differ from the
+    pool's first entry (having "inherited" call A's history) — asserting it
+    DOESN'T is the actual isolation proof, not merely that the two calls
+    produce *some* different value."""
+    from jkr_db.session import workspace_scoped_session
+
+    workspace_id_a, call_id_a = await _seed_workspace_with_knowledge_and_call()
+    workspace_id_b, call_id_b = await _seed_workspace_with_knowledge_and_call()
+    try:
+        state_a = new_conversation_state(objective="book_appointment", language="en-IN")
+        async with workspace_scoped_session(workspace_id_a) as db:
+            result_a1 = await engine.process_turn(
+                db, workspace_id=workspace_id_a, call_session_id=call_id_a, state=state_a,
+                customer_utterance="I need a filling", conversation_policy=ConversationPolicySnapshot(),
+                business_identity="Aaha Dental Care", now=datetime.now(UTC),
+            )
+        assert result_a1.planner_action == "ASK_FIELD"
+        # Advance call A a second turn so its rotation state is no longer at
+        # its initial value — the leak this test guards against is call B
+        # inheriting THIS, not call A's untouched starting state.
+        async with workspace_scoped_session(workspace_id_a) as db:
+            await engine.process_turn(
+                db, workspace_id=workspace_id_a, call_session_id=call_id_a, state=result_a1.state,
+                customer_utterance="Tomorrow", conversation_policy=ConversationPolicySnapshot(),
+                business_identity="Aaha Dental Care", now=datetime.now(UTC),
+            )
+
+        state_b = new_conversation_state(objective="book_appointment", language="en-IN")
+        async with workspace_scoped_session(workspace_id_b) as db:
+            result_b1 = await engine.process_turn(
+                db, workspace_id=workspace_id_b, call_session_id=call_id_b, state=state_b,
+                customer_utterance="I need a filling", conversation_policy=ConversationPolicySnapshot(),
+                business_identity="Aaha Dental Care", now=datetime.now(UTC),
+            )
+        assert result_b1.planner_action == "ASK_FIELD"
+
+        # Call B's very first acknowledgement must be identical to what call
+        # A's very first acknowledgement was — both starting fresh, neither
+        # aware of the other's (or call A's own later) rotation state.
+        assert result_b1.formatted.acknowledgement_used == result_a1.formatted.acknowledgement_used
+    finally:
+        await _cleanup(workspace_id_a)
+        await _cleanup(workspace_id_b)
