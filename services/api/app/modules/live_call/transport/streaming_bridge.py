@@ -40,7 +40,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, cast
 
-from jkr_db.models.calls import CallSession
+from jkr_db.models.calls import CallEvent, CallSession
 from jkr_db.session import workspace_scoped_session
 from sqlalchemy import select
 
@@ -759,6 +759,11 @@ async def _handle_stt_event(
             "stt_stream_error", call_session_id=call_session_id, code=event.code, message=event.message,
             is_fatal=event.is_fatal, status_code=event.status_code,
         )
+        if event.is_fatal:
+            await _persist_stt_lifecycle_event(
+                workspace_id=workspace_id, call_session_id=call_session_id, event_type="stt_stream_fatal_error",
+                payload={"code": event.code, "message": event.message, "status_code": event.status_code},
+            )
         return _CONTINUE  # non-fatal errors don't interrupt the call; fatal ones surface as a dropped connection, handled by the reconnect loop
 
     # Anything that marks the start of a new utterance resets the
@@ -985,7 +990,7 @@ async def run_streaming_turn_loop(
             )
             reconnect_attempts += 1
             if reconnect_attempts > MAX_RECONNECT_ATTEMPTS:
-                return await _give_up_on_streaming(session, settings=settings, call_session_id=call_session_id)
+                return await _give_up_on_streaming(session, settings=settings, workspace_id=workspace_id, call_session_id=call_session_id)
             await asyncio.sleep(_RECONNECT_BACKOFF_SECONDS[min(reconnect_attempts - 1, len(_RECONNECT_BACKOFF_SECONDS) - 1)])
             continue
 
@@ -1008,16 +1013,45 @@ async def run_streaming_turn_loop(
             max_attempts=MAX_RECONNECT_ATTEMPTS,
         )
         if reconnect_attempts > MAX_RECONNECT_ATTEMPTS:
-            return await _give_up_on_streaming(session, settings=settings, call_session_id=call_session_id)
+            return await _give_up_on_streaming(session, settings=settings, workspace_id=workspace_id, call_session_id=call_session_id)
         await asyncio.sleep(_RECONNECT_BACKOFF_SECONDS[min(reconnect_attempts - 1, len(_RECONNECT_BACKOFF_SECONDS) - 1)])
 
     return False
 
 
-async def _give_up_on_streaming(session: RealtimeMediaSession, *, settings: Settings, call_session_id: uuid.UUID) -> bool:
+async def _persist_stt_lifecycle_event(
+    *, workspace_id: uuid.UUID, call_session_id: uuid.UUID, event_type: str, payload: dict
+) -> None:
+    """Real-call forensics finding: a fatal provider error (e.g. Sarvam
+    quota_exceeded/402) or a give-up-after-exhausted-reconnects previously
+    left ZERO durable trace anywhere — log_event() alone is invisible unless
+    someone is watching that exact process's stdout at that exact moment,
+    and every other per-call table (CallTurn, CallLatencyMetric) stays empty
+    too since no turn ever gets that far. A real incident took a live
+    out-of-band provider probe to diagnose for exactly this reason. This is
+    the minimal fix: persist it as a CallEvent, the same durable per-call
+    trail every other lifecycle moment already uses, queryable via the
+    RLS-safe report tool. A separate function (not inlined) specifically so
+    unit tests exercising run_streaming_turn_loop's failure-policy branching
+    with synthetic/non-persisted workspace_id and call_session_id values
+    (see test_streaming_bridge.py) can monkeypatch this one DB-touching
+    seam, the same way that file already monkeypatches
+    _finalize_call_from_grace_expiry — everything else in this module stays
+    exercised for real."""
+    async with workspace_scoped_session(workspace_id) as db:
+        db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session_id, event_type=event_type, payload=payload))
+
+
+async def _give_up_on_streaming(
+    session: RealtimeMediaSession, *, settings: Settings, workspace_id: uuid.UUID, call_session_id: uuid.UUID
+) -> bool:
     log_event(
         "stt_stream_failed", call_session_id=call_session_id, reason="reconnect_attempts_exhausted",
         failure_policy=settings.stt_stream_failure_policy,
+    )
+    await _persist_stt_lifecycle_event(
+        workspace_id=workspace_id, call_session_id=call_session_id, event_type="stt_stream_gave_up",
+        payload={"reason": "reconnect_attempts_exhausted", "failure_policy": settings.stt_stream_failure_policy},
     )
     if settings.stt_stream_failure_policy == "batch_next_turn":
         return True

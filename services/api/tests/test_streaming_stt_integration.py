@@ -375,3 +375,116 @@ class _FakeBatchTranscript:
 class _FakeBatchSTT:
     async def transcribe(self, *, audio_bytes: bytes, language_code: str):
         return _FakeBatchTranscript(text=_FAKE_TRANSCRIPT_TEXT)
+
+
+class _FakeFatalErrorSTT:
+    """Real-incident regression: connect() succeeds (this is exactly what a
+    real Sarvam quota_exceeded/402 looks like — the WebSocket handshake and
+    auth succeed, then the provider sends a fatal `error` event and closes
+    the connection the moment real audio arrives), but every generation
+    immediately yields a fatal STTError and ends — reproducing an account
+    whose credits are exhausted staying exhausted across every reconnect
+    attempt, exactly as observed on the real call this test is named for."""
+
+    def __init__(self, *, api_key, config):
+        pass
+
+    async def connect(self) -> None:
+        return None
+
+    async def send_audio(self, pcm16_bytes: bytes) -> None:
+        return None
+
+    async def flush(self) -> None:
+        return None
+
+    async def reconfigure(self, **kwargs: object) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+    async def events(self):
+        from app.live_providers.streaming_stt import STTError
+
+        yield STTError(code="quota_exceeded", message="Credits exhausted.", is_fatal=True, status_code=402, raw={})
+
+
+async def _fetch_call_events(workspace_id: uuid.UUID, call_session_id: uuid.UUID) -> list:
+    from jkr_db.models.calls import CallEvent
+    from jkr_db.session import workspace_scoped_session
+    from sqlalchemy import select
+
+    async with workspace_scoped_session(workspace_id) as db:
+        result = await db.execute(select(CallEvent).where(CallEvent.call_session_id == call_session_id).order_by(CallEvent.created_at))
+        return list(result.scalars().all())
+
+
+def test_fatal_stt_error_and_give_up_are_persisted_as_call_events(monkeypatch):
+    """The actual real-call forensics finding this fix closes: a fatal
+    provider error (Sarvam quota_exceeded) previously left the DB with
+    exactly zero evidence anything had gone wrong — CallTurn, CallEvent, and
+    CallLatencyMetric all stayed empty for the entire rest of the call,
+    making a real incident take a live out-of-band provider probe to
+    diagnose instead of a two-second query. This proves both the fatal
+    STTError itself and the eventual give-up are now durably queryable."""
+    from app.modules.live_call.transport import transitional_bridge
+
+    monkeypatch.setattr(streaming_bridge, "SarvamStreamingSTT", _FakeFatalErrorSTT)
+    monkeypatch.setattr(streaming_bridge, "_RECONNECT_BACKOFF_SECONDS", (0.0, 0.0, 0.0))
+    monkeypatch.setattr(transitional_bridge, "SarvamTTS", _FakeTTS)
+    monkeypatch.setenv("SARVAM_API_KEY", "fake")
+    monkeypatch.setenv("SARVAM_TTS_API_KEY", "fake")
+    monkeypatch.setenv("STT_MODE", "streaming")
+    monkeypatch.setenv("TWILIO_VOICE_TRANSPORT", "media_stream")
+    monkeypatch.setenv("STT_STREAM_FAILURE_POLICY", "fail")  # the actual default — no batch fallback
+    get_settings.cache_clear()
+
+    try:
+        _reset_db_engine()
+        workspace_id, call_session_id, agent_id = asyncio.run(_seed_call())
+        _reset_db_engine()
+        redis_state_token = asyncio.run(_seed_and_cache_redis_state(workspace_id, call_session_id))
+
+        settings = get_settings()
+        session_token = create_media_session_token(
+            secret=settings.session_secret, call_session_id=call_session_id, workspace_id=workspace_id,
+            twilio_call_sid="CA_TEST_FATAL", redis_state_token=redis_state_token,
+        )
+
+        _reset_db_engine()
+        client = TestClient(app)
+        with client.websocket_connect(f"/api/v1/live-call/ws/twilio/media/{session_token}") as ws:
+            ws.send_json(build_connected_event())
+            ws.send_json(build_start_event(stream_sid="MZ_TEST_FATAL", call_sid="CA_TEST_FATAL"))
+
+            for _ in range(50):
+                msg = ws.receive_json()
+                if msg.get("event") == "media":
+                    break
+
+            # The server-side WebSocket closes itself once give-up calls
+            # session.close(failed=True) — no need to send a stop event.
+            for _ in range(500):
+                try:
+                    ws.receive_json()
+                except Exception:
+                    break
+
+        _reset_db_engine()
+        events = asyncio.run(_fetch_call_events(workspace_id, call_session_id))
+        event_types = [e.event_type for e in events]
+
+        assert "stt_stream_fatal_error" in event_types
+        fatal_event = next(e for e in events if e.event_type == "stt_stream_fatal_error")
+        assert fatal_event.payload["code"] == "quota_exceeded"
+        assert fatal_event.payload["status_code"] == 402
+
+        assert "stt_stream_gave_up" in event_types
+        gave_up_event = next(e for e in events if e.event_type == "stt_stream_gave_up")
+        assert gave_up_event.payload["failure_policy"] == "fail"
+    finally:
+        _reset_db_engine()
+        asyncio.run(_delete_redis_key(redis_state_token))
+        asyncio.run(_cleanup(workspace_id))
+        get_settings.cache_clear()

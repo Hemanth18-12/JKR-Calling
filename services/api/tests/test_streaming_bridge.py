@@ -122,9 +122,21 @@ class _AlwaysFailsToConnect:
         raise ConnectionRefusedError("simulated connect failure")
 
 
+async def _noop_persist_stt_lifecycle_event(*, workspace_id, call_session_id, event_type, payload) -> None:
+    pass
+
+
 async def test_run_streaming_turn_loop_gives_up_and_closes_session_on_fail_policy(monkeypatch):
     monkeypatch.setattr(streaming_bridge, "SarvamStreamingSTT", _AlwaysFailsToConnect)
     monkeypatch.setattr(streaming_bridge, "_RECONNECT_BACKOFF_SECONDS", (0.0, 0.0, 0.0))
+    # Real-call forensics fix: give-up now persists a CallEvent — this test
+    # uses synthetic, never-persisted workspace_id/call_session_id values
+    # (see this file's own docstring: "no DB touched"), so that one
+    # DB-touching seam is monkeypatched away here, exactly like
+    # _finalize_call_from_grace_expiry already is in the tests above; the
+    # real DB write is proven separately in
+    # test_streaming_stt_integration.py::test_fatal_stt_error_and_give_up_are_persisted_as_call_events.
+    monkeypatch.setattr(streaming_bridge, "_persist_stt_lifecycle_event", _noop_persist_stt_lifecycle_event)
 
     session = _session()
     session.transition_to(MediaSessionStatus.CONNECTING)
@@ -145,6 +157,7 @@ async def test_run_streaming_turn_loop_gives_up_and_closes_session_on_fail_polic
 async def test_run_streaming_turn_loop_falls_back_to_batch_on_batch_next_turn_policy(monkeypatch):
     monkeypatch.setattr(streaming_bridge, "SarvamStreamingSTT", _AlwaysFailsToConnect)
     monkeypatch.setattr(streaming_bridge, "_RECONNECT_BACKOFF_SECONDS", (0.0, 0.0, 0.0))
+    monkeypatch.setattr(streaming_bridge, "_persist_stt_lifecycle_event", _noop_persist_stt_lifecycle_event)
 
     session = _session()
     session.transition_to(MediaSessionStatus.CONNECTING)
