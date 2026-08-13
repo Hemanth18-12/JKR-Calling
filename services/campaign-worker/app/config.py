@@ -24,7 +24,7 @@ class Settings(BaseSettings):
         return [n.strip() for n in self.authorized_test_numbers.split(",") if n.strip()]
 
 
-@lru_cache
 def get_settings() -> Settings:
     return Settings()
+
 
