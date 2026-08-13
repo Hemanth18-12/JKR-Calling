@@ -1,5 +1,3 @@
 {
-  "buildCommand": "pnpm --filter web build",
-  "installCommand": "corepack enable && pnpm install",
   "framework": "nextjs"
 }

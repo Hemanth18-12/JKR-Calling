@@ -4,11 +4,6 @@
   "version": "0.1.0",
   "description": "JKR AI Calling — India-first multilingual AI revenue agent platform",
   "license": "UNLICENSED",
-  "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=6.0.0"
-  },
-  "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
