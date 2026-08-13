@@ -37,6 +37,7 @@ services/api/app/db.py.
 import os
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -76,32 +77,35 @@ APP_ROLE = "jkr_app"
 
 def upgrade() -> None:
     app_db_password = os.environ.get("APP_DB_PASSWORD", "jkr_app_local_dev")
+    conn = op.get_bind()
+    current_db = conn.execute(sa.text("SELECT current_database()")).scalar()
+    current_user = conn.execute(sa.text("SELECT current_user")).scalar()
 
-    op.execute(
-        f"""
-        DO $$
-        BEGIN
-          IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{APP_ROLE}') THEN
-            CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{app_db_password}'
-              NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
-          END IF;
-        END
-        $$;
-        """
-    )
-    db_name = os.environ.get("POSTGRES_DB", "jkr_ai_calling")
-    op.execute(f"GRANT CONNECT ON DATABASE {db_name} TO {APP_ROLE};")
-    op.execute(f"GRANT USAGE ON SCHEMA public TO {APP_ROLE};")
-    op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {APP_ROLE};")
-    op.execute(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {APP_ROLE};")
-    op.execute(
-        f"ALTER DEFAULT PRIVILEGES FOR ROLE jkr IN SCHEMA public "
-        f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {APP_ROLE};"
-    )
-    op.execute(
-        f"ALTER DEFAULT PRIVILEGES FOR ROLE jkr IN SCHEMA public "
-        f"GRANT USAGE, SELECT ON SEQUENCES TO {APP_ROLE};"
-    )
+    if current_user != APP_ROLE:
+        op.execute(
+            f"""
+            DO $$
+            BEGIN
+              IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{APP_ROLE}') THEN
+                CREATE ROLE {APP_ROLE} LOGIN PASSWORD '{app_db_password}'
+                  NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+              END IF;
+            END
+            $$;
+            """
+        )
+        op.execute(f'GRANT CONNECT ON DATABASE "{current_db}" TO {APP_ROLE};')
+        op.execute(f"GRANT USAGE ON SCHEMA public TO {APP_ROLE};")
+        op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {APP_ROLE};")
+        op.execute(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {APP_ROLE};")
+        op.execute(
+            f'ALTER DEFAULT PRIVILEGES FOR ROLE "{current_user}" IN SCHEMA public '
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {APP_ROLE};"
+        )
+        op.execute(
+            f'ALTER DEFAULT PRIVILEGES FOR ROLE "{current_user}" IN SCHEMA public '
+            f"GRANT USAGE, SELECT ON SEQUENCES TO {APP_ROLE};"
+        )
 
     # NULLIF(..., '') matters here, not just belt-and-suspenders: Postgres
     # resets an unprivileged custom GUC to '' (empty string), not NULL, once
@@ -144,6 +148,9 @@ def downgrade() -> None:
         op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY;")
         op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY;")
 
-    op.execute(f"REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM {APP_ROLE};")
-    op.execute(f"REVOKE ALL PRIVILEGES ON SCHEMA public FROM {APP_ROLE};")
-    op.execute(f"DROP ROLE IF EXISTS {APP_ROLE};")
+    conn = op.get_bind()
+    current_user = conn.execute(sa.text("SELECT current_user")).scalar()
+    if current_user != APP_ROLE:
+        op.execute(f"REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM {APP_ROLE};")
+        op.execute(f"REVOKE ALL PRIVILEGES ON SCHEMA public FROM {APP_ROLE};")
+        op.execute(f"DROP ROLE IF EXISTS {APP_ROLE};")
