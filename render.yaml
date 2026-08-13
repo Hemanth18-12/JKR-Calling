@@ -1,0 +1,42 @@
+services:
+  - type: web
+    name: jkr-api
+    runtime: python
+    region: singapore
+    plan: starter
+    rootDir: services/api
+    buildCommand: "pip install uv && uv sync --all-packages"
+    startCommand: "uv run alembic upgrade head && uv run --package jkr-api uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: jkr-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: jkr-redis
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: CSRF_SECRET
+        generateValue: true
+      - key: CREDENTIALS_ENCRYPTION_KEY
+        generateValue: true
+      - key: ENABLE_LIVE_CALLS
+        value: "false"
+
+databases:
+  - name: jkr-postgres
+    databaseName: jkr_ai_calling
+    user: jkr_app
+    region: singapore
+    plan: starter
+
+  - type: redis
+    name: jkr-redis
+    region: singapore
+    plan: starter
+    maxmemoryPolicy: noeviction
