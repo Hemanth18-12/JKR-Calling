@@ -3,4 +3,4 @@ packages:
   - "packages/*"
   - "tests/e2e"
 allowBuilds:
-  unrs-resolver: set this to true or false
+  unrs-resolver: true
