@@ -1,17 +1,24 @@
 # JKR AI Calling
 
+[![Live Web Application](https://img.shields.io/badge/Vercel-Deployed-black?style=for-the-badge&logo=vercel)](https://jkr-calling.vercel.app/)
+[![Stack](https.img.shields.io/badge/Stack-Next.js_14_%7C_FastAPI_%7C_Postgres-blue?style=for-the-badge)](https://jkr-calling.vercel.app/)
+
 India-first, multilingual (Telugu / Hindi / English, code-switched) multi-tenant AI calling
 platform. Makes and receives calls, qualifies leads, answers from business-approved knowledge,
 books appointments, hands off to humans, and reports business outcomes — not just call volume.
+
+**Live Application**: [https://jkr-calling.vercel.app/](https://jkr-calling.vercel.app/)
 
 No real telephony call is ever placed by default. Every provider defaults to a mock adapter; see
 `.env.example` and `docs/SECURITY_AND_COMPLIANCE.md` §1.
 
 ## Start here
 
+- **Deployed Frontend**: [https://jkr-calling.vercel.app/](https://jkr-calling.vercel.app/)
 - `docs/MASTER_PLAN.md` — what this is, how it's scoped, where everything lives
 - `docs/ARCHITECTURE.md` — service topology and module boundaries
 - `docs/IMPLEMENTATION_CHECKLIST.md` — current build status, kept up to date
+
 
 ## Running locally — step by step
 
