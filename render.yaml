@@ -3,7 +3,7 @@ services:
     name: jkr-api
     runtime: python
     region: singapore
-    plan: starter
+    plan: free
     rootDir: services/api
     buildCommand: "pip install uv && uv sync --all-packages"
     startCommand: "uv run alembic upgrade head && uv run --package jkr-api uvicorn app.main:app --host 0.0.0.0 --port $PORT"
@@ -31,7 +31,7 @@ services:
   - type: redis
     name: jkr-redis
     region: singapore
-    plan: starter
+    plan: free
     maxmemoryPolicy: noeviction
     ipAllowList: []
 
@@ -40,4 +40,4 @@ databases:
     databaseName: jkr_ai_calling
     user: jkr_app
     region: singapore
-    plan: starter
+    plan: free
