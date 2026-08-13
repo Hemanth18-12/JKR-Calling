@@ -22,13 +22,15 @@ _auth_rate_limit = rate_limit("auth", max_requests=20, window_seconds=60)
 
 
 def _set_session_cookie(response: Response, *, raw_token: str, settings: Settings) -> None:
+    samesite = "none" if not settings.is_local else "lax"
+    secure = True if samesite == "none" else not settings.is_local
     response.set_cookie(
         key=settings.session_cookie_name,
         value=raw_token,
         max_age=settings.session_ttl_seconds,
         httponly=True,
-        secure=not settings.is_local,
-        samesite="lax",
+        secure=secure,
+        samesite=samesite,
         path="/",
     )
 

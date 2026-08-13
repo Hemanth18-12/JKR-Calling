@@ -45,7 +45,8 @@ app = FastAPI(title="JKR AI Calling API", version="0.1.0", root_path="", lifespa
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.app_base_url],
+    allow_origins=[settings.app_base_url, "http://localhost:3000"],
+    allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
