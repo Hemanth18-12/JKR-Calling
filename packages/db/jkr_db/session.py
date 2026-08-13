@@ -22,7 +22,9 @@ import os
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -30,6 +32,9 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(_REPO_ROOT / ".env")
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -53,7 +58,7 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         database_url = os.environ.get(
             "DATABASE_URL",
-            "postgresql+asyncpg://jkr:jkr_local_dev@localhost:5432/jkr_ai_calling",
+            "postgresql+asyncpg://jkr_app:jkr_app_local_dev@localhost:55432/jkr_ai_calling",
         )
         _engine = create_async_engine(
             database_url, pool_pre_ping=True, pool_size=10, max_overflow=10,

@@ -5,4 +5,5 @@ export * from "./components/empty-state";
 export * from "./components/input";
 export * from "./components/skeleton";
 export * from "./components/toast";
+export * from "./components/waveform";
 export * from "./utils";

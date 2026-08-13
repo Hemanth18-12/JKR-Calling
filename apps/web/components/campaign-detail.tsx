@@ -10,7 +10,8 @@ import {
 } from "@jkr/contracts";
 import { ApiClientError, campaignsApi } from "@jkr/sdk";
 import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Label, useToast } from "@jkr/ui";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, PhoneCall, Trash2, XCircle } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -245,6 +246,16 @@ export function CampaignDetail({
   const router = useRouter();
   const { toast } = useToast();
   const [busy, setBusy] = React.useState(false);
+  const [showDeleteModal, setShowDeleteModal] = React.useState(false);
+
+  // Auto-refresh contact status while active
+  React.useEffect(() => {
+    if (campaign.status !== "active") return;
+    const interval = setInterval(() => {
+      router.refresh();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [campaign.status, router]);
 
   const act = async (action: "launch" | "pause" | "cancel") => {
     setBusy(true);
@@ -259,27 +270,67 @@ export function CampaignDetail({
     }
   };
 
+  const handleDelete = async () => {
+    setBusy(true);
+    try {
+      await campaignsApi.delete(workspaceId, campaign.id);
+      toast({ title: "Campaign deleted", variant: "success" });
+      router.push(`/app/campaigns`);
+    } catch (err) {
+      toast({ title: "Could not delete campaign", description: err instanceof ApiClientError ? err.message : undefined, variant: "danger" });
+      setBusy(false);
+    }
+  };
+
   const addedContactIds = new Set(campaignContacts.map((c) => c.contact_id));
+  const isTerminal = ["cancelled", "completed", "failed", "draft"].includes(campaign.status);
 
   return (
     <div className="space-y-6">
+      {/* Execution Mode Banner */}
+      <div className="flex items-center justify-between rounded-xl border border-secondary/30 bg-secondary/5 p-4 text-sm">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-secondary/20 p-2 text-secondary">
+            <PhoneCall className="h-5 w-5 animate-pulse" />
+          </div>
+          <div>
+            <p className="font-medium text-foreground">
+              Mock Telephony Mode Active
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Dispatches use local simulated call sessions. Completed calls automatically record full transcripts, extraction summaries, and analytics in your Calls log.
+            </p>
+          </div>
+        </div>
+        <Link href="/app/calls">
+          <Button variant="outline" size="sm" className="whitespace-nowrap gap-1">
+            View Calls Log &rarr;
+          </Button>
+        </Link>
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold">{campaign.name}</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{campaign.name}</h1>
             <Badge variant={CAMPAIGN_STATUS_VARIANT[campaign.status] ?? "secondary"}>{campaign.status}</Badge>
           </div>
           <p className="text-sm text-muted-foreground">{campaign.objective.replace(/_/g, " ")} · max {campaign.max_attempts} attempts</p>
         </div>
         <div className="flex gap-2">
           {campaign.status === "draft" || campaign.status === "paused" ? (
-            <Button onClick={() => act("launch")} loading={busy}>Launch</Button>
+            <Button onClick={() => act("launch")} loading={busy} className="bg-primary">Launch</Button>
           ) : null}
           {campaign.status === "active" ? (
             <Button variant="secondary" onClick={() => act("pause")} loading={busy}>Pause</Button>
           ) : null}
-          {campaign.status !== "completed" && campaign.status !== "cancelled" ? (
+          {campaign.status === "active" || campaign.status === "paused" ? (
             <Button variant="destructive" onClick={() => act("cancel")} loading={busy}>Cancel</Button>
+          ) : null}
+          {isTerminal ? (
+            <Button variant="outline" className="text-danger hover:bg-danger/10 border-danger/30" onClick={() => setShowDeleteModal(true)} loading={busy}>
+              <Trash2 className="h-4 w-4 mr-1" /> Delete
+            </Button>
           ) : null}
         </div>
       </div>
@@ -303,7 +354,7 @@ export function CampaignDetail({
             ) : (
               <div className="divide-y divide-border">
                 {campaignContacts.map((cc) => (
-                  <div key={cc.id} className="flex items-center justify-between py-2 text-sm">
+                  <div key={cc.id} className="flex items-center justify-between py-2.5 text-sm">
                     <div>
                       <p className="font-medium">{cc.contact_name}</p>
                       <p className="text-xs text-muted-foreground">{cc.phone_masked}</p>
@@ -324,6 +375,33 @@ export function CampaignDetail({
           <AddContactsPanel workspaceId={workspaceId} campaignId={campaign.id} allContacts={allContacts} addedContactIds={addedContactIds} />
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-danger">
+              <AlertTriangle className="h-6 w-6 shrink-0" />
+              <h2 className="text-lg font-semibold">Delete Campaign</h2>
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Are you sure you want to delete <strong className="text-foreground">{campaign.name}</strong>? This will permanently remove the campaign configuration, schedule, contacts list, and dry-run history.
+            </p>
+            <p className="text-xs text-amber font-medium bg-amber/10 border border-amber/20 rounded-md p-2.5">
+              Note: Call records already made during this campaign will NOT be deleted.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" size="sm" onClick={() => setShowDeleteModal(false)} disabled={busy}>
+                Cancel
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleDelete} loading={busy}>
+                Confirm Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

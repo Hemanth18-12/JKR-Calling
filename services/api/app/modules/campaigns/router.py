@@ -151,3 +151,13 @@ async def cancel_campaign(
 ) -> CampaignOut:
     campaign = await service.cancel_campaign(db, workspace_id=auth.workspace_id, campaign_id=campaign_id)
     return CampaignOut.model_validate(campaign)
+
+
+@router.delete("/{campaign_id}", status_code=204)
+async def delete_campaign(
+    campaign_id: uuid.UUID,
+    auth: AuthContext = Depends(require_permission("campaigns:cancel")),
+    db: AsyncSession = Depends(workspace_db_for("campaigns:cancel")),
+) -> None:
+    await service.delete_campaign(db, workspace_id=auth.workspace_id, campaign_id=campaign_id)
+

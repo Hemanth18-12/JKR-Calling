@@ -58,6 +58,7 @@ export const CallListItem = z.object({
   started_at: z.string().nullable(),
   duration_seconds: z.number().nullable(),
   is_mock: z.boolean(),
+  campaign_id: z.string().uuid().nullable().optional(),
 });
 export type CallListItem = z.infer<typeof CallListItem>;
 

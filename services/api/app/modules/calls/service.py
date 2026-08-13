@@ -110,7 +110,7 @@ async def list_calls(db: AsyncSession, *, workspace_id: uuid.UUID, status_filter
         {
             "call_id": cs.id, "status": cs.status, "direction": cs.direction, "contact_name": contact_name,
             "outcome_category": outcome_category, "started_at": cs.started_at, "duration_seconds": cs.duration_seconds,
-            "is_mock": cs.is_mock,
+            "is_mock": cs.is_mock, "campaign_id": cs.campaign_id,
         }
         for cs, contact_name, outcome_category in result.all()
     ]

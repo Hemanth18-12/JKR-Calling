@@ -260,6 +260,17 @@ async def cancel_campaign(db: AsyncSession, *, workspace_id: uuid.UUID, campaign
     return campaign
 
 
+async def delete_campaign(db: AsyncSession, *, workspace_id: uuid.UUID, campaign_id: uuid.UUID) -> None:
+    campaign = await get_campaign(db, workspace_id=workspace_id, campaign_id=campaign_id)
+    if campaign.status in ("active", "paused"):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Cannot delete campaign while in status '{campaign.status}'. Please cancel it first."
+        )
+    await db.delete(campaign)
+    await db.flush()
+
+
 async def list_attempts(db: AsyncSession, *, workspace_id: uuid.UUID, campaign_contact_id: uuid.UUID) -> list[CampaignAttempt]:
     result = await db.execute(
         select(CampaignAttempt)
@@ -267,3 +278,4 @@ async def list_attempts(db: AsyncSession, *, workspace_id: uuid.UUID, campaign_c
         .order_by(CampaignAttempt.attempt_number)
     )
     return list(result.scalars().all())
+

@@ -4,8 +4,66 @@
 
 html {
   font-family: var(--font-sans);
+  scroll-behavior: smooth;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display), var(--font-sans);
 }
 
 ::selection {
-  background-color: hsl(var(--primary) / 0.35);
+  background-color: rgba(124, 92, 255, 0.3);
+  color: #EDEFF7;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.5);
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+/* Staggered fade-rise animation classes for stat card entries */
+.stagger-1 { animation: fade-rise 0.45s ease-out both; animation-delay: 0.05s; }
+.stagger-2 { animation: fade-rise 0.45s ease-out both; animation-delay: 0.1s; }
+.stagger-3 { animation: fade-rise 0.45s ease-out both; animation-delay: 0.15s; }
+.stagger-4 { animation: fade-rise 0.45s ease-out both; animation-delay: 0.2s; }
+.stagger-5 { animation: fade-rise 0.45s ease-out both; animation-delay: 0.25s; }
+.stagger-6 { animation: fade-rise 0.45s ease-out both; animation-delay: 0.3s; }
+.stagger-7 { animation: fade-rise 0.45s ease-out both; animation-delay: 0.35s; }
+.stagger-8 { animation: fade-rise 0.45s ease-out both; animation-delay: 0.4s; }
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

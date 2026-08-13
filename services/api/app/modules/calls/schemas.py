@@ -85,6 +85,7 @@ class CallListItem(BaseModel):
     started_at: datetime | None
     duration_seconds: int | None
     is_mock: bool
+    campaign_id: uuid.UUID | None = None
 
 
 class CallDetail(BaseModel):

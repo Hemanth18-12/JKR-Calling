@@ -43,4 +43,7 @@ export const campaignsApi = {
     apiFetch<CampaignOut>(`/campaigns/${campaignId}/pause${qs(workspaceId)}`, { ...opts, method: "POST" }),
   cancel: (workspaceId: string, campaignId: string, opts?: ApiFetchOptions) =>
     apiFetch<CampaignOut>(`/campaigns/${campaignId}/cancel${qs(workspaceId)}`, { ...opts, method: "POST" }),
+  delete: (workspaceId: string, campaignId: string, opts?: ApiFetchOptions) =>
+    apiFetch<void>(`/campaigns/${campaignId}${qs(workspaceId)}`, { ...opts, method: "DELETE" }),
 };
+

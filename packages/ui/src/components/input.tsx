@@ -8,7 +8,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
       type={type}
       ref={ref}
       className={cn(
-        "flex h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        "flex h-10 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 shadow-sm transition-all duration-150 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 hover:border-border/80 disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
       {...props}
@@ -19,7 +19,7 @@ Input.displayName = "Input";
 
 export const Label = React.forwardRef<HTMLLabelElement, React.LabelHTMLAttributes<HTMLLabelElement>>(
   ({ className, ...props }, ref) => (
-    <label ref={ref} className={cn("text-sm font-medium text-foreground", className)} {...props} />
+    <label ref={ref} className={cn("text-sm font-medium text-foreground/90", className)} {...props} />
   )
 );
 Label.displayName = "Label";
@@ -29,7 +29,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
     <textarea
       ref={ref}
       className={cn(
-        "flex min-h-20 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        "flex min-h-20 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 shadow-sm transition-all duration-150 focus-visible:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 hover:border-border/80 disabled:cursor-not-allowed disabled:opacity-50",
         className
       )}
       {...props}
@@ -40,5 +40,5 @@ Textarea.displayName = "Textarea";
 
 export const FieldError = ({ children }: { children?: React.ReactNode }) => {
   if (!children) return null;
-  return <p className="text-xs text-danger mt-1">{children}</p>;
+  return <p className="mt-1.5 text-xs text-danger">{children}</p>;
 };
