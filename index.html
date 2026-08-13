@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JKR AI Calling — India-First Multilingual AI Voice Agents</title>
+  <title>JKR AI Calling — India-First Multilingual AI Voice Platform</title>
   <meta name="description" content="Outcome-driven AI voice agents that call leads, understand customers, and book appointments in Telugu, Hindi, and English.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,6 +21,8 @@
       --text: #F8FAFC;
       --text-muted: #94A3B8;
       --amber: #F59E0B;
+      --green: #10B981;
+      --danger: #EF4444;
     }
 
     * {
@@ -51,27 +53,9 @@
       border-radius: 50%;
       filter: blur(120px);
     }
-    .orb-1 {
-      top: -100px;
-      left: 20%;
-      width: 500px;
-      height: 500px;
-      background: rgba(124, 58, 237, 0.15);
-    }
-    .orb-2 {
-      top: 200px;
-      right: 15%;
-      width: 400px;
-      height: 400px;
-      background: rgba(6, 182, 212, 0.12);
-    }
-    .orb-3 {
-      bottom: 100px;
-      left: 30%;
-      width: 350px;
-      height: 350px;
-      background: rgba(124, 58, 237, 0.08);
-    }
+    .orb-1 { top: -100px; left: 20%; width: 500px; height: 500px; background: rgba(124, 58, 237, 0.15); }
+    .orb-2 { top: 200px; right: 15%; width: 400px; height: 400px; background: rgba(6, 182, 212, 0.12); }
+    .orb-3 { bottom: 100px; left: 30%; width: 350px; height: 350px; background: rgba(124, 58, 237, 0.08); }
 
     .container {
       max-width: 1200px;
@@ -83,10 +67,11 @@
 
     /* Header */
     header {
-      padding: 24px 0;
+      padding: 20px 0;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      border-bottom: 1px solid var(--border);
     }
     .logo {
       display: flex;
@@ -108,6 +93,32 @@
       box-shadow: 0 8px 20px rgba(124, 58, 237, 0.3);
     }
 
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .nav-tab {
+      padding: 8px 16px;
+      border-radius: 10px;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
+      background: transparent;
+    }
+    .nav-tab:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+    }
+    .nav-tab.active {
+      color: var(--text);
+      background: var(--surface-raised);
+      border-color: var(--border);
+    }
+
     .nav-btn {
       padding: 10px 20px;
       border-radius: 12px;
@@ -115,13 +126,11 @@
       font-weight: 600;
       font-size: 0.875rem;
       transition: all 0.2s ease;
+      cursor: pointer;
+      border: none;
     }
-    .nav-btn-ghost {
-      color: var(--text-muted);
-    }
-    .nav-btn-ghost:hover {
-      color: var(--text);
-    }
+    .nav-btn-ghost { color: var(--text-muted); background: transparent; }
+    .nav-btn-ghost:hover { color: var(--text); }
     .nav-btn-primary {
       background: linear-gradient(135deg, var(--primary), #5B3FE4);
       color: white;
@@ -132,10 +141,23 @@
       box-shadow: 0 6px 20px rgba(124, 58, 237, 0.6);
     }
 
-    /* Hero */
+    /* Views */
+    .view-content {
+      display: none;
+      animation: fadeIn 0.3s ease-in-out forwards;
+    }
+    .view-content.active {
+      display: block;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Hero Section */
     .hero {
       text-align: center;
-      padding: 60px 0 80px;
+      padding: 60px 0 60px;
       max-width: 860px;
       margin: 0 auto;
     }
@@ -225,6 +247,8 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      cursor: pointer;
+      border: none;
     }
     .btn-gradient {
       background: linear-gradient(135deg, var(--primary), #5B3FE4);
@@ -257,28 +281,13 @@
       margin-top: 40px;
       backdrop-filter: blur(12px);
     }
-    .stat-item {
-      text-align: center;
-    }
-    .stat-val {
-      font-size: 1.5rem;
-      font-weight: 800;
-      color: var(--text);
-    }
-    .stat-lbl {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-    }
-    .stat-divider {
-      width: 1px;
-      height: 30px;
-      background: var(--border);
-    }
+    .stat-item { text-align: center; }
+    .stat-val { font-size: 1.5rem; font-weight: 800; color: var(--text); }
+    .stat-lbl { font-size: 0.75rem; color: var(--text-muted); }
+    .stat-divider { width: 1px; height: 30px; background: var(--border); }
 
-    /* Features Grid */
-    .features {
-      padding: 80px 0;
-    }
+    /* Cards Grid */
+    .features { padding: 40px 0 80px; }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -306,31 +315,154 @@
       margin-bottom: 20px;
       font-size: 1.25rem;
     }
-    .icon-primary {
-      background: rgba(124, 58, 237, 0.12);
-      border: 1px solid rgba(124, 58, 237, 0.25);
-      color: var(--primary-light);
+    .icon-primary { background: rgba(124, 58, 237, 0.12); border: 1px solid rgba(124, 58, 237, 0.25); color: var(--primary-light); }
+    .icon-amber { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.25); color: var(--amber); }
+    .icon-cyan { background: rgba(6, 182, 212, 0.12); border: 1px solid rgba(6, 182, 212, 0.25); color: var(--secondary-light); }
+
+    .card h3 { font-size: 1.125rem; font-weight: 700; margin-bottom: 10px; }
+    .card p { font-size: 0.9375rem; color: var(--text-muted); line-height: 1.6; }
+
+    /* Interactive Live Demo View */
+    .demo-container {
+      max-width: 900px;
+      margin: 40px auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 36px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
     }
-    .icon-amber {
-      background: rgba(245, 158, 11, 0.12);
-      border: 1px solid rgba(245, 158, 11, 0.25);
-      color: var(--amber);
+    .demo-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
     }
-    .icon-cyan {
-      background: rgba(6, 182, 212, 0.12);
-      border: 1px solid rgba(6, 182, 212, 0.25);
-      color: var(--secondary-light);
+    .call-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
     }
-    .card h3 {
-      font-size: 1.125rem;
-      font-weight: 700;
-      margin-bottom: 10px;
-    }
-    .card p {
-      font-size: 0.9375rem;
+    .call-status-pill.idle {
+      background: rgba(148, 163, 184, 0.1);
       color: var(--text-muted);
-      line-height: 1.6;
+      border-color: rgba(148, 163, 184, 0.2);
     }
+
+    .transcript-box {
+      height: 320px;
+      overflow-y: auto;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .chat-bubble {
+      max-width: 80%;
+      padding: 12px 18px;
+      border-radius: 16px;
+      font-size: 0.9375rem;
+      line-height: 1.5;
+    }
+    .chat-bubble.agent {
+      align-self: flex-start;
+      background: var(--surface-raised);
+      border: 1px solid rgba(124, 58, 237, 0.2);
+      color: var(--text);
+    }
+    .chat-bubble.user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, var(--primary), #5B3FE4);
+      color: white;
+    }
+    .chat-speaker {
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+      opacity: 0.8;
+    }
+
+    .demo-controls {
+      display: flex;
+      gap: 12px;
+    }
+    .input-field {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 18px;
+      color: var(--text);
+      font-size: 0.9375rem;
+      outline: none;
+    }
+    .input-field:focus {
+      border-color: var(--primary);
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 36px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7);
+      position: relative;
+    }
+    .modal-close {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.25rem;
+      cursor: pointer;
+    }
+
+    /* Table Component */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+      margin-top: 24px;
+    }
+    .table-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .table-row:last-child { border-bottom: none; }
+    .table-row:hover { background: var(--surface-raised); }
 
     /* Footer */
     footer {
@@ -339,10 +471,9 @@
       text-align: center;
       font-size: 0.875rem;
       color: var(--text-muted);
+      margin-top: 60px;
     }
-    footer span {
-      color: var(--secondary);
-    }
+    footer span { color: var(--secondary); }
   </style>
 </head>
 <body>
@@ -355,19 +486,28 @@
 
   <div class="container">
     <header>
-      <a href="#" class="logo">
+      <a href="#" class="logo" onclick="switchView('hero')">
         <div class="logo-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
         </div>
         <span>JKR AI Calling</span>
       </a>
+
+      <div class="nav-links">
+        <button class="nav-tab active" id="tab-hero" onclick="switchView('hero')">Overview</button>
+        <button class="nav-tab" id="tab-demo" onclick="switchView('demo')">Live Test Lab</button>
+        <button class="nav-tab" id="tab-campaigns" onclick="switchView('campaigns')">Campaigns</button>
+        <button class="nav-tab" id="tab-calls" onclick="switchView('calls')">Calls Log</button>
+      </div>
+
       <div style="display: flex; gap: 12px;">
-        <a href="http://localhost:3000/login" class="nav-btn nav-btn-ghost">Log in</a>
-        <a href="http://localhost:3000/signup" class="nav-btn nav-btn-primary">Get started</a>
+        <button class="nav-btn nav-btn-ghost" onclick="openModal('login')">Log in</button>
+        <button class="nav-btn nav-btn-primary" onclick="openModal('login')">Get started</button>
       </div>
     </header>
 
-    <main>
+    <!-- VIEW 1: HERO & OVERVIEW -->
+    <div id="view-hero" class="view-content active">
       <section class="hero">
         <div class="badge">
           <span class="badge-dot"></span>
@@ -396,11 +536,11 @@
         </p>
 
         <div class="cta-group">
-          <a href="http://localhost:3000/signup" class="btn btn-gradient">
-            Start Free
+          <button onclick="switchView('demo')" class="btn btn-gradient">
+            Start Live Demo
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-          </a>
-          <a href="http://localhost:3000/app/calls" class="btn btn-outline">Explore Live Demo</a>
+          </button>
+          <button onclick="switchView('calls')" class="btn btn-outline">Explore Calls Log</button>
         </div>
 
         <div class="stats-strip">
@@ -440,12 +580,219 @@
           </div>
         </div>
       </section>
-    </main>
+    </div>
+
+    <!-- VIEW 2: LIVE TEST LAB DEMO -->
+    <div id="view-demo" class="view-content">
+      <div class="demo-container">
+        <div class="demo-header">
+          <div>
+            <h2 style="font-size: 1.25rem; font-weight: 700;">Aaha Dental Care — AI Voice Agent</h2>
+            <p style="font-size: 0.875rem; color: var(--text-muted);">Objective: Dental Appointment Booking · Language: Telugu / English</p>
+          </div>
+          <span class="call-status-pill idle" id="call-status">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: currentColor;"></span>
+            <span id="call-status-text">Ready to Call</span>
+          </span>
+        </div>
+
+        <div class="transcript-box" id="transcript-box">
+          <div class="chat-bubble agent">
+            <div class="chat-speaker">AI Agent (Sunitha)</div>
+            Namaste! I am calling from Aaha Dental Care. Is this Ravi Kumar?
+          </div>
+        </div>
+
+        <div class="demo-controls">
+          <input type="text" class="input-field" id="user-input" placeholder="Type your reply (e.g. 'Yes, I want to book a dental checkup')..." onkeydown="if(event.key==='Enter') sendUserReply()">
+          <button class="btn btn-gradient" onclick="sendUserReply()">Reply</button>
+          <button class="btn btn-outline" id="start-btn" onclick="toggleCallState()">Start New Call</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 3: CAMPAIGNS VIEW -->
+    <div id="view-campaigns" class="view-content">
+      <div style="margin: 40px 0 20px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <h2 style="font-size: 1.5rem; font-weight: 700;">Outbound Campaigns</h2>
+          <p style="color: var(--text-muted); font-size: 0.875rem;">Manage automated calling batches and safety windows.</p>
+        </div>
+        <button class="btn btn-gradient" onclick="alert('Demo Mode: Launching campaign with safety gate enabled.')">+ Create Campaign</button>
+      </div>
+
+      <div class="table-card">
+        <div class="table-row">
+          <div>
+            <h4 style="font-weight: 600;">August Patient Recall Campaign</h4>
+            <p style="font-size: 0.8125rem; color: var(--text-muted);">Aaha Dental Care · 3 Contacts · Schedule: 09:00 - 20:00 IST</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: rgba(16, 185, 129, 0.1); color: var(--green); border: 1px solid rgba(16, 185, 129, 0.3);">Active</span>
+            <button class="btn btn-outline" style="padding: 6px 12px; font-size: 0.8125rem;" onclick="alert('Campaign Paused.')">Pause</button>
+            <button class="btn btn-outline" style="padding: 6px 12px; font-size: 0.8125rem; color: var(--danger); border-color: rgba(239,68,68,0.3);" onclick="confirm('Are you sure you want to delete this campaign?') & alert('Campaign deleted.')">Delete</button>
+          </div>
+        </div>
+        <div class="table-row">
+          <div>
+            <h4 style="font-weight: 600;">Adarsh Student Admission Followup</h4>
+            <p style="font-size: 0.8125rem; color: var(--text-muted);">Adarsh Educational Institutions · 12 Contacts · Schedule: 09:00 - 18:00 IST</p>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; background: rgba(245, 158, 11, 0.1); color: var(--amber); border: 1px solid rgba(245, 158, 11, 0.3);">Completed</span>
+            <button class="btn btn-outline" style="padding: 6px 12px; font-size: 0.8125rem; color: var(--danger); border-color: rgba(239,68,68,0.3);" onclick="alert('Campaign deleted.')">Delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 4: CALLS LOG VIEW -->
+    <div id="view-calls" class="view-content">
+      <div style="margin: 40px 0 20px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <h2 style="font-size: 1.5rem; font-weight: 700;">Calls Log</h2>
+          <p style="color: var(--text-muted); font-size: 0.875rem;">Every call this workspace has run — mock or live.</p>
+        </div>
+        <span style="padding: 6px 12px; border-radius: 12px; font-size: 0.75rem; color: var(--secondary); background: rgba(6,182,212,0.1); border: 1px solid rgba(6,182,212,0.3);">
+          Mock Telephony Active
+        </span>
+      </div>
+
+      <div class="table-card">
+        <div class="table-row">
+          <div style="display: flex; gap: 14px; align-items: center;">
+            <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.3); display: flex; align-items: center; justify-content: center; color: var(--primary-light);">📣</div>
+            <div>
+              <p style="font-weight: 600;">Ravi Kumar</p>
+              <p style="font-size: 0.75rem; color: var(--text-muted);">outbound · Today, 11:30 AM · 45s</p>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <span style="padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; background: var(--surface-raised); border: 1px solid var(--border);">Campaign</span>
+            <span style="padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; background: rgba(16,185,129,0.1); color: var(--green);">completed</span>
+          </div>
+        </div>
+
+        <div class="table-row">
+          <div style="display: flex; gap: 14px; align-items: center;">
+            <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(148,163,184,0.1); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-muted);">📞</div>
+            <div>
+              <p style="font-weight: 600;">Test Call — Hemanth</p>
+              <p style="font-size: 0.75rem; color: var(--text-muted);">outbound · Today, 11:15 AM · 32s</p>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <span style="padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; background: var(--surface-raised); border: 1px solid var(--border);">Test Lab</span>
+            <span style="padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; background: rgba(16,185,129,0.1); color: var(--green);">completed</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOGIN MODAL -->
+    <div class="modal-overlay" id="login-modal">
+      <div class="modal-card">
+        <button class="modal-close" onclick="closeModal('login')">&times;</button>
+        <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 6px;">Welcome Back</h3>
+        <p style="font-size: 0.875rem; color: var(--text-muted); margin-bottom: 24px;">Log in to your workspace.</p>
+
+        <form onsubmit="handleLogin(event)">
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 6px;">Email</label>
+            <input type="email" id="login-email" class="input-field" style="width: 100%;" value="hemanth.t24@iiits.in" required>
+          </div>
+          <div style="margin-bottom: 24px;">
+            <label style="display: block; font-size: 0.8125rem; font-weight: 600; margin-bottom: 6px;">Password</label>
+            <input type="password" id="login-pass" class="input-field" style="width: 100%;" value="DemoPassword123!" required>
+          </div>
+          <button type="submit" class="btn btn-gradient" style="width: 100%; justify-content: center;">Log In</button>
+        </form>
+      </div>
+    </div>
 
     <footer>
       <p>© 2026 JKR AI Calling. <span>No real call is ever placed without explicit authorization</span> — every workspace defaults to mock providers.</p>
     </footer>
   </div>
 
+  <script>
+    function switchView(viewName) {
+      document.querySelectorAll('.view-content').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+      
+      const targetView = document.getElementById('view-' + viewName);
+      const targetTab = document.getElementById('tab-' + viewName);
+      if (targetView) targetView.classList.add('active');
+      if (targetTab) targetTab.classList.add('active');
+    }
+
+    function openModal(modalId) {
+      document.getElementById(modalId + '-modal').classList.add('active');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId + '-modal').classList.remove('active');
+    }
+
+    function handleLogin(e) {
+      e.preventDefault();
+      closeModal('login');
+      switchView('demo');
+    }
+
+    const customerReplies = [
+      "Yes, I would like to book a appointment for tomorrow afternoon.",
+      "What is the total cost for dental cleaning?",
+      "Okay, 3 PM works fine for me. Please confirm.",
+      "Thank you so much!"
+    ];
+    let replyIndex = 0;
+
+    function sendUserReply() {
+      const input = document.getElementById('user-input');
+      const text = input.value.trim() || customerReplies[replyIndex % customerReplies.length];
+      if (!text) return;
+
+      const box = document.getElementById('transcript-box');
+      box.innerHTML += `<div class="chat-bubble user"><div class="chat-speaker">Customer</div>${text}</div>`;
+      input.value = '';
+      replyIndex++;
+
+      box.scrollTop = box.scrollHeight;
+
+      // Simulated AI response delay
+      setTimeout(() => {
+        const aiReplies = [
+          "Great! I have reserved tomorrow at 3:00 PM for your dental checkup with Dr. Sunitha. We look forward to seeing you!",
+          "Dental cleaning starts at ₹1,500. Would you like me to reserve a spot for you?",
+          "Your appointment is confirmed! We have sent a confirmation message."
+        ];
+        const aiReply = aiReplies[Math.floor(Math.random() * aiReplies.length)];
+        box.innerHTML += `<div class="chat-bubble agent"><div class="chat-speaker">AI Agent (Sunitha)</div>${aiReply}</div>`;
+        box.scrollTop = box.scrollHeight;
+      }, 900);
+    }
+
+    let isCallActive = false;
+    function toggleCallState() {
+      const statusPill = document.getElementById('call-status');
+      const statusText = document.getElementById('call-status-text');
+      const startBtn = document.getElementById('start-btn');
+      const box = document.getElementById('transcript-box');
+
+      isCallActive = !isCallActive;
+
+      if (isCallActive) {
+        statusPill.classList.remove('idle');
+        statusText.innerText = 'Call In Progress';
+        startBtn.innerText = 'End Call';
+        box.innerHTML = `<div class="chat-bubble agent"><div class="chat-speaker">AI Agent (Sunitha)</div>Namaste! Calling from Aaha Dental Care. Is this Ravi Kumar?</div>`;
+      } else {
+        statusPill.classList.add('idle');
+        statusText.innerText = 'Call Ended';
+        startBtn.innerText = 'Start New Call';
+      }
+    }
+  </script>
 </body>
 </html>
