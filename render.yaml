@@ -28,15 +28,16 @@ services:
       - key: ENABLE_LIVE_CALLS
         value: "false"
 
+  - type: redis
+    name: jkr-redis
+    region: singapore
+    plan: starter
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+
 databases:
   - name: jkr-postgres
     databaseName: jkr_ai_calling
     user: jkr_app
     region: singapore
     plan: starter
-
-  - type: redis
-    name: jkr-redis
-    region: singapore
-    plan: starter
-    maxmemoryPolicy: noeviction
