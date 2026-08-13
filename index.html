@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JKR AI Calling — India-First Multilingual AI Voice Agents</title>
+  <meta name="description" content="Outcome-driven AI voice agents that call leads, understand customers, and book appointments in Telugu, Hindi, and English.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090B10;
+      --surface: #121620;
+      --surface-raised: #1A1F2C;
+      --border: rgba(255, 255, 255, 0.08);
+      --primary: #7C3AED;
+      --primary-light: #A78BFF;
+      --secondary: #06B6D4;
+      --secondary-light: #5EEAD4;
+      --text: #F8FAFC;
+      --text-muted: #94A3B8;
+      --amber: #F59E0B;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Background Orbs */
+    .ambient-bg {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(120px);
+    }
+    .orb-1 {
+      top: -100px;
+      left: 20%;
+      width: 500px;
+      height: 500px;
+      background: rgba(124, 58, 237, 0.15);
+    }
+    .orb-2 {
+      top: 200px;
+      right: 15%;
+      width: 400px;
+      height: 400px;
+      background: rgba(6, 182, 212, 0.12);
+    }
+    .orb-3 {
+      bottom: 100px;
+      left: 30%;
+      width: 350px;
+      height: 350px;
+      background: rgba(124, 58, 237, 0.08);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      position: relative;
+      z-index: 10;
+    }
+
+    /* Header */
+    header {
+      padding: 24px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 800;
+      font-size: 1.125rem;
+    }
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--primary), #5B3FE4);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 20px rgba(124, 58, 237, 0.3);
+    }
+
+    .nav-btn {
+      padding: 10px 20px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.875rem;
+      transition: all 0.2s ease;
+    }
+    .nav-btn-ghost {
+      color: var(--text-muted);
+    }
+    .nav-btn-ghost:hover {
+      color: var(--text);
+    }
+    .nav-btn-primary {
+      background: linear-gradient(135deg, var(--primary), #5B3FE4);
+      color: white;
+      box-shadow: 0 4px 14px rgba(124, 58, 237, 0.4);
+    }
+    .nav-btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(124, 58, 237, 0.6);
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 60px 0 80px;
+      max-width: 860px;
+      margin: 0 auto;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      background: rgba(6, 182, 212, 0.1);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      color: var(--secondary-light);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: var(--secondary);
+      box-shadow: 0 0 8px var(--secondary);
+    }
+
+    /* Waveform Animation */
+    .waveform {
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 4px;
+      height: 48px;
+      margin-bottom: 32px;
+    }
+    .bar {
+      width: 3px;
+      background-color: var(--secondary);
+      border-radius: 3px;
+      opacity: 0.8;
+      animation: wave 1.2s ease-in-out infinite alternate;
+    }
+    @keyframes wave {
+      0% { height: 10px; }
+      100% { height: 42px; }
+    }
+    .bar:nth-child(2n) { animation-delay: 0.15s; }
+    .bar:nth-child(3n) { animation-delay: 0.3s; }
+    .bar:nth-child(4n) { animation-delay: 0.45s; }
+
+    h1 {
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin-bottom: 20px;
+    }
+    .gradient-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .gradient-secondary {
+      background: linear-gradient(135deg, var(--secondary), var(--secondary-light));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      font-size: 1.125rem;
+      color: var(--text-muted);
+      max-width: 640px;
+      margin: 0 auto 36px;
+    }
+
+    .cta-group {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      padding: 14px 28px;
+      border-radius: 14px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 1rem;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-gradient {
+      background: linear-gradient(135deg, var(--primary), #5B3FE4);
+      color: white;
+      box-shadow: 0 8px 24px rgba(124, 58, 237, 0.4);
+    }
+    .btn-gradient:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(124, 58, 237, 0.6);
+    }
+    .btn-outline {
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text);
+    }
+    .btn-outline:hover {
+      background: rgba(255, 255, 255, 0.07);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Stats Strip */
+    .stats-strip {
+      display: inline-flex;
+      align-items: center;
+      gap: 32px;
+      padding: 16px 36px;
+      background: rgba(18, 22, 32, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      margin-top: 40px;
+      backdrop-filter: blur(12px);
+    }
+    .stat-item {
+      text-align: center;
+    }
+    .stat-val {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .stat-lbl {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    .stat-divider {
+      width: 1px;
+      height: 30px;
+      background: var(--border);
+    }
+
+    /* Features Grid */
+    .features {
+      padding: 80px 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      transition: all 0.25s ease;
+    }
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(124, 58, 237, 0.3);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+    }
+    .card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      font-size: 1.25rem;
+    }
+    .icon-primary {
+      background: rgba(124, 58, 237, 0.12);
+      border: 1px solid rgba(124, 58, 237, 0.25);
+      color: var(--primary-light);
+    }
+    .icon-amber {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      color: var(--amber);
+    }
+    .icon-cyan {
+      background: rgba(6, 182, 212, 0.12);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      color: var(--secondary-light);
+    }
+    .card h3 {
+      font-size: 1.125rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .card p {
+      font-size: 0.9375rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 0;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+    footer span {
+      color: var(--secondary);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="ambient-bg">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <div class="container">
+    <header>
+      <a href="#" class="logo">
+        <div class="logo-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+        </div>
+        <span>JKR AI Calling</span>
+      </a>
+      <div style="display: flex; gap: 12px;">
+        <a href="http://localhost:3000/login" class="nav-btn nav-btn-ghost">Log in</a>
+        <a href="http://localhost:3000/signup" class="nav-btn nav-btn-primary">Get started</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="badge">
+          <span class="badge-dot"></span>
+          India-First · Multilingual · Outcome-Driven
+        </div>
+
+        <div class="waveform">
+          <div class="bar" style="height: 14px;"></div>
+          <div class="bar" style="height: 28px;"></div>
+          <div class="bar" style="height: 38px;"></div>
+          <div class="bar" style="height: 20px;"></div>
+          <div class="bar" style="height: 44px;"></div>
+          <div class="bar" style="height: 32px;"></div>
+          <div class="bar" style="height: 18px;"></div>
+          <div class="bar" style="height: 40px;"></div>
+          <div class="bar" style="height: 26px;"></div>
+          <div class="bar" style="height: 12px;"></div>
+        </div>
+
+        <h1>
+          An AI revenue agent that <span class="gradient-primary">calls leads</span>, understands customers, &amp; <span class="gradient-secondary">proves it worked</span>.
+        </h1>
+
+        <p class="hero-desc">
+          Not a chatbot with text-to-speech bolted on. JKR AI Calling qualifies leads, answers from your approved knowledge, books appointments, and hands off to your team — in Telugu, Hindi, English, or a natural mix of both.
+        </p>
+
+        <div class="cta-group">
+          <a href="http://localhost:3000/signup" class="btn btn-gradient">
+            Start Free
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </a>
+          <a href="http://localhost:3000/app/calls" class="btn btn-outline">Explore Live Demo</a>
+        </div>
+
+        <div class="stats-strip">
+          <div class="stat-item">
+            <div class="stat-val">3</div>
+            <div class="stat-lbl">Languages</div>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-item">
+            <div class="stat-val">10</div>
+            <div class="stat-lbl">Safety checks</div>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-item">
+            <div class="stat-val">0</div>
+            <div class="stat-lbl">Calls without consent</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="features">
+        <div class="grid">
+          <div class="card">
+            <div class="card-icon icon-primary">📞</div>
+            <h3>Calls that sound human, disclose they're not</h3>
+            <p>Natural Telugu, Hindi, and English conversation with real interruption handling — every call opens with a brief, honest AI disclosure.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon icon-amber">🌏</div>
+            <h3>Built for India, not translated for it</h3>
+            <p>Telugu-English and Hindi-English code-switching, Indian names, rupee amounts, and calling hours that respect local Indian norms.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon icon-cyan">🛡️</div>
+            <h3>Safety before scale</h3>
+            <p>Consent, suppression, and calling-window checks run before every dial. No real call is ever placed without explicit authorization.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>© 2026 JKR AI Calling. <span>No real call is ever placed without explicit authorization</span> — every workspace defaults to mock providers.</p>
+    </footer>
+  </div>
+
+</body>
+</html>
