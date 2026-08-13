@@ -21,14 +21,23 @@ target_metadata = Base.metadata
 
 # Migrations run DDL (CREATE TABLE/POLICY/ROLE) and must use the superuser
 # role, never the RLS-enforced application role — see docs/DECISIONS/0004.
-MIGRATIONS_DATABASE_URL_SYNC = os.environ.get(
+raw_url = os.environ.get(
     "MIGRATIONS_DATABASE_URL_SYNC",
     os.environ.get(
         "DATABASE_URL_SYNC",
-        "postgresql+psycopg://jkr:jkr_local_dev@localhost:55432/jkr_ai_calling",
+        os.environ.get("DATABASE_URL", "postgresql+psycopg://jkr:jkr_local_dev@localhost:55432/jkr_ai_calling"),
     ),
 )
+if raw_url.startswith("postgresql+asyncpg://"):
+    raw_url = raw_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1)
+elif raw_url.startswith("postgres://"):
+    raw_url = raw_url.replace("postgres://", "postgresql+psycopg://", 1)
+elif raw_url.startswith("postgresql://") and not raw_url.startswith("postgresql+psycopg://"):
+    raw_url = raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+MIGRATIONS_DATABASE_URL_SYNC = raw_url
 config.set_main_option("sqlalchemy.url", MIGRATIONS_DATABASE_URL_SYNC)
+
 
 
 def run_migrations_offline() -> None:
