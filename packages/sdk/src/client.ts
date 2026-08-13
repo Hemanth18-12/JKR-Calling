@@ -27,7 +27,19 @@ function resolveBaseUrl(): string {
   if (typeof window !== "undefined") {
     return process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   }
-  return process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+  if (process.env.API_BASE_URL) {
+    return process.env.API_BASE_URL.replace(/\/$/, "");
+  }
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL.replace(/\/$/, "");
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  if (process.env.NEXT_PUBLIC_VERCEL_URL) {
+    return `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`;
+  }
+  return "http://localhost:8000";
 }
 
 /** For call sites that need a raw URL rather than a fetch call — e.g. an
@@ -41,18 +53,24 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   const { body, cookieHeader, headers, ...rest } = options;
   const base = resolveBaseUrl();
 
-  const response = await fetch(`${base}/api/v1${path}`, {
-    ...rest,
-    method: options.method ?? (body ? "POST" : "GET"),
-    credentials: "include",
-    cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      ...(cookieHeader ? { cookie: cookieHeader } : {}),
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${base}/api/v1${path}`, {
+      ...rest,
+      method: options.method ?? (body ? "POST" : "GET"),
+      credentials: "include",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
+        ...headers,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Network request failed";
+    throw new ApiClientError(503, 503, `API connection failed (${base}): ${msg}`);
+  }
 
   const isJson = response.headers.get("content-type")?.includes("application/json");
   const payload = isJson ? await response.json().catch(() => null) : null;

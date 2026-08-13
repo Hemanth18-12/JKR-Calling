@@ -18,8 +18,11 @@ export async function getServerSession() {
   try {
     return await authApi.me({ cookieHeader });
   } catch (err) {
-    if (err instanceof ApiClientError && err.status === 401) return null;
-    throw err;
+    if (err instanceof ApiClientError && (err.status === 401 || err.status === 403 || err.status === 503)) {
+      return null;
+    }
+    console.error("Failed to read server session:", err);
+    return null;
   }
 }
 

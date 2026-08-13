@@ -101,14 +101,12 @@ export function AppShell({
   const handleLogout = async () => {
     await authApi.logout();
     toast({ title: "Logged out", variant: "default" });
-    router.push("/login");
-    router.refresh();
+    window.location.href = "/login";
   };
 
   const handleSwitchWorkspace = async (workspaceId: string) => {
     await authApi.setActiveWorkspace(workspaceId);
-    router.push("/app/dashboard");
-    router.refresh();
+    window.location.href = "/app/dashboard";
   };
 
   return (
@@ -201,11 +199,11 @@ export function AppShell({
           <div className="border-t border-border p-3">
             <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
-                {me.user.full_name.charAt(0).toUpperCase()}
+                {me?.user?.full_name?.charAt(0)?.toUpperCase() ?? "U"}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium text-foreground">{me.user.full_name}</p>
-                <p className="truncate text-[10px] text-muted-foreground">{me.user.email}</p>
+                <p className="truncate text-xs font-medium text-foreground">{me?.user?.full_name ?? "User"}</p>
+                <p className="truncate text-[10px] text-muted-foreground">{me?.user?.email ?? ""}</p>
               </div>
             </div>
           </div>

@@ -83,8 +83,20 @@ export default async function DashboardPage() {
   const active = workspaces.find((w) => w.id === me.active_workspace_id) ?? workspaces[0];
   if (!active) return null;
 
+  const defaultOverview = {
+    total_calls: 0,
+    connected_calls: 0,
+    connect_rate: 0,
+    appointments_booked: 0,
+    contacts_reached: 0,
+    active_campaigns: 0,
+    pending_handoffs: 0,
+    revenue_paise: 0,
+    revenue_event_count: 0,
+  };
+
   const [overview, contacts] = await Promise.all([
-    analyticsApi.overview(active.id, { cookieHeader }),
+    analyticsApi.overview(active.id, { cookieHeader }).catch(() => defaultOverview),
     contactsApi.list(active.id, { cookieHeader }).catch(() => []),
   ]);
 

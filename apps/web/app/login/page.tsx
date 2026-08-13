@@ -23,8 +23,7 @@ export default function LoginPage() {
     setFormError(null);
     try {
       await authApi.login(data);
-      router.push("/app/dashboard");
-      router.refresh();
+      window.location.href = "/app/dashboard";
     } catch (err) {
       setFormError(err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.");
     }

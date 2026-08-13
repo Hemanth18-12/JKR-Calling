@@ -39,7 +39,7 @@ export function CreateWorkspaceForm() {
     setFormError(null);
     try {
       await workspacesApi.create(data);
-      router.refresh();
+      window.location.href = "/app/dashboard";
     } catch (err) {
       setFormError(err instanceof ApiClientError ? err.message : "Could not create workspace.");
     }

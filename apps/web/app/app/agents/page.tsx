@@ -26,7 +26,7 @@ export default async function AgentsPage() {
     );
   }
 
-  const agents = await agentsApi.list(active.id, { cookieHeader });
+  const agents = await agentsApi.list(active.id, { cookieHeader }).catch(() => []);
 
   return (
     <div className="space-y-6 p-8">

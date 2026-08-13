@@ -23,8 +23,7 @@ export default function SignupPage() {
     setFormError(null);
     try {
       await authApi.signup(data);
-      router.push("/app/dashboard");
-      router.refresh();
+      window.location.href = "/app/dashboard";
     } catch (err) {
       setFormError(err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.");
     }
