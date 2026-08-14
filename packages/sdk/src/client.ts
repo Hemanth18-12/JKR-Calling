@@ -24,16 +24,22 @@ export interface ApiFetchOptions extends Omit<RequestInit, "body"> {
 }
 
 function resolveBaseUrl(): string {
-  const envUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    process.env.API_BASE_URL;
-
   if (typeof window !== "undefined") {
-    return (process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+    // In browser, always use relative path ("") so all API requests go
+    // through the Next.js same-origin rewrite (/api/v1/*). This guarantees
+    // the session cookie (jkr_session) is scoped to the frontend domain
+    // (*.vercel.app), allowing Next.js Server Components (getServerSession)
+    // to access the cookie on page transitions.
+    return "";
   }
-  if (envUrl) {
-    return envUrl.replace(/\/$/, "");
+  if (process.env.API_BASE_URL) {
+    return process.env.API_BASE_URL.replace(/\/$/, "");
+  }
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL.replace(/\/$/, "");
+  }
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, "");
   }
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`;
