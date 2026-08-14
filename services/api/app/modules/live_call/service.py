@@ -291,6 +291,19 @@ async def start_live_test_call(
     tts_speaker = _resolve_tts_speaker(voice)
     tts_pace = _resolve_tts_pace(voice)
 
+    missing_twilio = []
+    if not settings.twilio_account_sid:
+        missing_twilio.append("TWILIO_ACCOUNT_SID")
+    if not settings.twilio_auth_token:
+        missing_twilio.append("TWILIO_AUTH_TOKEN")
+    if not settings.twilio_from_number:
+        missing_twilio.append("TWILIO_FROM_NUMBER")
+    if missing_twilio:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"Twilio credentials missing on Render: {', '.join(missing_twilio)}. Please check the Environment tab on Render.",
+        )
+
     try:
         telephony = TwilioClient(
             account_sid=settings.twilio_account_sid, auth_token=settings.twilio_auth_token, from_number=settings.twilio_from_number

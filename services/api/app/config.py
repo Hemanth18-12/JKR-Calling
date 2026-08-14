@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Anchored to the repo root, not left as a bare relative ".env" — pydantic-
@@ -60,11 +61,25 @@ class Settings(BaseSettings):
     llm_provider_default: str = "mock"
     openai_api_key: str = ""
     telephony_provider_default: str = "mock"
-    twilio_account_sid: str = ""
-    twilio_auth_token: str = ""
-    twilio_from_number: str = ""
+    twilio_account_sid: str = Field(
+        default="",
+        validation_alias=AliasChoices("TWILIO_ACCOUNT_SID", "TWILIO_SID", "ACCOUNT_SID", "twilio_account_sid"),
+    )
+    twilio_auth_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("TWILIO_AUTH_TOKEN", "TWILIO_TOKEN", "AUTH_TOKEN", "twilio_auth_token"),
+    )
+    twilio_from_number: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "TWILIO_FROM_NUMBER", "TWILIO_PHONE_NUMBER", "TWILIO_NUMBER", "TWILIO_PHONE", "FROM_NUMBER", "twilio_from_number"
+        ),
+    )
     sarvam_tts_api_key: str = ""
-    sarvam_api_key: str = ""
+    sarvam_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("SARVAM_API_KEY", "SARVAM_KEY", "sarvam_api_key"),
+    )
 
     # --- P3.5: ConversationEngine latency optimization ---
     # "legacy" (default, per spec §7's own recommendation) is byte-identical
