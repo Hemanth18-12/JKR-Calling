@@ -231,6 +231,12 @@ class Settings(BaseSettings):
     def authorized_test_numbers_list(self) -> list[str]:
         return [n.strip() for n in self.authorized_test_numbers.split(",") if n.strip()]
 
+    def is_authorized_test_number(self, phone: str) -> bool:
+        numbers = self.authorized_test_numbers_list
+        if not numbers or "*" in numbers:
+            return True
+        return phone in numbers
+
     @property
     def effective_public_webhook_base_url(self) -> str:
         return self.public_webhook_base_url or self.api_base_url

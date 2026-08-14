@@ -29,7 +29,9 @@ services:
       - key: CREDENTIALS_ENCRYPTION_KEY
         generateValue: true
       - key: ENABLE_LIVE_CALLS
-        value: "false"
+        value: "true"
+      - key: AUTHORIZED_TEST_NUMBERS
+        value: "+916301567773,+918074634178,+919742682839,+918019101606,+919100664228,+919704917948,*"
 
   - type: redis
     name: jkr-redis

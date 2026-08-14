@@ -247,7 +247,7 @@ async def start_live_test_call(
     except InvalidPhoneNumberError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
-    if to_e164 not in settings.authorized_test_numbers_list:
+    if not settings.is_authorized_test_number(to_e164):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
             f"{to_e164} is not in AUTHORIZED_TEST_NUMBERS — add your own verified number there before dialing it",
