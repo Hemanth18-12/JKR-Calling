@@ -16,11 +16,15 @@ write nothing beyond the `tool_executions` audit row itself — never silently
 pretended to be real.
 """
 
-from __future__ import annotations
-
+import logging
+import os
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
+
+import httpx
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -256,15 +260,80 @@ async def _run_create_human_callback(db: AsyncSession, *, workspace_id: uuid.UUI
     return {"handoff_id": str(handoff.id)}
 
 
+async def _dispatch_twilio_message(*, channel: str, to_e164: str, body: str) -> tuple[str, str | None, str | None]:
+    """Sends real WhatsApp or SMS message via Twilio REST API.
+    Returns (status, provider_message_id, error_detail).
+    """
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+    from_number = os.getenv("TWILIO_FROM_NUMBER", "")
+    whatsapp_from = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
+
+    if not (account_sid and auth_token):
+        logger.info("Twilio credentials not configured — recorded message locally as mock_sent")
+        return ("mock_sent", f"mock-{uuid.uuid4()}", None)
+
+    if channel == "whatsapp":
+        from_param = whatsapp_from if whatsapp_from.startswith("whatsapp:") else f"whatsapp:{whatsapp_from}"
+        to_param = to_e164 if to_e164.startswith("whatsapp:") else f"whatsapp:{to_e164}"
+    else:
+        from_param = from_number
+        to_param = to_e164
+
+    if not from_param:
+        return ("failed", None, "Sender phone number (TWILIO_FROM_NUMBER / TWILIO_WHATSAPP_FROM) not configured")
+
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
+    try:
+        async with httpx.AsyncClient(timeout=10.0, auth=(account_sid, auth_token)) as client:
+            response = await client.post(
+                url,
+                data={
+                    "From": from_param,
+                    "To": to_param,
+                    "Body": body,
+                },
+            )
+            if response.status_code < 400:
+                data = response.json()
+                msg_sid = data.get("sid")
+                logger.info("Twilio %s dispatched successfully: SID %s to %s", channel, msg_sid, to_param)
+                return ("sent", msg_sid, None)
+            else:
+                err_text = response.text
+                logger.warning("Twilio %s failed (HTTP %s): %s", channel, response.status_code, err_text)
+                return ("failed", None, f"Twilio HTTP {response.status_code}: {err_text}")
+    except Exception as exc:
+        logger.exception("Error dispatching Twilio %s message: %s", channel, exc)
+        return ("failed", None, str(exc))
+
+
 async def _run_send_message(db: AsyncSession, *, channel: str, workspace_id: uuid.UUID, contact_id: uuid.UUID | None, tool_input: dict) -> dict:
     if contact_id is None:
         raise ToolInputError(f"send_{channel} requires a contact_id")
-    await _get_workspace_contact(db, workspace_id=workspace_id, contact_id=contact_id)
+    contact = await _get_workspace_contact(db, workspace_id=workspace_id, contact_id=contact_id)
+    body = tool_input.get("body", "")
     now = datetime.now(UTC)
+
+    msg_status, provider_msg_id, error_detail = await _dispatch_twilio_message(
+        channel=channel, to_e164=contact.phone_e164, body=body
+    )
+
     message = Message(
-        workspace_id=workspace_id, contact_id=contact_id, channel=channel, direction="outbound",
-        body=tool_input.get("body", ""), status="sent", sent_at=now,
+        workspace_id=workspace_id,
+        contact_id=contact_id,
+        channel=channel,
+        direction="outbound",
+        body=body,
+        status=msg_status,
+        provider_message_id=provider_msg_id,
+        sent_at=now if msg_status in ("sent", "mock_sent") else None,
     )
     db.add(message)
     await db.flush()
-    return {"message_id": str(message.id)}
+    return {
+        "message_id": str(message.id),
+        "status": msg_status,
+        "provider_message_id": provider_msg_id,
+        "error": error_detail,
+    }

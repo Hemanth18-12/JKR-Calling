@@ -84,15 +84,16 @@ async def end_call(db: AsyncSession, *, settings: Settings, workspace_id: uuid.U
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
             ) from exc
-    if response.status_code >= 400:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, response.json().get("detail", "voice-worker error"))
-
-    # Post-call intelligence (spec §19) is enqueued by voice-worker itself,
-    # not here — a call can also be ended by campaign-worker's dialer (never
-    # going through this proxy at all), and "ending a call always triggers
-    # the pipeline" must hold regardless of which caller ended it. See
-    # services/voice-worker/app/conversation_engine.py::end_session.
-    return response.json()
+    res_data = response.json()
+    try:
+        from jkr_db.pipeline import run_post_call_pipeline
+        await run_post_call_pipeline(
+            db, workspace_id=workspace_id, call_id=call_id,
+            encryption_key=settings.credentials_encryption_key,
+        )
+    except Exception:
+        pass
+    return res_data
 
 
 async def list_calls(db: AsyncSession, *, workspace_id: uuid.UUID, status_filter: str | None = None) -> list[dict]:

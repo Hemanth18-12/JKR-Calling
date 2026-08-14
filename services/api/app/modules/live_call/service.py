@@ -659,7 +659,18 @@ async def _finalize_call(
         )
 
     await db.flush()
-    enqueue("run_post_call_pipeline", args=(str(call_session_id), str(workspace_id)), queue_name="intelligence")
+    try:
+        from jkr_db.pipeline import run_post_call_pipeline
+        await run_post_call_pipeline(
+            db, workspace_id=workspace_id, call_id=call_session_id,
+            encryption_key=settings.credentials_encryption_key,
+        )
+    except Exception as exc:
+        logger.exception("Error executing post_call_pipeline inline: %s", exc)
+        try:
+            enqueue("run_post_call_pipeline", args=(str(call_session_id), str(workspace_id)), queue_name="intelligence")
+        except Exception:
+            pass
 
 
 async def handle_voice_webhook(*, token: str, form: dict[str, str], signature: str | None, settings: Settings, redis: Any) -> str:
