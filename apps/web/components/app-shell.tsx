@@ -7,6 +7,7 @@ import {
   BarChart3,
   Bot,
   Calendar,
+  ChevronRight,
   CreditCard,
   Gauge,
   Handshake,
@@ -25,6 +26,9 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
+
+import { BackButton } from "./back-button";
+import { FaqChatbox } from "./faq-chatbox";
 
 interface NavItem {
   label: string;
@@ -108,6 +112,9 @@ export function AppShell({
     await authApi.setActiveWorkspace(workspaceId);
     window.location.href = "/app/dashboard";
   };
+
+  const isNotDashboard = pathname !== "/app/dashboard" && pathname !== "/app";
+  const breadcrumbs = getBreadcrumbs(pathname);
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -213,11 +220,40 @@ export function AppShell({
       {/* Main content area */}
       <div className="flex flex-1 flex-col">
         {/* Top header */}
-        <header className="flex h-14 items-center justify-between border-b border-border bg-surface/80 px-6 backdrop-blur-md">
-          <div className="flex items-center gap-3">
+        <header className="flex h-14 items-center justify-between border-b border-border bg-surface/80 px-4 sm:px-6 backdrop-blur-md">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {/* Back button if not on root dashboard */}
+            {isNotDashboard ? (
+              <div className="flex items-center gap-1.5 pr-1 border-r border-border/60">
+                <BackButton fallbackHref="/app/dashboard" size="sm" showLabel={false} />
+              </div>
+            ) : null}
+
+            {/* Breadcrumb Trail */}
+            {breadcrumbs.length > 0 ? (
+              <nav aria-label="Breadcrumb" className="hidden md:flex items-center gap-1 text-xs text-muted-foreground truncate">
+                {breadcrumbs.map((crumb, idx) => (
+                  <React.Fragment key={crumb.href}>
+                    {idx > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />}
+                    {crumb.isLast ? (
+                      <span className="font-semibold text-foreground truncate">{crumb.label}</span>
+                    ) : (
+                      <Link
+                        href={crumb.href as never}
+                        className="hover:text-foreground transition-colors truncate hover:underline"
+                      >
+                        {crumb.label}
+                      </Link>
+                    )}
+                  </React.Fragment>
+                ))}
+              </nav>
+            ) : null}
+
+            {/* Workspace Selector */}
             {workspaces.length > 0 ? (
               <select
-                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-foreground transition-colors hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs sm:text-sm text-foreground transition-colors hover:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/30"
                 value={activeWorkspace?.id ?? ""}
                 onChange={(e) => handleSwitchWorkspace(e.target.value)}
               >
@@ -230,13 +266,13 @@ export function AppShell({
             ) : (
               <span className="text-sm text-muted-foreground">No workspace yet</span>
             )}
-            <Badge variant="mock" className="uppercase tracking-wider">
+            <Badge variant="mock" className="uppercase tracking-wider text-[10px] hidden sm:inline-flex">
               MOCK
             </Badge>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">{me.user.full_name}</span>
-            <Button variant="outline" size="sm" onClick={handleLogout}>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="text-xs sm:text-sm text-muted-foreground hidden sm:inline">{me.user.full_name}</span>
+            <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs">
               Log out
             </Button>
           </div>
@@ -244,7 +280,58 @@ export function AppShell({
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto bg-gradient-mesh">{children}</main>
+
+        {/* Global Floating Draggable FAQ Assistant */}
+        <FaqChatbox />
       </div>
     </div>
   );
+}
+
+const ROUTE_LABELS: Record<string, string> = {
+  dashboard: "Dashboard",
+  agents: "Agents",
+  persona: "Persona Editor",
+  voice: "Voice Persona",
+  knowledge: "Knowledge",
+  documents: "Documents",
+  campaigns: "Campaigns",
+  contacts: "Contacts",
+  calls: "Calls",
+  live: "Live Console",
+  "follow-ups": "Follow-ups",
+  handoffs: "Handoffs",
+  appointments: "Appointments",
+  analytics: "Analytics",
+  compliance: "Compliance",
+  integrations: "Integrations",
+  billing: "Billing",
+  usage: "Usage",
+  team: "Team",
+  settings: "Settings",
+  new: "New",
+};
+
+function getBreadcrumbs(pathname: string | null) {
+  if (!pathname || pathname === "/app" || pathname === "/app/dashboard") {
+    return [];
+  }
+  const parts = pathname.replace(/^\/app\/?/, "").split("/").filter(Boolean);
+  const crumbs: { label: string; href: string; isLast: boolean }[] = [
+    { label: "Dashboard", href: "/app/dashboard", isLast: false },
+  ];
+
+  let cumulative = "/app";
+  parts.forEach((part, index) => {
+    cumulative += `/${part}`;
+    const isUuid = /^[0-9a-f-]{36}$/i.test(part);
+    const label = ROUTE_LABELS[part] ?? (isUuid ? "Details" : part.charAt(0).toUpperCase() + part.slice(1));
+    crumbs.push({
+      label,
+      href: cumulative,
+      isLast: index === parts.length - 1,
+    });
+  });
+
+  return crumbs;
 }

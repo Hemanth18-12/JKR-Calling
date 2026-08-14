@@ -15,6 +15,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
+import { BackButton } from "./back-button";
+
 // days_of_week values follow Python's datetime.weekday(): 0=Monday..6=Sunday
 // (see packages/db/jkr_db/safety_gate.py within_calling_hours).
 const DAY_LABELS = [
@@ -311,11 +313,12 @@ export function CampaignDetail({
 
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <BackButton fallbackHref="/app/campaigns" label="Campaigns" />
             <h1 className="text-2xl font-bold tracking-tight">{campaign.name}</h1>
             <Badge variant={CAMPAIGN_STATUS_VARIANT[campaign.status] ?? "secondary"}>{campaign.status}</Badge>
           </div>
-          <p className="text-sm text-muted-foreground">{campaign.objective.replace(/_/g, " ")} · max {campaign.max_attempts} attempts</p>
+          <p className="mt-1 text-sm text-muted-foreground">{campaign.objective.replace(/_/g, " ")} · max {campaign.max_attempts} attempts</p>
         </div>
         <div className="flex gap-2">
           {campaign.status === "draft" || campaign.status === "paused" ? (

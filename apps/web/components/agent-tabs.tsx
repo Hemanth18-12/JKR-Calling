@@ -4,6 +4,8 @@ import { Badge } from "@jkr/ui";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { BackButton } from "./back-button";
+
 const TABS = [
   { label: "Overview", segment: "" },
   { label: "Persona", segment: "persona" },
@@ -21,6 +23,7 @@ export function AgentTabs({ agentId, agentName, status }: { agentId: string; age
   return (
     <div className="border-b border-border bg-surface px-8 pt-6">
       <div className="mb-4 flex items-center gap-3">
+        <BackButton fallbackHref="/app/agents" label="Agents" />
         <h1 className="text-xl font-semibold tracking-tight">{agentName}</h1>
         <Badge variant={status === "active" ? "success" : "secondary"}>{status}</Badge>
       </div>
