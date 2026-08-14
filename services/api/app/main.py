@@ -43,9 +43,13 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="JKR AI Calling API", version="0.1.0", root_path="", lifespan=_lifespan)
 
+cors_origins = [settings.app_base_url, "http://localhost:3000"]
+if settings.cors_allowed_origins:
+    cors_origins.extend([o.strip() for o in settings.cors_allowed_origins.split(",") if o.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.app_base_url, "http://localhost:3000"],
+    allow_origins=cors_origins,
     allow_origin_regex=r"https://.*\.vercel\.app|http://localhost:\d+",
     allow_credentials=True,
     allow_methods=["*"],

@@ -24,14 +24,16 @@ export interface ApiFetchOptions extends Omit<RequestInit, "body"> {
 }
 
 function resolveBaseUrl(): string {
+  const envUrl =
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.API_BASE_URL;
+
   if (typeof window !== "undefined") {
-    return process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+    return (process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
   }
-  if (process.env.API_BASE_URL) {
-    return process.env.API_BASE_URL.replace(/\/$/, "");
-  }
-  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
-    return process.env.NEXT_PUBLIC_API_BASE_URL.replace(/\/$/, "");
+  if (envUrl) {
+    return envUrl.replace(/\/$/, "");
   }
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`;

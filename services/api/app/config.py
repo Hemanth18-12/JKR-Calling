@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     app_env: str = "local"
     app_base_url: str = "http://localhost:3000"
     api_base_url: str = "http://localhost:8000"
+    cors_allowed_origins: str = ""
     voice_worker_base_url: str = "http://localhost:8100"
 
     database_url: str = "postgresql+asyncpg://jkr_app:jkr_app_local_dev@localhost:55432/jkr_ai_calling"
@@ -250,5 +251,6 @@ class Settings(BaseSettings):
         return base
 
 
+@lru_cache
 def get_settings() -> Settings:
     return Settings()
