@@ -59,7 +59,10 @@ class Settings(BaseSettings):
     # default; see docs comment in .env.example. ---
     public_webhook_base_url: str = ""  # e.g. an ngrok https URL; falls back to api_base_url
     llm_provider_default: str = "mock"
-    openai_api_key: str = ""
+    openai_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("OPENAI_API_KEY", "OPENAI_KEY", "openai_api_key"),
+    )
     telephony_provider_default: str = "mock"
     twilio_account_sid: str = Field(
         default="",

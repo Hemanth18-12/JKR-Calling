@@ -32,6 +32,18 @@ services:
         value: "true"
       - key: AUTHORIZED_TEST_NUMBERS
         value: "+916301567773,+918074634178,+919742682839,+918019101606,+919100664228,+919704917948,*"
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: SARVAM_TTS_API_KEY
+        sync: false
 
   - type: redis
     name: jkr-redis
