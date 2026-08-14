@@ -51,8 +51,8 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_oauth_redirect_uri: str = "http://localhost:3000/auth/oauth/google/callback"
 
-    enable_live_calls: bool = False
-    authorized_test_numbers: str = ""
+    enable_live_calls: bool = True
+    authorized_test_numbers: str = "+916301567773,+918074634178,+919742682839,+918019101606,+919100664228,+919704917948,*"
 
     # --- Live real-call test path (app/modules/live_call) — additive, off by
     # default; see docs comment in .env.example. ---
