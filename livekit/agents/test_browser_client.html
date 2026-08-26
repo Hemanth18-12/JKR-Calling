@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JKR AI Calling — Live AI Voice & Telephony Sandbox</title>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #07090e;
+      --card: #0f172a;
+      --card-border: #1e293b;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --accent: #06b6d4;
+      --success: #10b981;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body {
+      background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, var(--bg) 75%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      width: 100%;
+      max-width: 720px;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 28px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    }
+    .header { text-align: center; margin-bottom: 20px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #60a5fa;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+      background: linear-gradient(135deg, #fff 40%, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    p.subtitle { font-size: 0.9rem; color: var(--text-muted); }
+    
+    .tabs {
+      display: flex;
+      background: #090d16;
+      padding: 4px;
+      border-radius: 14px;
+      border: 1px solid var(--card-border);
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      font-weight: 600;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: var(--primary);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+    }
+
+    .form-group { margin-bottom: 16px; text-align: left; }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .input-row { display: flex; gap: 12px; }
+    input, select {
+      width: 100%;
+      padding: 12px 14px;
+      background: #090d16;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      color: #fff;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2);
+    }
+    
+    .visualizer-container {
+      position: relative;
+      height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .orb {
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #2563eb, #06b6d4);
+      box-shadow: 0 0 30px rgba(37, 99, 235, 0.4);
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.6rem;
+    }
+    .orb.speaking {
+      animation: pulse 1.1s infinite alternate;
+      box-shadow: 0 0 50px rgba(6, 182, 212, 0.9);
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); filter: brightness(1); }
+      100% { transform: scale(1.22); filter: brightness(1.35); }
+    }
+    
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 9999px;
+      background: #1e293b;
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-bottom: 16px;
+      border: 1px solid #334155;
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #64748b; }
+    .dot.connected { background: var(--success); box-shadow: 0 0 12px var(--success); }
+    .dot.connecting { background: #f59e0b; animation: blink 1s infinite alternate; }
+    @keyframes blink { 0% { opacity: 0.3; } 100% { opacity: 1; } }
+
+    .btn {
+      width: 100%;
+      padding: 15px 24px;
+      border-radius: 14px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      color: #fff;
+      box-shadow: 0 8px 20px -4px rgba(37, 99, 235, 0.5);
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 28px -4px rgba(6, 182, 212, 0.6); }
+    .btn.disconnect { background: linear-gradient(135deg, #dc2626, #b91c1c); box-shadow: 0 8px 20px -4px rgba(220, 38, 38, 0.4); }
+
+    /* Live Chat History */
+    .chat-history {
+      background: #090d16;
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 16px;
+      max-height: 180px;
+      overflow-y: auto;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      text-align: left;
+    }
+    .chat-bubble {
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 0.88rem;
+      line-height: 1.4;
+      max-width: 85%;
+    }
+    .chat-bubble.agent {
+      background: #1e293b;
+      color: #f1f5f9;
+      align-self: flex-start;
+      border: 1px solid #334155;
+    }
+    .chat-bubble.user {
+      background: rgba(37, 99, 235, 0.25);
+      color: #bfdbfe;
+      align-self: flex-end;
+      border: 1px solid rgba(59, 130, 246, 0.4);
+    }
+    .bubble-author { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; opacity: 0.8; }
+    
+    .meters-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+      text-align: left;
+    }
+    .meter-card {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 10px 14px;
+    }
+    .meter-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    .meter-bar-bg { width: 100%; height: 6px; background: #334155; border-radius: 4px; overflow: hidden; }
+    .meter-bar-fill { height: 100%; width: 0%; background: var(--success); transition: width 0.08s ease; }
+    .meter-bar-fill.agent { background: var(--accent); }
+
+    .logs-panel {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 10px 14px;
+      text-align: left;
+      font-family: ui-monospace, monospace;
+      font-size: 0.76rem;
+      color: #94a3b8;
+      max-height: 80px;
+      overflow-y: auto;
+    }
+    .log-line { margin-bottom: 2px; }
+    .log-line.success { color: #34d399; }
+    .log-line.warn { color: #fbbf24; }
+    .log-line.error { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="badge">JKR AI Calling &bull; Conversational AI</div>
+      <h1>Multilingual Voice Agent & Dialer</h1>
+      <p class="subtitle">LiveKit + OpenAI GPT-4o-mini + Sarvam STT & Bulbul TTS (Telugu / Hindi / English)</p>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('browser')">🎙️ Live AI Voice Call (Browser Mic)</button>
+      <button class="tab-btn" onclick="switchTab('dialer')">📱 Outbound Phone Call (Twilio)</button>
+    </div>
+
+    <!-- Phone Number Group -->
+    <div class="form-group" id="phoneGroup" style="display: none;">
+      <label for="phoneNumber">Mobile Phone Number to Dial</label>
+      <input type="tel" id="phoneNumber" placeholder="+91 8019101606" value="+918019101606">
+    </div>
+
+    <div class="input-row">
+      <div class="form-group" style="flex: 1;">
+        <label for="langSelect">Language</label>
+        <select id="langSelect" onchange="onLanguageChange()">
+          <option value="en-IN" selected>Indian English</option>
+          <option value="te-IN">Telugu (తెలుగు)</option>
+          <option value="hi-IN">Hindi (हिन्दी)</option>
+        </select>
+      </div>
+
+      <div class="form-group" style="flex: 1;">
+        <label for="speakerSelect">Voice Speaker</label>
+        <select id="speakerSelect">
+          <option value="shubh" selected>Shubh (Male - Natural)</option>
+          <option value="kavitha">Kavitha (Telugu Female)</option>
+          <option value="anushka">Anushka (Female)</option>
+          <option value="ratan">Ratan (Male - Expressive)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="visualizer-container">
+      <div class="orb" id="voiceOrb">🎙️</div>
+    </div>
+
+    <div style="text-align: center;">
+      <div class="status-pill">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">Ready to start voice conversation</span>
+      </div>
+    </div>
+
+    <button id="mainCallBtn" class="btn" onclick="handleCallButton()">🎙️ Start Live Voice Call</button>
+
+    <!-- Live Chat Transcript -->
+    <div class="chat-history" id="chatHistory">
+      <div class="chat-bubble agent">
+        <div class="bubble-author">🤖 Kelly (Agent)</div>
+        Hello! I am Kelly from JKR AI Calling. Start the call and ask me any question in Telugu, Hindi, or English!
+      </div>
+    </div>
+
+    <div class="meters-grid">
+      <div class="meter-card">
+        <div class="meter-label">Your Microphone Level</div>
+        <div class="meter-bar-bg"><div class="meter-bar-fill" id="micLevel"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-label">Agent Speaking Level</div>
+        <div class="meter-bar-bg"><div class="meter-bar-fill agent" id="agentLevel"></div></div>
+      </div>
+    </div>
+
+    <div class="logs-panel" id="logs">
+      <div class="log-line success">[Ready] Click 'Start Live Voice Call' to speak directly into your laptop mic.</div>
+    </div>
+  </div>
+
+  <audio id="remoteAudio" autoplay playsinline></audio>
+
+  <script>
+    let currentMode = "browser"; // default to live browser conversation
+    let room = null;
+    let audioContext = null;
+    let micAnalyser = null;
+    let micAnimId = null;
+
+    const phoneGroup = document.getElementById("phoneGroup");
+    const phoneNumber = document.getElementById("phoneNumber");
+    const langSelect = document.getElementById("langSelect");
+    const speakerSelect = document.getElementById("speakerSelect");
+    const mainCallBtn = document.getElementById("mainCallBtn");
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const voiceOrb = document.getElementById("voiceOrb");
+    const micLevel = document.getElementById("micLevel");
+    const agentLevel = document.getElementById("agentLevel");
+    const logs = document.getElementById("logs");
+    const chatHistory = document.getElementById("chatHistory");
+
+    function log(msg, type = "info") {
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement("div");
+      div.className = `log-line ${type}`;
+      div.innerText = `[${time}] ${msg}`;
+      logs.insertBefore(div, logs.firstChild);
+    }
+
+    function addChatBubble(author, text, isUser = false) {
+      const bubble = document.createElement("div");
+      bubble.className = `chat-bubble ${isUser ? "user" : "agent"}`;
+      bubble.innerHTML = `<div class="bubble-author">${isUser ? "👤 You" : "🤖 Kelly"}</div>${text}`;
+      chatHistory.appendChild(bubble);
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+
+    function switchTab(mode) {
+      currentMode = mode;
+      document.querySelectorAll(".tab-btn").forEach((btn, idx) => {
+        btn.classList.toggle("active", (mode === "browser" && idx === 0) || (mode === "dialer" && idx === 1));
+      });
+
+      if (mode === "dialer") {
+        phoneGroup.style.display = "block";
+        mainCallBtn.innerText = "📞 Place Phone Call to Mobile";
+      } else {
+        phoneGroup.style.display = "none";
+        mainCallBtn.innerText = "🎙️ Start Live Voice Call";
+      }
+    }
+
+    function onLanguageChange() {
+      const lang = langSelect.value;
+      if (lang === "te-IN") {
+        speakerSelect.value = "kavitha";
+      } else {
+        speakerSelect.value = "shubh";
+      }
+    }
+
+    function setupMicVisualizer(mediaStream) {
+      try {
+        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioContext.resume();
+        const source = audioContext.createMediaStreamSource(mediaStream);
+        micAnalyser = audioContext.createAnalyser();
+        micAnalyser.fftSize = 64;
+        source.connect(micAnalyser);
+        const bufferLength = micAnalyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        function updateMic() {
+          if (!room || room.state !== LivekitClient.ConnectionState.Connected) return;
+          micAnalyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < bufferLength; i++) { sum += dataArray[i]; }
+          let pct = Math.min(100, Math.round((sum / bufferLength / 128) * 100));
+          micLevel.style.width = pct + "%";
+          micAnimId = requestAnimationFrame(updateMic);
+        }
+        updateMic();
+      } catch (e) {
+        console.warn("Visualizer error:", e);
+      }
+    }
+
+    async function handleCallButton() {
+      if (room && room.state === LivekitClient.ConnectionState.Connected) {
+        await room.disconnect();
+        return;
+      }
+
+      if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioContext.state === 'suspended') await audioContext.resume();
+
+      const lang = langSelect.value;
+      const speaker = speakerSelect.value;
+      const phone = phoneNumber.value.trim();
+
+      mainCallBtn.disabled = true;
+      statusDot.className = "dot connecting";
+      statusText.innerText = currentMode === "dialer" ? `Dialing ${phone}...` : "Connecting to voice agent...";
+
+      try {
+        let token = "";
+        let wsUrl = "ws://localhost:7880";
+
+        if (currentMode === "dialer") {
+          log(`Placing phone call to ${phone}...`, "info");
+          const dialRes = await fetch("/api/dial", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phoneNumber: phone, language: lang, speaker: speaker })
+          });
+          const dialData = await dialRes.json();
+          token = dialData.token;
+          wsUrl = dialData.wsUrl;
+          log(`Phone call ringing on ${phone}! (Twilio SID: ${dialData.twilioSid})`, "success");
+        } else {
+          log(`Starting live voice session...`, "info");
+          const res = await fetch(`/token?lang=${encodeURIComponent(lang)}&speaker=${encodeURIComponent(speaker)}`);
+          const data = await res.json();
+          token = data.token;
+          wsUrl = data.wsUrl;
+        }
+
+        room = new LivekitClient.Room({
+          adaptiveStream: true,
+          dynacast: true,
+          audioCaptureDefaults: {
+            autoGainControl: true,
+            echoCancellation: true,
+            noiseSuppression: true,
+          }
+        });
+
+        room.on(LivekitClient.RoomEvent.Connected, async () => {
+          statusDot.className = "dot connected";
+          statusText.innerText = "Call Connected & Live";
+          mainCallBtn.innerText = "End Call";
+          mainCallBtn.className = "btn disconnect";
+          mainCallBtn.disabled = false;
+          log("LiveKit connected! Transmitting microphone audio...", "success");
+
+          const localTrack = await LivekitClient.createLocalAudioTrack({
+            echoCancellation: true,
+            noiseSuppression: true,
+          });
+          await room.localParticipant.publishTrack(localTrack);
+          log("Mic is LIVE! Speak your question now.", "success");
+          setupMicVisualizer(localTrack.mediaStream);
+        });
+
+        room.on(LivekitClient.RoomEvent.Disconnected, () => {
+          statusDot.className = "dot";
+          statusText.innerText = "Call Ended";
+          mainCallBtn.innerText = currentMode === "dialer" ? "📞 Place Phone Call to Mobile" : "🎙️ Start Live Voice Call";
+          mainCallBtn.className = "btn";
+          mainCallBtn.disabled = false;
+          voiceOrb.className = "orb";
+          micLevel.style.width = "0%";
+          agentLevel.style.width = "0%";
+          if (micAnimId) cancelAnimationFrame(micAnimId);
+          log("Call session ended.", "warn");
+        });
+
+        room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+          log(`Agent audio channel open (${participant.identity})`, "success");
+          if (track.kind === LivekitClient.Track.Kind.Audio) {
+            const audioElement = document.getElementById("remoteAudio");
+            track.attach(audioElement);
+            audioElement.play().catch(e => console.log("Play:", e));
+            voiceOrb.className = "orb speaking";
+            agentLevel.style.width = "85%";
+          }
+        });
+
+        room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
+          track.detach();
+          voiceOrb.className = "orb";
+          agentLevel.style.width = "0%";
+        });
+
+        // Listen for live chatbot speech transcriptions
+        room.on(LivekitClient.RoomEvent.DataReceived, (payload, participant, kind, topic) => {
+          try {
+            const text = new TextDecoder().decode(payload);
+            const data = JSON.parse(text);
+            if (data.type === "transcription" || topic === "lk.transcription") {
+              addChatBubble(participant?.identity || "User", data.text, true);
+            } else if (data.text) {
+              addChatBubble("Kelly", data.text, false);
+            }
+          } catch (e) {}
+        });
+
+        await room.connect(wsUrl, token);
+
+      } catch (err) {
+        log("Connection error: " + err.message, "error");
+        statusDot.className = "dot";
+        statusText.innerText = "Call Failed";
+        mainCallBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
