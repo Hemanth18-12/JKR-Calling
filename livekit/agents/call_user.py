@@ -4,6 +4,15 @@ import logging
 from dotenv import load_dotenv
 from twilio.rest import Client
 
+from pathlib import Path
+
+# Load .env from both the agent directory and workspace root
+agent_env = Path(__file__).resolve().parent / ".env"
+root_env = Path(__file__).resolve().parents[2] / ".env"
+if agent_env.exists():
+    load_dotenv(agent_env)
+if root_env.exists():
+    load_dotenv(root_env)
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -14,7 +23,7 @@ def make_call(target_phone_number: str):
     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
     auth_token = os.getenv("TWILIO_AUTH_TOKEN")
     twilio_number = os.getenv("TWILIO_PHONE_NUMBER") or "+19453058074"
-    sip_uri = os.getenv("LIVEKIT_SIP_ENDPOINT", "634lkdwwuva.sip.livekit.cloud")
+    sip_uri = os.getenv("LIVEKIT_SIP_ENDPOINT") or "jkr-ai-calling-bfz7gt4b.sip.livekit.cloud"
 
     if not account_sid or not auth_token:
         logger.error("❌ Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN in .env!")

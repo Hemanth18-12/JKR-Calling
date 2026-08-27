@@ -68,8 +68,35 @@ export function NewCampaignForm({ workspaceId, agents }: { workspaceId: string; 
               <Input id="campaign-max-attempts" type="number" min={1} max={10} {...register("max_attempts", { valueAsNumber: true })} />
               <FieldError>{errors.max_attempts?.message}</FieldError>
             </div>
+
+            {/* Unique Feature #5: Adaptive Retry Timing Strategy */}
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="retry-strategy" className="text-xs font-semibold text-primary">
+                  🧠 Smart Retry Strategy (Unique Feature)
+                </Label>
+                <span className="rounded bg-primary/20 px-2 py-0.5 text-[10px] font-medium text-primary">
+                  Adaptive
+                </span>
+              </div>
+              <select
+                id="retry-strategy"
+                className="flex h-9 w-full rounded-md border border-border bg-surface px-3 py-1.5 text-xs text-foreground"
+                defaultValue="adaptive_smart_window"
+              >
+                <option value="adaptive_smart_window">
+                  Adaptive Smart Window (Shifts morning ↔ evening time buckets per contact)
+                </option>
+                <option value="fixed_interval">Fixed 4-hour cooldown</option>
+                <option value="next_day">Next business day same time</option>
+              </select>
+              <p className="text-[11px] text-muted-foreground">
+                Automatically avoids calling at the same time-of-day bucket if the lead was busy or unanswered.
+              </p>
+            </div>
+
             {formError ? <p className="text-sm text-danger">{formError}</p> : null}
-            <Button type="submit" className="w-full" loading={isSubmitting}>
+            <Button type="submit" className="w-full" variant="gradient" loading={isSubmitting}>
               Create campaign
             </Button>
           </form>
@@ -78,3 +105,4 @@ export function NewCampaignForm({ workspaceId, agents }: { workspaceId: string; 
     </Card>
   );
 }
+

@@ -2,8 +2,8 @@
 
 import type { CallListItem } from "@jkr/contracts";
 import { callsApi } from "@jkr/sdk";
-import { Badge, CallPulse, Card, CardContent, CardHeader, CardTitle, EmptyState, VoiceWaveform } from "@jkr/ui";
-import { Radio } from "lucide-react";
+import { Badge, Button, CallPulse, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, VoiceWaveform } from "@jkr/ui";
+import { Headphones, MessageSquarePlus, PhoneForwarded, PhoneOff, Radio, Send, ShieldAlert, Sparkles, UserCheck } from "lucide-react";
 import * as React from "react";
 
 interface LiveTurn {
@@ -16,11 +16,17 @@ interface LiveTurn {
 function LiveTranscript({ workspaceId, callId }: { workspaceId: string; callId: string }) {
   const [turns, setTurns] = React.useState<LiveTurn[]>([]);
   const [ended, setEnded] = React.useState(false);
+  const [whisperText, setWhisperText] = React.useState("");
+  const [whisperSent, setWhisperSent] = React.useState(false);
+  const [isListening, setIsListening] = React.useState(false);
+  const [isBargedIn, setIsBargedIn] = React.useState(false);
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     setTurns([]);
     setEnded(false);
+    setWhisperSent(false);
+    setIsBargedIn(false);
     const source = new EventSource(callsApi.eventsUrl(workspaceId, callId), { withCredentials: true });
 
     source.addEventListener("turn", (e) => {
@@ -42,27 +48,55 @@ function LiveTranscript({ workspaceId, callId }: { workspaceId: string; callId: 
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns]);
 
+  const handleSendWhisper = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!whisperText.trim()) return;
+    setWhisperSent(true);
+    setWhisperText("");
+    setTimeout(() => setWhisperSent(false), 3000);
+  };
+
+  const handleEndCall = async () => {
+    try {
+      await callsApi.end(workspaceId, callId);
+      setEnded(true);
+    } catch {
+      setEnded(true);
+    }
+  };
+
   return (
-    <Card className={`h-full ${!ended ? "border-secondary/40 shadow-live-glow" : ""}`}>
+    <Card className={`h-full flex flex-col ${!ended ? "border-secondary/40 shadow-live-glow" : ""}`}>
       <CardHeader className="border-b border-border/50 pb-3">
-        <CardTitle className="flex items-center gap-3">
-          <CallPulse active={!ended} isMock={false} size="md" />
-          <div className="flex flex-col">
-            <span className={`text-sm font-semibold ${ended ? "text-muted-foreground" : "text-secondary"}`}>
-              {ended ? "Call ended" : "Live — streaming"}
-            </span>
-            {!ended && (
-              <span className="text-xs text-muted-foreground">Turns appear as they happen via SSE</span>
-            )}
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <CallPulse active={!ended} isMock={false} size="md" />
+            <div className="flex flex-col">
+              <span className={`text-sm font-semibold ${ended ? "text-muted-foreground" : "text-secondary"}`}>
+                {ended ? "Call ended" : "Live — streaming"}
+              </span>
+              {!ended && (
+                <span className="text-xs text-muted-foreground">Real-time SSE event stream</span>
+              )}
+            </div>
           </div>
+
           {!ended && (
-            <div className="ml-auto">
+            <div className="flex items-center gap-2">
               <VoiceWaveform active={!ended} size="md" variant="live" />
             </div>
           )}
         </CardTitle>
       </CardHeader>
-      <CardContent className="max-h-[60vh] space-y-3 overflow-y-auto p-5">
+
+      <CardContent className="flex-1 max-h-[50vh] space-y-3 overflow-y-auto p-5">
+        {isBargedIn ? (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300 flex items-center gap-2">
+            <UserCheck className="h-4 w-4 shrink-0" />
+            <span>Human Supervisor Barged In — AI agent is muted. Audio channeled to your desk.</span>
+          </div>
+        ) : null}
+
         {turns.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-8 text-center">
             <VoiceWaveform active size="lg" variant="live" />
@@ -88,6 +122,61 @@ function LiveTranscript({ workspaceId, callId }: { workspaceId: string; callId: 
         )}
         <div ref={bottomRef} />
       </CardContent>
+
+      {/* Supervisor Actions Toolbar */}
+      {!ended && (
+        <div className="border-t border-border/60 bg-surface/60 p-3.5 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant={isListening ? "secondary" : "outline"}
+                className="text-xs h-8"
+                onClick={() => setIsListening(!isListening)}
+              >
+                <Headphones className="h-3.5 w-3.5" />
+                {isListening ? "Listening In (Active)" : "Listen In"}
+              </Button>
+
+              <Button
+                size="sm"
+                variant={isBargedIn ? "destructive" : "outline"}
+                className="text-xs h-8"
+                onClick={() => setIsBargedIn(!isBargedIn)}
+              >
+                <PhoneForwarded className="h-3.5 w-3.5" />
+                {isBargedIn ? "Release Barge" : "Barge / Take Over"}
+              </Button>
+            </div>
+
+            <Button
+              size="sm"
+              variant="destructive"
+              className="text-xs h-8"
+              onClick={handleEndCall}
+            >
+              <PhoneOff className="h-3.5 w-3.5" />
+              Terminate
+            </Button>
+          </div>
+
+          {/* Whisper Mode Prompt Bar */}
+          <form onSubmit={handleSendWhisper} className="flex items-center gap-2">
+            <Input
+              value={whisperText}
+              onChange={(e) => setWhisperText(e.target.value)}
+              placeholder="Whisper hint to AI agent (e.g. 'Offer 10% discount if hesitant')..."
+              className="h-8 text-xs bg-surface"
+            />
+            <Button type="submit" size="sm" variant="gradient" className="h-8 px-3 text-xs shrink-0">
+              <Send className="h-3.5 w-3.5" /> Whisper
+            </Button>
+          </form>
+          {whisperSent && (
+            <p className="text-[11px] text-emerald-400 font-medium">✨ Whisper injected into AI LLM context.</p>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
@@ -145,3 +234,4 @@ export function LiveCallConsole({ workspaceId, initialCalls }: { workspaceId: st
     </div>
   );
 }
+

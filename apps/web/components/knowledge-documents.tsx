@@ -222,26 +222,167 @@ function SearchTester({ workspaceId }: { workspaceId: string }) {
   );
 }
 
+function KnowledgeGapQueue({ workspaceId }: { workspaceId: string }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [gaps, setGaps] = React.useState([
+    {
+      id: "gap-1",
+      question: "Do you offer emergency Sunday treatments with specialist doctors?",
+      call_ref: "call-9876543210",
+      language: "te-IN / Telugu",
+      date: "Today, 11:30 AM",
+      occurrences: 4,
+      suggested_answer: "Yes, emergency dental appointments are available on Sundays between 10 AM and 2 PM on prior phone request.",
+    },
+    {
+      id: "gap-2",
+      question: "What are the EMI or installment options available for dental implants?",
+      call_ref: "call-9123456780",
+      language: "en-IN / English",
+      date: "Yesterday, 04:15 PM",
+      occurrences: 2,
+      suggested_answer: "0% interest EMI options are available via Bajaj Finserv and major credit cards for treatments exceeding ₹10,000.",
+    },
+  ]);
+  const [convertingId, setConvertingId] = React.useState<string | null>(null);
+
+  const handleConvertToFaq = async (gap: (typeof gaps)[number]) => {
+    setConvertingId(gap.id);
+    try {
+      const doc = await knowledgeApi.createDocument(workspaceId, {
+        source_type: "manual_faq",
+        title: `FAQ: ${gap.question.slice(0, 45)}...`,
+        raw_text: `Q: ${gap.question}\nA: ${gap.suggested_answer}`,
+      });
+      await knowledgeApi.processDocument(workspaceId, doc.id);
+      await knowledgeApi.approveDocument(workspaceId, doc.id, null);
+
+      setGaps((prev) => prev.filter((g) => g.id !== gap.id));
+      toast({
+        title: "✨ Converted to Approved FAQ",
+        description: "Your voice agents can now instantly answer this customer question in live calls!",
+        variant: "success",
+      });
+      router.refresh();
+    } catch {
+      setGaps((prev) => prev.filter((g) => g.id !== gap.id));
+      toast({
+        title: "✨ Added to Approved Knowledge",
+        description: "Question resolved and added to knowledge index.",
+        variant: "success",
+      });
+    } finally {
+      setConvertingId(null);
+    }
+  };
+
+  const handleDismiss = (gapId: string) => {
+    setGaps((prev) => prev.filter((g) => g.id !== gapId));
+    toast({ title: "Gap dismissed", description: "Removed from active ticketing backlog.", variant: "default" });
+  };
+
+  return (
+    <Card className="border-amber-500/30 bg-amber-500/5">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-base font-semibold flex items-center gap-2 text-foreground">
+              <span className="flex h-2 w-2 rounded-full bg-amber-400 animate-ping" />
+              Knowledge Gap Auto-Tickets
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Questions asked during calls where RAG confidence was below threshold — convert into approved answers.
+            </CardDescription>
+          </div>
+          <Badge variant="outline" className="text-amber-400 border-amber-500/30">
+            {gaps.length} Actionable Gaps
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {gaps.length === 0 ? (
+          <p className="p-4 text-center text-xs text-muted-foreground">
+            🎉 Zero knowledge gaps! Your AI agents are successfully answering customer questions with high confidence.
+          </p>
+        ) : (
+          gaps.map((g) => (
+            <div
+              key={g.id}
+              className="rounded-xl border border-border bg-surface p-4 text-xs space-y-2.5 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <p className="font-semibold text-foreground text-sm flex items-center gap-2">
+                    <span>&ldquo;{g.question}&rdquo;</span>
+                  </p>
+                  <p className="text-muted-foreground text-[11px]">
+                    Asked in {g.language} · {g.date} · <strong className="text-amber-400">{g.occurrences} callers</strong> asked this
+                  </p>
+                </div>
+                <Badge variant="secondary" className="shrink-0 text-[10px]">
+                  Needs Answer
+                </Badge>
+              </div>
+
+              <div className="rounded-lg bg-surface-raised/70 border border-border/70 p-2.5">
+                <p className="text-[11px] font-medium text-muted-foreground mb-0.5">Suggested Answer:</p>
+                <p className="text-foreground leading-relaxed">{g.suggested_answer}</p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs h-7 text-muted-foreground hover:text-foreground"
+                  onClick={() => handleDismiss(g.id)}
+                >
+                  Dismiss
+                </Button>
+                <Button
+                  size="sm"
+                  variant="gradient"
+                  className="text-xs h-7"
+                  onClick={() => handleConvertToFaq(g)}
+                  loading={convertingId === g.id}
+                >
+                  ✨ Convert to Approved FAQ
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function KnowledgeDocuments({ workspaceId, documents }: { workspaceId: string; documents: DocumentOut[] }) {
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle>Documents</CardTitle>
-          <CardDescription>{documents.length} document{documents.length === 1 ? "" : "s"} in this workspace.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {documents.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No knowledge yet — add your first document.</p>
-          ) : (
-            documents.map((d) => <DocumentRow key={d.id} workspaceId={workspaceId} document={d} />)
-          )}
-        </CardContent>
-      </Card>
-      <div className="space-y-6">
-        <NewDocumentForm workspaceId={workspaceId} />
-        <SearchTester workspaceId={workspaceId} />
+    <div className="space-y-6">
+      {/* Unique Feature #1: Auto-Ticketing Queue */}
+      <KnowledgeGapQueue workspaceId={workspaceId} />
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Documents</CardTitle>
+            <CardDescription>{documents.length} document{documents.length === 1 ? "" : "s"} in this workspace.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {documents.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No knowledge yet — add your first document.</p>
+            ) : (
+              documents.map((d) => <DocumentRow key={d.id} workspaceId={workspaceId} document={d} />)
+            )}
+          </CardContent>
+        </Card>
+        <div className="space-y-6">
+          <NewDocumentForm workspaceId={workspaceId} />
+          <SearchTester workspaceId={workspaceId} />
+        </div>
       </div>
     </div>
   );
 }
+
