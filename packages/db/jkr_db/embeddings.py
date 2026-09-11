@@ -72,7 +72,17 @@ def mock_embed(text: str) -> list[float]:
 
 async def embed_text(text: str) -> list[float]:
     """Async so a real provider (network call) is a drop-in replacement."""
-    if os.environ.get("OPENAI_API_KEY"):
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        try:
+            from dotenv import find_dotenv, load_dotenv
+            dotenv_path = find_dotenv(usecwd=True)
+            if dotenv_path:
+                load_dotenv(dotenv_path)
+            api_key = os.environ.get("OPENAI_API_KEY")
+        except Exception:
+            pass
+    if api_key:
         try:
             return await _openai_embed(text)
         except Exception:

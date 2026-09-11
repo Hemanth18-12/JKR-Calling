@@ -131,17 +131,22 @@ def _brevity_instruction(recent_interrupt_count: int) -> str:
 def _build_prompt(
     *, decision: PlannerDecision, extraction: ExtractionResult, state: dict, rag_chunks: list[RagChunk],
     objective: ObjectiveDefinition, business_identity: str, language: str, recent_turns: list[dict] | None,
-    recent_interrupt_count: int = 0,
+    recent_interrupt_count: int = 0, customer_utterance: str = "",
 ) -> tuple[str, str]:
     known_lines = "\n".join(f"- {k}: {v}" for k, v in state.get("known_fields", {}).items()) or "(none yet)"
     rag_lines = "\n".join(f"- {c.text}" for c in rag_chunks[:2]) if rag_chunks else "(none retrieved)"
-    recent_lines = "\n".join(f"{t['speaker']}: {t['text']}" for t in (recent_turns or [])[-4:]) or "(this is the first exchange)"
+    recent_lines = "\n".join(f"{t['speaker']}: {t['text']}" for t in (recent_turns or [])[-6:]) or "(this is the first exchange)"
+
+    personality = str(state.get("personality", "warm receptionist")).replace("_", " ").title()
+    formality = str(state.get("formality", "balanced"))
+    energy = str(state.get("energy", "medium"))
+    response_length = str(state.get("response_length", "short"))
 
     target_field_line = ""
     if decision.target_field:
         field_def = next((f for f in objective.fields if f.key == decision.target_field), None)
         if field_def:
-            target_field_line = f"Ask about: {field_def.extraction_hint}"
+            target_field_line = f"Next field needed from customer: {field_def.extraction_hint} ({field_def.key})"
 
     action_guidance = ""
     if decision.action == "CONFIRM_FIELD" and decision.target_field:
@@ -154,43 +159,53 @@ def _build_prompt(
         )
     elif decision.action == "DEFER_QUESTION":
         action_guidance = (
-            "You could not confidently answer the customer's question from APPROVED KNOWLEDGE above. "
-            "Acknowledge that honestly — say you're not fully sure and the team will confirm. Do NOT say "
-            "anything that signals the call is ending; the conversation continues after this."
+            "You could not confidently answer the customer's specific business question from APPROVED KNOWLEDGE above. "
+            "Acknowledge that honestly and politely — say you don't have those specific details on hand and our team will confirm. "
+            "Do NOT say anything that signals the call is ending; keep the conversation flowing smoothly."
         )
 
     system = (
-        f"IDENTITY\nYou are the AI voice assistant for {business_identity}. You already clearly "
-        f"identified yourself as an AI at the start of this call.\n\n"
+        f"IDENTITY & PERSONA\n"
+        f"You are {business_identity}'s AI voice assistant speaking live on a telephone call. "
+        f"Persona: {personality}. Tone: {formality}, warm, and energetic ({energy}). "
+        f"You already clearly identified yourself as an AI at the start of this call.\n\n"
         f"CALL OBJECTIVE\n{objective.id.replace('_', ' ')}\n\n"
         f"LANGUAGE\n{_language_instruction(language)}\n\n"
         f"CUSTOMER STATE\nAlready known:\n{known_lines}\n\n"
-        f"RECENT CONVERSATION\n{recent_lines}\n\n"
-        + (f"CUSTOMER QUESTION TO ANSWER FIRST\n{extraction.rewritten_query}\n\n" if decision.answer_question_first else "")
-        + "APPROVED KNOWLEDGE (use ONLY this to answer factual questions — never state a price, hour, "
+        f"RECENT CONVERSATION (Dialogue History)\n{recent_lines}\n\n"
+        + (f"CUSTOMER QUESTION TO ANSWER\n{extraction.rewritten_query}\n\n" if decision.answer_question_first else "")
+        + "APPROVED KNOWLEDGE (use ONLY this to answer company-specific factual questions — never state a price, hour, "
         f"policy, or fact not present here)\n{rag_lines}\n\n"
         + (f"CUSTOMER OBJECTION TO ACKNOWLEDGE\n{decision.objection}\n\n" if decision.objection else "")
-        + f"NEXT ACTION\n{decision.action}. {target_field_line}\n\n"
+        + f"PLANNED NEXT ACTION\n{decision.action}. {target_field_line}\n\n"
         + (f"ACTION GUIDANCE\n{action_guidance}\n\n" if action_guidance else "")
-        + "SAFETY RULES\nNever invent a fact not in APPROVED KNOWLEDGE above. If asked something not "
-        "covered there, say you're not fully sure and the team will confirm — never guess. Never claim "
-        "a booking/order/payment is confirmed unless told it already succeeded. Never repeat a question "
-        "about information already given in CUSTOMER STATE above.\n\n"
-        # P5 §21-22: real, not hypothetical — a live probe against this
-        # exact prompt shape (docs/P5_STREAMING_LLM_AUDIT.md) caught the
-        # model opening a Telugu-English response with a bare English
-        # "Sure!" before anything useful, 2 of 3 times. Streaming makes
-        # this worse than it already was: the first chunk spoken is
-        # whatever opens the response, so a generic opener wastes the
-        # exact head-start streaming exists to create.
-        "SPEECH STYLE\nOne or two short sentences, like a real phone conversation — not a written "
-        "paragraph. No markdown, no lists, no bullet points, no headers. Start the sentence with the "
-        "actual useful answer or action — never open with a generic filler phrase like \"Sure\", "
-        "\"Okay\", \"Absolutely\", \"I understand\", or \"I'd be happy to help\" before getting to the "
-        "point. If there's a follow-up question to ask, put it after the answer, not before it."
+        + "CONVERSATIONAL RULES & KNOWLEDGE GROUNDING\n"
+        "1. Real understanding: Listen carefully to what the caller says. Respond intelligently, naturally, and contextually to their actual words.\n"
+        "2. Chit-chat & Small Talk: If the caller greets you ('how are you', 'good morning', 'can you hear me'), makes small talk, or asks conversational questions, respond warmly and conversationally like a real human assistant, then smoothly transition toward the call objective.\n"
+        "3. Factual Grounding: For business-specific claims (prices, operating hours, cancellation policies, guarantees, specific offerings), rely strictly on APPROVED KNOWLEDGE above. Never invent facts not present in APPROVED KNOWLEDGE.\n"
+        "4. Knowledge Gaps: If asked a specific business question not covered in APPROVED KNOWLEDGE, honestly and naturally say you don't have those exact details on hand and offer to have the team confirm. Never say you don't know when answering standard greetings or small talk.\n"
+        "5. Never claim a booking/order/payment is confirmed unless explicitly told it succeeded. Never re-ask for information already given in CUSTOMER STATE above.\n\n"
+        "SPEECH STYLE\n"
+        f"Spoken dialogue ({response_length}): one or two short sentences, like a real phone conversation — not a written essay. "
+        "No markdown, no bullets, no lists, no headers, no emojis. "
+        "Acknowledge the customer's point naturally before moving to the next action. "
+        "Do not repeat robotic filler openers verbatim every turn."
         + _brevity_instruction(recent_interrupt_count)
     )
-    return system, "Generate the agent's next spoken line now."
+
+    prompted_utterance = customer_utterance.strip()
+    if not prompted_utterance and decision.answer_question_first and extraction.rewritten_query:
+        prompted_utterance = extraction.rewritten_query
+
+    if prompted_utterance:
+        user = (
+            f'Customer said: "{prompted_utterance}"\n\n'
+            f"Generate the agent's next spoken response to the customer now."
+        )
+    else:
+        user = "Generate the agent's next spoken line now."
+
+    return system, user
 
 
 #  P3.5 §42-46: ASK_FIELD/CLARIFY/CONFIRM_FIELD/DEFER_QUESTION each already
@@ -214,6 +229,7 @@ async def generate(
     *, decision: PlannerDecision, extraction: ExtractionResult, state: dict, rag_chunks: list[RagChunk],
     conversation_policy: ConversationPolicySnapshot, business_identity: str, language: str,
     recent_turns: list[dict] | None, llm_client: LLMClient | None, engine_mode: str = "legacy",
+    customer_utterance: str = "",
     # P5 — all four default to no-op/complete-mode behavior, so every
     # existing call site (and its `-> str` return type) is unaffected.
     # response_mode only ever takes effect in the free-generation branch
@@ -266,7 +282,7 @@ async def generate(
     system, user = _build_prompt(
         decision=decision, extraction=extraction, state=state, rag_chunks=rag_chunks, objective=objective,
         business_identity=business_identity, language=language, recent_turns=recent_turns,
-        recent_interrupt_count=recent_interrupt_count,
+        recent_interrupt_count=recent_interrupt_count, customer_utterance=customer_utterance,
     )
 
     if response_mode == "streaming":

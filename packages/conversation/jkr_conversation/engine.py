@@ -366,12 +366,20 @@ async def process_turn(
         decision=decision, extraction=extraction, state=new_state, rag_chunks=rag_chunks,
         conversation_policy=conversation_policy, business_identity=business_identity,
         language=new_state.get("language", "en-IN"), recent_turns=recent_turns, llm_client=client,
-        engine_mode=engine_mode, response_mode=response_mode, on_speakable_chunk=on_speakable_chunk,
-        latency_sink=latency_ms, cancellation_token=cancellation_token, recent_interrupt_count=recent_interrupt_count,
+        engine_mode=engine_mode, customer_utterance=customer_utterance, response_mode=response_mode,
+        on_speakable_chunk=on_speakable_chunk, latency_sink=latency_ms, cancellation_token=cancellation_token,
+        recent_interrupt_count=recent_interrupt_count,
     )
     latency_ms["generation"] = int((time.perf_counter() - t0) * 1000)
 
-    prepend_ack = decision.action in ("ASK_FIELD", "CLARIFY", "CONFIRM_FIELD")
+    # For free LLM generation, the model naturally contextualizes and acknowledges the customer.
+    # Mechanical canned acknowledgement prepending is only applied when using canned fallbacks.
+    fallback_candidate = prompt_builder._fallback_text(
+        decision=decision, extraction=extraction, state=new_state, rag_chunks=rag_chunks,
+        objective=objectives.get_objective(new_state.get("objective", objectives.DEFAULT_OBJECTIVE_ID)),
+        language=new_state.get("language", "en-IN"),
+    )
+    prepend_ack = (raw_reply == fallback_candidate) and (decision.action in ("ASK_FIELD", "CLARIFY", "CONFIRM_FIELD"))
     # Seeded from new_state (persisted on CallSession.state, reloaded fresh
     # every turn by both call sites — see state.py/session_registry.py) so
     # the "don't repeat the last acknowledgement" rotation survives across

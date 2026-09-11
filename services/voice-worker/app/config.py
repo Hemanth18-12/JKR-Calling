@@ -14,9 +14,14 @@ class Settings(BaseSettings):
     app_env: str = "local"
     database_url: str = "postgresql+asyncpg://jkr_app:jkr_app_local_dev@localhost:55432/jkr_ai_calling"
     internal_service_token: str = "change_me_dev_only_service_to_service_token"
+    openai_api_key: str = ""
 
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    import os
+    s = Settings()
+    if s.openai_api_key and not os.environ.get("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = s.openai_api_key
+    return s
 

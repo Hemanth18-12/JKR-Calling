@@ -38,6 +38,7 @@ from jkr_messaging import enqueue
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.providers.mock import MockSTT, MockTTS
 from app.session_registry import CallRuntime
 from app.session_registry import discard as registry_discard
@@ -45,6 +46,7 @@ from app.session_registry import get as registry_get
 from app.session_registry import put as registry_put
 from app.turn_manager import InterruptionClassification, TurnManager, estimate_speaking_duration_ms
 
+get_settings()
 _stt = MockSTT()
 _tts = MockTTS()
 
@@ -167,6 +169,12 @@ async def start_session(
 
     language = voice.language if voice else agent.primary_language
     conversation_state = new_conversation_state(objective=version.primary_objective, language=language)
+    conversation_state["personality"] = version.personality
+    conversation_state["formality"] = version.formality
+    conversation_state["energy"] = version.energy
+    conversation_state["response_length"] = version.response_length
+    conversation_state["business_identity"] = agent.business_identity
+    conversation_state["recent_turns"] = []
 
     call_session = CallSession(
         workspace_id=workspace_id,
@@ -219,6 +227,7 @@ async def start_session(
     greeting = _fill_greeting(version.greeting_text, contact_name)
     formatter = SpokenResponseFormatter(language=language, max_sentences=policy.max_response_sentences if policy else 3)
     formatted = formatter.format(greeting, prepend_acknowledgement=False)
+    conversation_state["recent_turns"].append({"speaker": "agent", "text": formatted.text})
 
     turn_record = turn_manager.start_agent_turn(formatted.text)
     await _persist_agent_turn(
@@ -322,13 +331,17 @@ async def submit_user_turn(
     # services/api/app/modules/live_call/service.py). This module only
     # handles transport/turn-taking and persistence, never conversation
     # reasoning itself.
+    recent_turns = list(state.get("recent_turns", []))
     result = await process_turn(
         db, workspace_id=workspace_id, call_session_id=call_id, state=state,
         customer_utterance=transcript.text, conversation_policy=runtime.policy,
         business_identity=runtime.business_identity, transcript_confidence=transcript.confidence,
-        agent_id=call_session.agent_id, now=now,
+        agent_id=call_session.agent_id, now=now, recent_turns=recent_turns[-6:],
     )
     state = result.state
+    recent_turns.append({"speaker": "customer", "text": transcript.text})
+    recent_turns.append({"speaker": "agent", "text": result.reply_text})
+    state["recent_turns"] = recent_turns
 
     for tool_call in result.tool_calls_requested:
         try:

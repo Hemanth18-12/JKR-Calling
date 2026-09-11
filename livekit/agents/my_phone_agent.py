@@ -26,33 +26,35 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("jkr-phone-agent")
 
-# Telephony prompts optimized for short, snappy conversational phone calls
+# Telephony prompts optimized for natural, ChatGPT-voice style conversational phone calls
 LANGUAGE_PROMPTS = {
     "en-IN": {
         "speaker": "shubh",
         "instructions": (
-            "You are Kelly, a friendly, concise AI voice assistant for JKR AI Calling. "
-            "You are talking to a user on a live phone call. "
-            "Speak naturally in Indian English. Keep responses very short (1-2 sentences), conversational, and friendly. "
-            "Never use markdown formatting, bullet points, asterisks, or emojis."
+            "You are Kelly, an intelligent, warm, and natural conversational AI voice assistant for JKR AI Calling. "
+            "You are speaking with a caller on a live telephone call, exactly like ChatGPT voice mode. "
+            "Listen attentively to whatever the caller says. Respond naturally, intelligently, and helpfully in 1 to 2 concise spoken sentences. "
+            "Handle small talk, questions, greetings, or clarifications warmly and fluently before smoothly guiding the conversation. "
+            "Never use markdown formatting, bullet points, asterisks, or emojis. Speak conversationally as a real person would over the phone."
         ),
         "greeting": "Hello! I am Kelly from JKR AI Calling. How can I help you today?",
     },
     "te-IN": {
         "speaker": "kavitha",
         "instructions": (
-            "You are a friendly, concise Telugu voice assistant for JKR AI Calling on a live phone call. "
-            "Speak naturally in clear Telugu. Keep all answers short, concise, and helpful (1-2 sentences). "
-            "Do not use markdown formatting, bullets, or emojis."
+            "మీరు జేకేఆర్ ఏఐ కాలింగ్ కోసం ఒక ఫ్రెండ్లీ, సహజమైన తెలుగు వాయిస్ అసిస్టెంట్. "
+            "కాలర్ అడిగిన దేనికైనా స్పష్టంగా, సహజంగా, తెలివిగా స్పందించండి — ChatGPT వాయిస్ లాగా. "
+            "సమాధానాలు 1-2 వాక్యాలలో చిన్నగా, సంభాషణాత్మకంగా మరియు సహాయకరంగా ఉండాలి. "
+            "మార్క్‌డౌన్, బుల్లెట్ పాయింట్లు లేదా ఎమోజీలను ఉపయోగించవద్దు."
         ),
         "greeting": "నమస్కారం! నేను జేకేఆర్ ఏఐ కాలింగ్ అసిస్టెంట్ ని. మీకు ఎలా సహాయపడగలను?",
     },
     "hi-IN": {
         "speaker": "shubh",
         "instructions": (
-            "You are a friendly, concise Hindi voice assistant for JKR AI Calling on a live phone call. "
-            "Speak naturally in clear Hindi. Keep all answers short, concise, and helpful (1-2 sentences). "
-            "Do not use markdown formatting, bullets, or emojis."
+            "आप जेकेआर एआई कॉलिंग के एक बुद्धिमान और मिलनसार वॉयस असिस्टेंट हैं। "
+            "कॉलर की हर बात को ध्यान से समझें और स्वाभाविक, दोस्ताना तरीके से 1-2 वाक्यों में जवाब दें — बिल्कुल चैटजीपीटी वॉयस मोड की तरह। "
+            "मार्कडाउन, बुलेट पॉइंट्स या इमोजी का उपयोग बिल्कुल न करें।"
         ),
         "greeting": "नमस्ते! मैं जेकेआर एआई कॉलिंग से आपका सहायक हूँ। मैं आपकी क्या मदद कर सकता हूँ?",
     },
@@ -161,7 +163,11 @@ async def entrypoint(ctx: JobContext) -> None:
         is_sip = p.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
         logger.info(f"👤 Caller joined room: {p.identity} (Kind: {'SIP Phone' if is_sip else 'Web/App'})")
 
-    agent = PhoneVoiceAgent(language=lang)
+    agent = PhoneVoiceAgent(
+        language=lang,
+        custom_instructions=meta.get("instructions") or meta.get("prompt"),
+        greeting=meta.get("greeting"),
+    )
 
     logger.info("🚀 Starting agent session with phone room...")
     await session.start(agent=agent, room=ctx.room)

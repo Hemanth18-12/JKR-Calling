@@ -110,6 +110,15 @@ def get_default_client() -> LLMClient | None:
     must treat that as a first-class, expected mode, not an error path."""
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
+        try:
+            from dotenv import find_dotenv, load_dotenv
+            dotenv_path = find_dotenv(usecwd=True)
+            if dotenv_path:
+                load_dotenv(dotenv_path)
+            api_key = os.environ.get("OPENAI_API_KEY")
+        except Exception:
+            pass
+    if not api_key:
         return None
     return OpenAILLMClient(
         api_key=api_key,

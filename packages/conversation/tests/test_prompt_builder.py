@@ -16,6 +16,7 @@ class _FakeLLMClient:
     def __init__(self, text_response: str | None):
         self._text_response = text_response
         self.last_system: str | None = None
+        self.last_user: str | None = None
         self.complete_text_call_count = 0
 
     async def complete_json(self, *, system, user, max_tokens=300):
@@ -24,6 +25,7 @@ class _FakeLLMClient:
     async def complete_text(self, *, system, user, max_tokens=150):
         self.complete_text_call_count += 1
         self.last_system = system
+        self.last_user = user
         return self._text_response
 
 
@@ -518,3 +520,26 @@ async def test_complete_mode_is_still_the_default_response_mode():
     assert text == "complete mode reply"
     assert fake.stream_text_call_count == 0
     assert fake.complete_text_call_count == 1
+
+
+async def test_prompt_builder_includes_customer_utterance_and_persona():
+    decision = PlannerDecision(action="ASK_FIELD", reason="missing_required_field", target_field="preferred_time")
+    state = new_conversation_state(objective="book_appointment", language="en-IN")
+    state["personality"] = "cheerful_assistant"
+    state["formality"] = "casual"
+    state["energy"] = "high"
+    fake = _FakeLLMClient(text_response="Hey there! What time works best for you tomorrow?")
+
+    text = await prompt_builder.generate(
+        decision=decision, extraction=_extraction(), state=state, rag_chunks=[], conversation_policy=_POLICY,
+        business_identity="JKR Auto", language="en-IN", recent_turns=[{"speaker": "agent", "text": "Hello!"}],
+        llm_client=fake, customer_utterance="Can I book a quick service slot?",
+    )
+    assert text == "Hey there! What time works best for you tomorrow?"
+    assert fake.complete_text_call_count == 1
+    assert fake.last_user is not None
+    assert 'Customer said: "Can I book a quick service slot?"' in fake.last_user
+    assert fake.last_system is not None
+    assert "Cheerful Assistant" in fake.last_system
+    assert "JKR Auto" in fake.last_system
+    assert "CONVERSATIONAL RULES & KNOWLEDGE GROUNDING" in fake.last_system
