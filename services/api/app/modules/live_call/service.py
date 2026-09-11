@@ -29,11 +29,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import time
 import uuid
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from fastapi import HTTPException, status
 from jkr_conversation.engine import process_turn
@@ -95,7 +98,7 @@ FALLBACK_LANGUAGE = "en-IN"  # only used if Sarvam TTS errors and we fall back t
 # gap. This whole class of bug goes away once real streaming VAD (which
 # can tell "still thinking" apart from "done talking") replaces <Record> —
 # see docs/REALTIME_VOICE_MIGRATION_AUDIT.md.
-RECORD_SILENCE_TIMEOUT_SECONDS = 4
+RECORD_SILENCE_TIMEOUT_SECONDS = 5
 
 
 def _sarvam_language_code(primary_language: str | None) -> str:
@@ -448,7 +451,7 @@ def _twiml_speak_and_record(kind: str, content: str, *, action_url: str) -> str:
     return (
         '<?xml version="1.0" encoding="UTF-8"?>'
         f"<Response>{_speak_element(kind, content)}"
-        f'<Record action="{action_url}" method="POST" maxLength="20" timeout="{RECORD_SILENCE_TIMEOUT_SECONDS}" '
+        f'<Record action="{action_url}" method="POST" maxLength="30" timeout="{RECORD_SILENCE_TIMEOUT_SECONDS}" '
         f'trim="trim-silence" playBeep="true"/>'
         f'<Say language="{FALLBACK_LANGUAGE}">We did not catch a response. Thank you, goodbye.</Say><Hangup/></Response>'
     )
@@ -533,6 +536,36 @@ _TOOL_FAILURE_REPLY = {
 
 def _tool_failure_reply(language_code: str) -> str:
     return _TOOL_FAILURE_REPLY.get(language_code, _TOOL_FAILURE_REPLY["en-IN"])
+
+
+def _silence_reprompt(language_code: str, attempt: int) -> str:
+    lang = (language_code or "").lower()
+    if "te" in lang:
+        return (
+            "హలో అండి, మీ మాట వినపడలేదు. దయచేసి మళ్ళీ చెప్పండి."
+            if attempt == 1
+            else "హలో అండి, నేను వింటున్నాను. దయచేసి మాట్లాడండి, మీకు ఎలా సహాయపడగలను?"
+        )
+    if "hi" in lang:
+        return (
+            "नमस्ते, मुझे आपकी आवाज़ सुनाई नहीं दी। कृपया फिर से बोलिए।"
+            if attempt == 1
+            else "नमस्ते, क्या आप मुझे सुन पा रहे हैं? कृपया बताइए मैं आपकी क्या मदद कर सकता हूँ।"
+        )
+    return (
+        "Hello, I couldn't hear you clearly. Could you please repeat that?"
+        if attempt == 1
+        else "Hello, are you still there? Please go ahead, I am listening."
+    )
+
+
+def _silence_closing(language_code: str) -> str:
+    lang = (language_code or "").lower()
+    if "te" in lang:
+        return "క్షమించండి, మీ నుంచి ఎటువంటి స్పందన రాలేదు. మీ సమయానికి ధన్యవాదాలు, సెలవు."
+    if "hi" in lang:
+        return "माफ़ी चाहता हूँ, आपकी तरफ से कोई जवाब नहीं मिला। आपके समय के लिए धन्यवाद, अलविदा।"
+    return "We seem to have lost your response. Thank you for your time, goodbye."
 
 
 async def _execute_tool_calls(
@@ -773,13 +806,14 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
             t0 = time.perf_counter()
             transcript = await stt.transcribe(audio_bytes=audio_bytes, language_code=language_code)
             stt_transcribe_ms = int((time.perf_counter() - t0) * 1000)
-            speech_result = transcript.text
+            speech_result = transcript.text.strip()
             stt_metadata = {
                 "stt_detected_language_code": transcript.detected_language_code,
                 "stt_language_probability": transcript.language_probability,
                 "stt_requested_language_code": language_code,
             }
-        except Exception:  # noqa: BLE001 — same reasoning as _speak: never kill the call over a transcription hiccup (covers STTNotConfiguredError too)
+        except Exception as exc:  # noqa: BLE001 — log error, fall back to re-prompt or graceful closing
+            logger.exception("Error during Twilio recording fetch or STT transcription for call %s: %s", call_session_id, exc)
             speech_result = ""
 
     async with workspace_scoped_session(workspace_id) as db:
@@ -789,7 +823,29 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
             await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="stt_transcribe", duration_ms=stt_transcribe_ms, provider="sarvam")
 
         if not speech_result:
-            closing = "We seem to have lost your response. Thank you for your time, goodbye."
+            silence_count = state.get("silence_count", 0) + 1
+            state["silence_count"] = silence_count
+            if silence_count <= 2:
+                logger.info(
+                    "No speech detected for call %s (attempt %d/2). Re-prompting user in %s.",
+                    call_session_id, silence_count, language_code,
+                )
+                reprompt = _silence_reprompt(language_code, silence_count)
+                state["recent_turns"].append({"speaker": "agent", "text": reprompt})
+                state["agent_turns"] += 1
+                await _persist_turn(db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="agent", text=reprompt)
+                await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
+                t0 = time.perf_counter()
+                kind, content = await _speak(
+                    reprompt, language_code=language_code, settings=settings, redis=redis,
+                    speaker=state.get("tts_speaker"), pace=state.get("tts_pace", 1.0),
+                )
+                await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="tts_synthesize", duration_ms=int((time.perf_counter() - t0) * 1000), provider="sarvam")
+                await _record_latency(db, workspace_id=workspace_id, call_session_id=call_session_id, stage="turn_total_backend", duration_ms=int((time.perf_counter() - turn_t0) * 1000))
+                return _twiml_speak_and_record(kind, content, action_url=recording_url)
+
+            # Silence exceeded 2 retries -> finalize call gracefully
+            closing = _silence_closing(language_code)
             await _persist_turn(db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="agent", text=closing)
             await _finalize_call(
                 db, workspace_id=workspace_id, call_session_id=call_session_id,
@@ -799,6 +855,9 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
             await redis.delete(_redis_key(token))
             kind, content = await _speak(closing, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"), pace=state.get("tts_pace", 1.0))
             return _twiml_speak_and_hangup(kind, content)
+
+        # Reset silence counter on valid speech
+        state["silence_count"] = 0
 
         await _persist_turn(
             db, workspace_id=workspace_id, call_session_id=call_session_id, state=state, speaker="customer",
@@ -906,13 +965,14 @@ async def handle_closing_grace_webhook(*, token: str, form: dict[str, str], sign
             )
             stt = SarvamSTT(api_key=settings.sarvam_api_key or settings.sarvam_tts_api_key)
             transcript = await stt.transcribe(audio_bytes=audio_bytes, language_code=language_code)
-            speech_result = transcript.text
+            speech_result = transcript.text.strip()
             stt_metadata = {
                 "stt_detected_language_code": transcript.detected_language_code,
                 "stt_language_probability": transcript.language_probability,
                 "stt_requested_language_code": language_code,
             }
-        except Exception:  # noqa: BLE001 — same reasoning as _speak: never kill the call over a transcription hiccup
+        except Exception as exc:  # noqa: BLE001 — log error, never kill the call over a transcription hiccup
+            logger.exception("Error during closing grace recording fetch or STT for call %s: %s", call_session_id, exc)
             speech_result = ""
 
     async with workspace_scoped_session(workspace_id) as db:

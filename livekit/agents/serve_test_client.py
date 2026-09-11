@@ -20,25 +20,16 @@ TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_PHONE_NUMBER", "+19453058074")
 
 def place_twilio_outbound_call(to_number, language="en-IN"):
-    if language == "te-IN":
-        text = "నమస్కారం! నేను జేకేఆర్ ఏఐ కాలింగ్ అసిస్టెంట్ ని. మీకు ఎలా సహాయపడగలను?"
-        voice_lang = "te-IN"
-        voice_name = "Polly.Aditi"
-    elif language == "hi-IN":
-        text = "नमस्ते! मैं जेकेआर एआई कॉलिंग से आपका सहायक हूँ। मैं आपकी क्या मदद कर सकता हूँ?"
-        voice_lang = "hi-IN"
-        voice_name = "Polly.Aditi"
-    else:
-        text = "Hello! This is Kelly from JKR AI Calling. Your voice agent outbound call is connected and active. How can I help you today?"
-        voice_lang = "en-IN"
-        voice_name = "Polly.Aditi"
+    sip_uri = os.getenv("LIVEKIT_SIP_ENDPOINT") or "jkr-ai-calling-bfz7gt4b.sip.livekit.cloud"
+    from_number = os.getenv("TWILIO_PHONE_NUMBER") or os.getenv("TWILIO_FROM_NUMBER") or "+19453058074"
 
-    twiml = f'<Response><Say voice="{voice_name}" language="{voice_lang}">{text}</Say><Pause length="1"/><Say voice="{voice_name}" language="{voice_lang}">Thank you for testing JKR AI calling.</Say></Response>'
+    # Connect the phone call directly to LiveKit AI agent via SIP bridge so AI actively talks and listens
+    twiml = f'<Response><Dial><Sip>sip:{from_number}@{sip_uri};transport=tcp</Sip></Dial></Response>'
 
     url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Calls.json"
     data = urllib.parse.urlencode({
         "To": to_number,
-        "From": TWILIO_FROM_NUMBER,
+        "From": from_number,
         "Twiml": twiml
     }).encode("utf-8")
 

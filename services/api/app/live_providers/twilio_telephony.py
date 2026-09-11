@@ -58,7 +58,7 @@ async def fetch_recording(*, account_sid: str, auth_token: str, recording_url: s
     and the plain RecordingUrl Twilio posts back needs a format suffix
     appended to fetch actual audio rather than the resource's JSON metadata."""
     url = recording_url if recording_url.endswith(".wav") else f"{recording_url}.wav"
-    async with httpx.AsyncClient(timeout=20.0, auth=(account_sid, auth_token)) as client:
+    async with httpx.AsyncClient(timeout=25.0, auth=(account_sid, auth_token), follow_redirects=True) as client:
         response = await client.get(url)
     response.raise_for_status()
     return response.content

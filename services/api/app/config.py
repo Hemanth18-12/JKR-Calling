@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -257,7 +258,15 @@ class Settings(BaseSettings):
 
     @property
     def effective_public_webhook_base_url(self) -> str:
-        return self.public_webhook_base_url or self.api_base_url
+        render_url = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("RENDER_EXTERNAL_HOSTNAME")
+        if render_url and not render_url.startswith("http"):
+            render_url = f"https://{render_url}"
+        
+        # If public_webhook_base_url is empty, or points to a stale localtunnel or localhost on Render:
+        candidate = self.public_webhook_base_url or render_url or self.api_base_url
+        if render_url and ("loca.lt" in candidate or "localhost" in candidate or "127.0.0.1" in candidate):
+            return render_url
+        return candidate
 
     @property
     def effective_media_stream_ws_base_url(self) -> str:

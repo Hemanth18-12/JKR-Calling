@@ -244,3 +244,25 @@ def test_tool_failure_reply_is_language_specific_and_never_claims_success():
 
 def test_tool_failure_reply_falls_back_to_english_for_an_unknown_language_code():
     assert service._tool_failure_reply("fr-FR") == service._tool_failure_reply("en-IN")
+
+
+def test_silence_reprompt_supports_telugu_hindi_english():
+    for lang in ("te-IN", "hi-IN", "en-IN"):
+        r1 = service._silence_reprompt(lang, attempt=1)
+        r2 = service._silence_reprompt(lang, attempt=2)
+        assert r1 and r2
+        assert r1 != r2  # distinct re-prompts per attempt
+
+    reprompts_attempt1 = {service._silence_reprompt(lang, attempt=1) for lang in ("te-IN", "hi-IN", "en-IN")}
+    assert len(reprompts_attempt1) == 3
+
+
+def test_silence_closing_is_language_specific():
+    closings = {service._silence_closing(lang) for lang in ("te-IN", "hi-IN", "en-IN")}
+    assert len(closings) == 3
+
+
+def test_twiml_speak_and_record_has_30s_max_length():
+    twiml = service._twiml_speak_and_record("say", "hello", action_url="https://x/rec")
+    assert 'maxLength="30"' in twiml
+
