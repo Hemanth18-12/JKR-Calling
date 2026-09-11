@@ -69,6 +69,11 @@ export function FollowUpsList({ workspaceId, tasks }: { workspaceId: string; tas
                         Triggered on: <strong className="text-foreground">{((t.payload.outcome_category as string) || "appointment_booked").replace(/_/g, " ")}</strong>
                         {t.payload.scheduled_for ? ` · For ${new Date(t.payload.scheduled_for as string).toLocaleString()}` : ""}
                       </p>
+                      {t.payload.error ? (
+                        <p className="mt-1.5 rounded-md bg-danger/10 border border-danger/20 p-2 text-xs text-danger leading-relaxed">
+                          ⚠️ {t.payload.error as string}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
 

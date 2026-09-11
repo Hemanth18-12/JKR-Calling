@@ -285,7 +285,7 @@ export function CampaignDetail({
   };
 
   const addedContactIds = new Set(campaignContacts.map((c) => c.contact_id));
-  const isTerminal = ["cancelled", "completed", "failed", "draft"].includes(campaign.status);
+  const isTerminal = ["cancelled", "completed"].includes(campaign.status);
 
   return (
     <div className="space-y-6">
@@ -321,20 +321,26 @@ export function CampaignDetail({
           <p className="mt-1 text-sm text-muted-foreground">{campaign.objective.replace(/_/g, " ")} · max {campaign.max_attempts} attempts</p>
         </div>
         <div className="flex gap-2">
-          {campaign.status === "draft" || campaign.status === "paused" ? (
-            <Button onClick={() => act("launch")} loading={busy} className="bg-primary">Launch</Button>
-          ) : null}
-          {campaign.status === "active" ? (
-            <Button variant="secondary" onClick={() => act("pause")} loading={busy}>Pause</Button>
-          ) : null}
-          {campaign.status === "active" || campaign.status === "paused" ? (
-            <Button variant="destructive" onClick={() => act("cancel")} loading={busy}>Cancel</Button>
-          ) : null}
-          {isTerminal ? (
+          {campaign.status === "draft" && (
+            <Button onClick={() => act("launch")} loading={busy} className="bg-primary">Launch Campaign</Button>
+          )}
+          {campaign.status === "active" && (
+            <>
+              <Button variant="secondary" onClick={() => act("pause")} loading={busy}>Pause</Button>
+              <Button variant="destructive" onClick={() => act("cancel")} loading={busy}>Cancel Campaign</Button>
+            </>
+          )}
+          {campaign.status === "paused" && (
+            <>
+              <Button onClick={() => act("launch")} loading={busy} className="bg-primary">Resume Campaign</Button>
+              <Button variant="destructive" onClick={() => act("cancel")} loading={busy}>Cancel Campaign</Button>
+            </>
+          )}
+          {isTerminal && (
             <Button variant="outline" className="text-danger hover:bg-danger/10 border-danger/30" onClick={() => setShowDeleteModal(true)} loading={busy}>
-              <Trash2 className="h-4 w-4 mr-1" /> Delete
+              <Trash2 className="h-4 w-4 mr-1" /> Delete Campaign
             </Button>
-          ) : null}
+          )}
         </div>
       </div>
 

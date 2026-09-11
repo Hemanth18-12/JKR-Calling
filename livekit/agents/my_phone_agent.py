@@ -81,7 +81,7 @@ class PhoneVoiceAgent(Agent):
 server = AgentServer()
 
 
-@server.rtc_session(agent_name="jkr-phone")
+@server.rtc_session()
 async def entrypoint(ctx: JobContext) -> None:
     logger.info(f"Incoming call connected to room: {ctx.room.name}")
 

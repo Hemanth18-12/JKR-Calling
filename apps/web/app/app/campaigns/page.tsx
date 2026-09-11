@@ -24,13 +24,13 @@ export default async function CampaignsPage() {
   return (
     <div className="space-y-6 p-8">
       <div className="flex items-center justify-between">
-        <div>
+        <div id="tour-campaigns-header">
           <h1 className="font-display text-2xl font-bold text-foreground">Campaigns</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Every dispatch runs the 10-check safety gate — see docs/SECURITY_AND_COMPLIANCE.md.
           </p>
         </div>
-        <Link href="/app/campaigns/new" className={buttonVariants({ variant: "gradient" })}>
+        <Link id="tour-new-campaign-btn" href="/app/campaigns/new" className={buttonVariants({ variant: "gradient" })}>
           <Plus className="h-4 w-4" /> New campaign
         </Link>
       </div>

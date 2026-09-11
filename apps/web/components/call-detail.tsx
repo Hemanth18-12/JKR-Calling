@@ -53,6 +53,8 @@ function SpeakerBubble({
   );
 }
 
+import { BackButton } from "./back-button";
+
 export function CallDetail({ call, toolExecutions }: { call: CallDetailType; toolExecutions: ToolExecutionOut[] }) {
   const [isPlaying, setIsPlaying] = React.useState(false);
   const [playbackProgress, setPlaybackProgress] = React.useState(0);
@@ -106,12 +108,15 @@ export function CallDetail({ call, toolExecutions }: { call: CallDetailType; too
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-display text-xl font-bold text-foreground">Call Session Details</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {call.direction} · {call.language ?? "unknown language"} · {call.call_id.slice(0, 8)}...
-            {call.duration_seconds !== null ? ` · ${call.duration_seconds}s total duration` : ""}
-          </p>
+        <div className="flex items-center gap-3">
+          <BackButton fallbackHref="/app/calls" label="Back to Calls" />
+          <div>
+            <h1 className="font-display text-xl font-bold text-foreground">Call Session Details</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {call.direction} · {call.language ?? "unknown language"} · {call.call_id.slice(0, 8)}...
+              {call.duration_seconds !== null ? ` · ${call.duration_seconds}s total duration` : ""}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant={CALL_STATUS_VARIANT[call.status] ?? "secondary"} className="text-xs px-3 py-1">

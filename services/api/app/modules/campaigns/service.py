@@ -262,10 +262,10 @@ async def cancel_campaign(db: AsyncSession, *, workspace_id: uuid.UUID, campaign
 
 async def delete_campaign(db: AsyncSession, *, workspace_id: uuid.UUID, campaign_id: uuid.UUID) -> None:
     campaign = await get_campaign(db, workspace_id=workspace_id, campaign_id=campaign_id)
-    if campaign.status in ("active", "paused"):
+    if campaign.status not in ("cancelled", "completed"):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            f"Cannot delete campaign while in status '{campaign.status}'. Please cancel it first."
+            f"Cannot delete campaign in status '{campaign.status}'. Only 'cancelled' or 'completed' campaigns can be deleted."
         )
     await db.delete(campaign)
     await db.flush()

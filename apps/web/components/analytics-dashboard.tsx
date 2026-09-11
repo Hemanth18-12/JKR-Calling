@@ -79,7 +79,7 @@ export function AnalyticsDashboard({
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Funnel */}
-        <Card>
+        <Card id="tour-analytics-kpi">
           <CardHeader>
             <CardTitle>Conversion Funnel</CardTitle>
             <CardDescription>Dialed → connected → qualified → appointment booked</CardDescription>
@@ -99,16 +99,18 @@ export function AnalyticsDashboard({
           </CardHeader>
           <CardContent className="space-y-3">
             {calls.outcome_breakdown.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No completed calls yet.</p>
+              <p className="text-xs text-muted-foreground">No outcomes yet.</p>
             ) : (
-              calls.outcome_breakdown.map((o) => <Bar key={o.key} label={o.key} count={o.count} max={maxOutcome} color="bg-amber-400" />)
+              calls.outcome_breakdown.map((o) => (
+                <Bar key={o.key} label={o.key} count={o.count} max={maxOutcome} color="bg-amber-400" />
+              ))
             )}
           </CardContent>
         </Card>
       </div>
 
       {/* Unique Feature #6: Regional Performance View */}
-      <Card className="border-border">
+      <Card id="tour-analytics-regional" className="border-border">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div>
@@ -116,10 +118,13 @@ export function AnalyticsDashboard({
                 <MapPin className="h-4 w-4 text-primary" /> Regional Performance &amp; Language View (India)
               </CardTitle>
               <CardDescription className="text-xs">
-                State-by-state call performance, pickup rates, and language preferences across Indian regions.
+                State-by-state call performance, pickup rates, and language preferences across Indian regions (mapped via phone circle prefixes).
               </CardDescription>
             </div>
-            <Badge variant="outline" className="text-xs">India Geographies</Badge>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-muted-foreground hidden sm:inline">Attributed by circle prefix</span>
+              <Badge variant="outline" className="text-xs">India Telecom Circles</Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -185,7 +190,7 @@ export function AnalyticsDashboard({
         </Card>
 
         {/* Provider Latency Health */}
-        <Card>
+        <Card id="tour-analytics-voice-health">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold">Telephony &amp; Voice Health</CardTitle>
             <CardDescription className="text-xs">p95 pipeline latency</CardDescription>

@@ -50,15 +50,21 @@ PROVIDER_KIND_DISPLAY = {
 # so this is a deliberate, small, documented duplication of reference data.
 TOOL_CATALOG: list[tuple[str, str, str, int, bool]] = [
     ("check_calendar_slots", "Look up available appointment slots", "tools:view", 5, False),
+    ("check_availability", "Check slot availability in real time", "tools:view", 5, False),
     ("book_appointment", "Book a new appointment for the contact", "contacts:edit", 10, True),
     ("reschedule_appointment", "Move an existing appointment to a new time", "contacts:edit", 10, True),
     ("cancel_appointment", "Cancel an existing appointment", "contacts:edit", 10, True),
     ("create_crm_lead", "Create a lead record in the connected CRM", "contacts:edit", 10, False),
+    ("create_lead", "Record a new qualified lead into the system", "contacts:edit", 10, False),
     ("update_crm_stage", "Move a CRM lead to a new pipeline stage", "contacts:edit", 10, False),
+    ("update_lead", "Update lead stage, tags, or status", "contacts:edit", 10, False),
     ("create_human_callback", "Hand off to a human team member", "calls:transfer", 10, False),
-    ("send_whatsapp", "Send a WhatsApp message to the contact", "contacts:edit", 10, False),
+    ("transfer_call", "Seamlessly transfer or hand off call to human agent", "calls:transfer", 10, False),
+    ("send_whatsapp", "Send a WhatsApp message to the contact", "contacts:edit", 10, True),
     ("send_sms", "Send an SMS to the contact", "contacts:edit", 10, False),
     ("send_email", "Send an email to the contact", "contacts:edit", 10, False),
+    ("create_followup", "Create a scheduled follow-up task", "contacts:edit", 10, False),
+    ("get_information", "Look up verified business answers from knowledge base", "tools:view", 5, False),
 ]
 
 

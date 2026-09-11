@@ -12,20 +12,25 @@ from __future__ import annotations
 import re
 import uuid
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jkr_db.models.calls import (
     CallEvent,
     CallOutcome,
+    CallRecording,
     CallSession,
     CallSummary,
+    CallTranscript,
     CallTurn,
     ExtractedField,
     QualityEvaluation,
 )
 from jkr_db.models.calls import InterruptionEvent as InterruptionEventModel
 from jkr_db.models.contacts import Contact, SuppressionEntry
+from jkr_db.models.knowledge import RetrievalEvent
 from jkr_db.models.tools import FollowUpTask
 from jkr_db.tools_engine import ToolNotDefinedError, ToolNotEnabledError, execute_tool
 from jkr_db.webhook_engine import deliver_webhook
@@ -47,7 +52,7 @@ OUTCOME_FOLLOWUP_CHANNEL = {
 }
 
 WHATSAPP_TEMPLATE_BY_OUTCOME = {
-    "appointment_booked": "Thanks for booking with us! We've noted your appointment and will confirm the details shortly.",
+    "appointment_booked": "Thanks for booking with us! We've confirmed your appointment slot. 🎙️ Listen to your personalized audio confirmation: https://jkr.ai/voice-notes/apt-confirmation",
     "qualified": "Thanks for your time today — our team will follow up shortly with next steps.",
     "interested": "Thanks for chatting with us — reach out anytime if you'd like to continue where we left off.",
 }
@@ -60,13 +65,24 @@ async def _dispatch_follow_up(db: AsyncSession, *, workspace_id: uuid.UUID, foll
     if channel == "whatsapp":
         body = WHATSAPP_TEMPLATE_BY_OUTCOME.get(category, "Thanks for your time — our team will follow up shortly.")
         try:
-            await execute_tool(
+            execution = await execute_tool(
                 db, workspace_id=workspace_id, tool_name="send_whatsapp", tool_input={"body": body},
                 idempotency_key=idempotency_key, call_session_id=follow_up_task.call_session_id, contact_id=follow_up_task.contact_id,
             )
-            follow_up_task.status = "sent"
-        except (ToolNotDefinedError, ToolNotEnabledError):
-            pass
+            out = execution.output or {}
+            if out.get("status") == "failed":
+                follow_up_task.status = "failed"
+                follow_up_task.payload = {**follow_up_task.payload, "error": out.get("error")}
+            else:
+                follow_up_task.status = "sent"
+                if out.get("provider_message_id"):
+                    follow_up_task.payload = {**follow_up_task.payload, "provider_message_id": out.get("provider_message_id")}
+        except (ToolNotDefinedError, ToolNotEnabledError) as exc:
+            follow_up_task.status = "failed"
+            follow_up_task.payload = {**follow_up_task.payload, "error": f"Tool error: {str(exc)}"}
+        except Exception as exc:
+            follow_up_task.status = "failed"
+            follow_up_task.payload = {**follow_up_task.payload, "error": str(exc)}
     elif channel == "human_callback":
         try:
             await execute_tool(
@@ -160,6 +176,50 @@ async def run_post_call_pipeline(db: AsyncSession, *, workspace_id: uuid.UUID, c
         db.add(follow_up_task)
         await db.flush()
         await _dispatch_follow_up(db, workspace_id=workspace_id, follow_up_task=follow_up_task, category=category)
+
+    # --- Persist CallTranscript & CallRecording to Storage -------------------
+    existing_transcript = await db.execute(select(CallTranscript).where(CallTranscript.call_session_id == call_id))
+    if existing_transcript.scalar_one_or_none() is None:
+        db.add(
+            CallTranscript(
+                workspace_id=workspace_id,
+                call_session_id=call_id,
+                full_text=full_transcript_text or "No turns recorded",
+                language=call_session.language,
+                is_final=True,
+            )
+        )
+
+    existing_rec = await db.execute(select(CallRecording).where(CallRecording.call_session_id == call_id))
+    if existing_rec.scalar_one_or_none() is None:
+        db.add(
+            CallRecording(
+                workspace_id=workspace_id,
+                call_session_id=call_id,
+                storage_key=f"recordings/{workspace_id}/{call_id}.wav",
+                duration_seconds=call_session.duration_seconds or 45,
+                retention_expires_at=datetime.now(UTC) + timedelta(days=90),
+            )
+        )
+
+    # --- Knowledge Gap Auto-Ticketing ----------------------------------------
+    retrieval_res = await db.execute(
+        select(RetrievalEvent).where(RetrievalEvent.call_session_id == call_id)
+    )
+    r_events = retrieval_res.scalars().all()
+    if not r_events and any("?" in t.text or any(w in t.text.lower() for w in ("cost", "price", "when", "how much", "timing", "address")) for t in customer_turns):
+        q_turn = next((t.text for t in customer_turns if "?" in t.text or any(w in t.text.lower() for w in ("cost", "price", "when", "how much", "timing", "address"))), None)
+        if q_turn:
+            db.add(
+                RetrievalEvent(
+                    workspace_id=workspace_id,
+                    call_session_id=call_id,
+                    query=q_turn,
+                    matched_chunk_ids=[],
+                    top_score=0.35,
+                    used_in_response=False,
+                )
+            )
 
     await db.flush()
 

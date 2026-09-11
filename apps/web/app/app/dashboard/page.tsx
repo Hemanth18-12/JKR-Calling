@@ -33,6 +33,7 @@ import { cookies } from "next/headers";
 
 import { CreateWorkspaceForm } from "@/components/create-workspace-form";
 import { getServerSession } from "@/lib/session";
+import { StartTourButton } from "@/components/guided-tour";
 
 const STAT_CONFIG = [
   { key: "total_calls", label: "Total calls", icon: "📞", accent: "primary", stagger: 1 },
@@ -162,7 +163,8 @@ export default async function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/app/campaigns" className={buttonVariants({ variant: "gradient", size: "sm" })}>
+          <StartTourButton pageId="dashboard" label="Start guided tour" variant="gradient" size="sm" />
+          <Link href="/app/campaigns" className={buttonVariants({ variant: "outline", size: "sm" })}>
             <Megaphone className="h-3.5 w-3.5" />
             Launch batch
           </Link>
@@ -174,7 +176,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Real-Time Active Ticker & Quick Actions */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div id="tour-quick-actions" className="grid gap-4 md:grid-cols-3">
         {/* Active Telephony Channel status */}
         <Card className="border-secondary/30 bg-secondary/5">
           <CardContent className="flex items-center gap-3 p-4">
@@ -220,7 +222,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Stats grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div id="tour-kpi-cards" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {STAT_CONFIG.map((cfg) => (
           <StatCard
             key={cfg.key}
@@ -234,7 +236,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Unique Feature #4: Cost-per-outcome ROI Ticker */}
-      <Card className="border-border bg-gradient-to-r from-surface to-surface-raised">
+      <Card id="tour-roi-ticker" className="border-border bg-gradient-to-r from-surface to-surface-raised">
         <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5">
           <div className="flex items-center gap-3.5">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400">
@@ -258,7 +260,7 @@ export default async function DashboardPage() {
       </Card>
 
       {/* Recent Outcomes Table */}
-      <Card>
+      <Card id="tour-recent-calls">
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div>
             <CardTitle className="text-base font-semibold">Recent Call Outcomes</CardTitle>

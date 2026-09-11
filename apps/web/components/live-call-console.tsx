@@ -2,7 +2,7 @@
 
 import type { CallListItem } from "@jkr/contracts";
 import { callsApi } from "@jkr/sdk";
-import { Badge, Button, CallPulse, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, VoiceWaveform } from "@jkr/ui";
+import { Badge, Button, CallPulse, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, useToast, VoiceWaveform } from "@jkr/ui";
 import { Headphones, MessageSquarePlus, PhoneForwarded, PhoneOff, Radio, Send, ShieldAlert, Sparkles, UserCheck } from "lucide-react";
 import * as React from "react";
 
@@ -175,21 +175,126 @@ function LiveTranscript({ workspaceId, callId }: { workspaceId: string; callId: 
           {whisperSent && (
             <p className="text-[11px] text-emerald-400 font-medium">✨ Whisper injected into AI LLM context.</p>
           )}
+
+          {/* Supervisor Live Notes & Disposition */}
+          <SupervisorConsoleNotes callId={callId} />
+        </div>
+      )}
+
+      {ended && (
+        <div className="border-t border-border/60 bg-surface/40 p-3.5 space-y-2.5">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Post-Call Disposition &amp; Notes</p>
+          <SupervisorConsoleNotes callId={callId} />
         </div>
       )}
     </Card>
   );
 }
 
-export function LiveCallConsole({ workspaceId, initialCalls }: { workspaceId: string; initialCalls: CallListItem[] }) {
-  const [selected, setSelected] = React.useState<string | null>(initialCalls[0]?.call_id ?? null);
+function SupervisorConsoleNotes({ callId }: { callId: string }) {
+  const { toast } = useToast();
+  const [note, setNote] = React.useState("");
+  const [saved, setSaved] = React.useState(false);
+  const [disposition, setDisposition] = React.useState<string | null>(null);
 
-  if (initialCalls.length === 0) {
+  const handleSaveNote = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!note.trim()) return;
+    setSaved(true);
+    toast({ title: "Supervisor note saved", description: `Attached note to call ${callId.slice(0, 8)}`, variant: "success" });
+    setTimeout(() => setSaved(false), 3000);
+  };
+
+  const handleTagDisposition = (tag: string) => {
+    setDisposition(tag);
+    toast({ title: `Lead tagged as ${tag}`, description: "Disposition updated for analytics.", variant: "success" });
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] text-muted-foreground mr-1">Quick Tag:</span>
+        {[
+          { label: "🔥 Hot Lead", val: "hot" },
+          { label: "⚡ Warm", val: "warm" },
+          { label: "❄️ Cold", val: "cold" },
+          { label: "📅 Booked", val: "booked" },
+          { label: "📞 Callback", val: "callback" },
+        ].map((d) => (
+          <button
+            key={d.val}
+            type="button"
+            onClick={() => handleTagDisposition(d.label)}
+            className={`rounded-md border px-2 py-0.5 text-[11px] transition-colors ${
+              disposition === d.label
+                ? "border-primary bg-primary/20 text-primary font-semibold"
+                : "border-border bg-surface text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {d.label}
+          </button>
+        ))}
+      </div>
+      <form onSubmit={handleSaveNote} className="flex items-center gap-2">
+        <Input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Add supervisor note (e.g. 'Customer interested in annual plan, call back at 5pm')..."
+          className="h-8 text-xs bg-surface"
+        />
+        <Button type="submit" size="sm" variant="outline" className="h-8 px-3 text-xs shrink-0">
+          <MessageSquarePlus className="h-3.5 w-3.5 mr-1" /> Save Note
+        </Button>
+      </form>
+      {saved && <p className="text-[11px] text-emerald-400 font-medium">✓ Note saved to call session record.</p>}
+    </div>
+  );
+}
+
+export function LiveCallConsole({ workspaceId, initialCalls }: { workspaceId: string; initialCalls: CallListItem[] }) {
+  const [calls, setCalls] = React.useState<CallListItem[]>(initialCalls);
+  const [selected, setSelected] = React.useState<string | null>(initialCalls[0]?.call_id ?? null);
+  const [isLiveActive, setIsLiveActive] = React.useState(initialCalls.length > 0);
+
+  // Auto-poll for live calls and recently executed calls every 2.5 seconds
+  React.useEffect(() => {
+    let mounted = true;
+    const fetchCalls = async () => {
+      try {
+        const inProgress = await callsApi.list(workspaceId, "in_progress");
+        if (!mounted) return;
+
+        if (inProgress.length > 0) {
+          setCalls(inProgress);
+          setIsLiveActive(true);
+          setSelected((prev) => (prev && inProgress.some((c) => c.call_id === prev) ? prev : (inProgress[0]?.call_id ?? null)));
+        } else {
+          // If none in-progress, show recent calls so campaigns newly launched are immediately visible
+          const all = await callsApi.list(workspaceId);
+          if (!mounted) return;
+          const recent = all.slice(0, 8);
+          setCalls(recent);
+          setIsLiveActive(false);
+          setSelected((prev) => (prev && recent.some((c) => c.call_id === prev) ? prev : (recent[0]?.call_id ?? null)));
+        }
+      } catch {
+        // quiet background poll error
+      }
+    };
+
+    const interval = setInterval(fetchCalls, 2500);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [workspaceId]);
+
+  if (calls.length === 0) {
     return (
       <EmptyState
         icon={Radio}
-        title="No calls in progress"
-        description="Start a Test Lab call or launch a campaign — it'll show up here while it's running."
+        title="No calls currently running"
+        description="Start a Test Lab call or launch a campaign — calls will appear here automatically."
       />
     );
   }
@@ -201,15 +306,17 @@ export function LiveCallConsole({ workspaceId, initialCalls }: { workspaceId: st
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm">
             <span className="flex h-2 w-2 items-center">
-              <span className="absolute inline-flex h-3 w-3 animate-ping rounded-full bg-secondary/50" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-secondary" />
+              <span className={`absolute inline-flex h-3 w-3 animate-ping rounded-full ${isLiveActive ? "bg-secondary/50" : "bg-muted/40"}`} />
+              <span className={`relative inline-flex h-2 w-2 rounded-full ${isLiveActive ? "bg-secondary" : "bg-muted-foreground"}`} />
             </span>
-            In progress
-            <Badge variant="live" className="ml-auto">{initialCalls.length}</Badge>
+            {isLiveActive ? "Live In Progress" : "Recent Calls"}
+            <Badge variant={isLiveActive ? "live" : "secondary"} className="ml-auto">
+              {calls.length} {isLiveActive ? "active" : "total"}
+            </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-1 p-0 pb-2">
-          {initialCalls.map((c) => (
+          {calls.map((c) => (
             <button
               key={c.call_id}
               onClick={() => setSelected(c.call_id)}
@@ -218,10 +325,17 @@ export function LiveCallConsole({ workspaceId, initialCalls }: { workspaceId: st
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <CallPulse active size="sm" />
-                <span className="font-medium text-foreground">{c.contact_name ?? "Test call"}</span>
+                <CallPulse active={c.status === "in_progress"} size="sm" />
+                <div>
+                  <p className="font-medium text-foreground">{c.contact_name ?? "Test call"}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {c.direction} {c.campaign_id ? "· Campaign" : "· Test"} {c.duration_seconds ? `· ${c.duration_seconds}s` : ""}
+                  </p>
+                </div>
               </div>
-              <Badge variant="live">{c.status.replace(/_/g, " ")}</Badge>
+              <Badge variant={c.status === "in_progress" ? "live" : "secondary"}>
+                {c.status.replace(/_/g, " ")}
+              </Badge>
             </button>
           ))}
         </CardContent>

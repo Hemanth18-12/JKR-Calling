@@ -50,6 +50,7 @@ export const FOLLOW_UP_STATUS_VARIANT: Record<string, "success" | "warning" | "s
   sent: "success",
   completed: "success",
   cancelled: "secondary",
+  failed: "danger",
 };
 
 export const HANDOFF_STATUS_VARIANT: Record<string, "success" | "warning" | "secondary" | "danger"> = {

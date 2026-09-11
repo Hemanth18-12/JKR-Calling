@@ -38,13 +38,19 @@ export type ToolExecutionOut = z.infer<typeof ToolExecutionOut>;
 
 export const TOOL_NAME_LABELS: Record<string, string> = {
   check_calendar_slots: "Check calendar slots",
+  check_availability: "Check availability",
   book_appointment: "Book appointment",
   reschedule_appointment: "Reschedule appointment",
   cancel_appointment: "Cancel appointment",
   create_crm_lead: "Create CRM lead",
+  create_lead: "Create lead",
   update_crm_stage: "Update CRM stage",
+  update_lead: "Update lead",
   create_human_callback: "Human callback",
+  transfer_call: "Transfer call",
   send_whatsapp: "Send WhatsApp",
   send_sms: "Send SMS",
   send_email: "Send email",
+  create_followup: "Create follow-up",
+  get_information: "Get information (RAG)",
 };

@@ -1,6 +1,7 @@
 import uuid
 
 from app.dialer import (
+    calculate_adaptive_retry_time,
     clamp_seconds,
     next_retry_delay_minutes,
     pick_customer_reply,
@@ -89,3 +90,17 @@ def test_clamp_seconds_respects_bounds():
     assert clamp_seconds(1) == 5
     assert clamp_seconds(10_000) == 300
     assert clamp_seconds(60) == 60
+
+
+def test_calculate_adaptive_retry_time_shifts_buckets():
+    from datetime import datetime, timezone
+    # 05:30 UTC is 11:00 IST (Morning bucket)
+    morning_utc = datetime(2026, 9, 10, 5, 30, tzinfo=timezone.utc)
+    scheduled = calculate_adaptive_retry_time(1, morning_utc, "no_answer", [30, 120])
+    # 14:30 IST is 09:00 UTC
+    assert scheduled.hour == 9
+    assert scheduled.minute == 0
+
+    # Non no_answer/busy reasons use standard backoff
+    error_scheduled = calculate_adaptive_retry_time(1, morning_utc, "provider_error", [30, 120])
+    assert (error_scheduled - morning_utc).total_seconds() == 30 * 60

@@ -47,7 +47,7 @@ export default async function CallsPage({
       </div>
 
       {/* Filter tabs */}
-      <div className="flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
+      <div id="tour-calls-filter" className="flex items-center gap-1 rounded-xl border border-border bg-surface p-1">
         {[
           { key: "all", href: "/app/calls" as const, label: "All calls", count: calls.length },
           { key: "campaign", href: "/app/calls?filter=campaign" as const, label: "Campaign", count: campaignCount },
@@ -58,8 +58,8 @@ export default async function CallsPage({
             href={tab.href}
             className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               filter === tab.key
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-primary text-white shadow-sm"
+                : "text-muted-foreground hover:bg-surface-raised hover:text-foreground"
             }`}
           >
             {tab.label}
@@ -85,7 +85,7 @@ export default async function CallsPage({
           }
         />
       ) : (
-        <Card>
+        <Card id="tour-calls-list">
           <CardContent className="p-0">
             <div className="divide-y divide-border">
               {filteredCalls.map((c) => (

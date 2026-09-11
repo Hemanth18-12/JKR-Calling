@@ -109,6 +109,56 @@ def next_retry_delay_minutes(attempt_number: int, backoff_minutes: list[int]) ->
     return backoff_minutes[index]
 
 
+def calculate_adaptive_retry_time(
+    attempt_number: int,
+    now: datetime,
+    reason: str,
+    backoff: list[int] | None = None,
+) -> datetime:
+    """Calculates adaptive retry timing for no-answer/busy contacts.
+    Instead of simply waiting fixed minutes, contacts that didn't answer in a given
+    time bucket (e.g. Morning 10-13 IST) are shifted to an alternate time bucket
+    (Afternoon 14-16:30 IST or Evening 16:30-18:30 IST), significantly increasing
+    contact pick-up rates.
+    """
+    delay_minutes = next_retry_delay_minutes(attempt_number, backoff or DEFAULT_BACKOFF_MINUTES)
+    base_scheduled = now + timedelta(minutes=delay_minutes)
+
+    if reason not in ("no_answer", "busy"):
+        return base_scheduled
+
+    # Calculate IST hour (UTC + 5:30)
+    ist_offset = timedelta(hours=5, minutes=30)
+    ist_now = now + ist_offset
+    hour = ist_now.hour
+
+    # Adaptive bucket heuristic:
+    # Bucket 1: Morning (<13:00 IST) -> Shift to Afternoon bucket (14:30 IST)
+    # Bucket 2: Afternoon (13:00 to 16:30 IST) -> Shift to Evening bucket (17:00 IST)
+    # Bucket 3: Evening / Late (>=16:30 IST) -> Shift to Morning bucket next day (10:30 IST)
+    if hour < 13:
+        target_ist = ist_now.replace(hour=14, minute=30, second=0, microsecond=0)
+        if target_ist <= ist_now:
+            target_ist += timedelta(hours=2)
+    elif hour < 16:
+        target_ist = ist_now.replace(hour=17, minute=0, second=0, microsecond=0)
+        if target_ist <= ist_now:
+            target_ist += timedelta(hours=1, minutes=30)
+    else:
+        # Move to next business day morning
+        tomorrow_ist = ist_now + timedelta(days=1)
+        target_ist = tomorrow_ist.replace(hour=10, minute=30, second=0, microsecond=0)
+
+    adaptive_scheduled = target_ist - ist_offset
+
+    # Ensure the scheduled time is never earlier than the minimum backoff delay
+    min_scheduled = now + timedelta(minutes=min(15, delay_minutes))
+    if adaptive_scheduled < min_scheduled:
+        adaptive_scheduled = base_scheduled
+
+    return adaptive_scheduled
+
+
 def clamp_seconds(seconds: float) -> int:
     return max(SELF_RESCHEDULE_MIN_DELAY_S, min(SELF_RESCHEDULE_MAX_DELAY_S, int(seconds)))
 
@@ -294,8 +344,7 @@ def _schedule_retry_or_fail(
         campaign_contact.status = "failed"
         campaign_contact.next_attempt_at = None
         return
-    delay_minutes = next_retry_delay_minutes(attempt_number, backoff)
-    scheduled_for = now + timedelta(minutes=delay_minutes)
+    scheduled_for = calculate_adaptive_retry_time(attempt_number, now, reason, backoff)
     db.add(RetryJob(workspace_id=campaign.workspace_id, campaign_contact_id=campaign_contact.id, reason=reason, scheduled_for=scheduled_for))
     campaign_contact.status = "retry_scheduled"
     campaign_contact.next_attempt_at = scheduled_for

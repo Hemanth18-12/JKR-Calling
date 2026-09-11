@@ -37,7 +37,18 @@ class TwilioClient:
                     "StatusCallbackEvent": "completed",
                 },
             )
-        response.raise_for_status()
+        if response.is_error:
+            try:
+                err_data = response.json()
+                code = err_data.get("code", response.status_code)
+                msg = err_data.get("message", response.text)
+                if code == 21205 or "localhost" in str(msg):
+                    raise RuntimeError(
+                        f"Twilio error {code}: Twilio cannot call 'localhost'. You must configure PUBLIC_WEBHOOK_BASE_URL in your .env with a public URL (e.g., using ngrok: 'ngrok http 8000') so Twilio can reach your webhook."
+                    )
+                raise RuntimeError(f"Twilio error {code}: {msg}")
+            except (ValueError, KeyError):
+                response.raise_for_status()
         return response.json()["sid"]
 
 

@@ -6,7 +6,22 @@ import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, useTo
 import * as React from "react";
 
 const REAL_SIDE_EFFECT_TOOLS = new Set([
-  "book_appointment", "reschedule_appointment", "cancel_appointment", "create_human_callback", "send_whatsapp", "send_sms",
+  "book_appointment",
+  "reschedule_appointment",
+  "cancel_appointment",
+  "create_human_callback",
+  "transfer_call",
+  "send_whatsapp",
+  "send_sms",
+  "send_email",
+  "check_availability",
+  "check_calendar_slots",
+  "create_lead",
+  "create_crm_lead",
+  "update_lead",
+  "update_crm_stage",
+  "create_followup",
+  "get_information",
 ]);
 
 export function AgentToolsEditor({
