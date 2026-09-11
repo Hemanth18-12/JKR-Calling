@@ -5,12 +5,14 @@ services:
     region: singapore
     plan: free
     rootDir: services/api
-    buildCommand: "pip install uv && uv sync --package jkr-api"
-    startCommand: "uv run alembic -c ../../packages/db/alembic.ini upgrade head && (uv run --package jkr-db python -m jkr_db.seed || true) && uv run --package jkr-api uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    buildCommand: "export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:/opt/render/.local/bin:$PATH\" && (command -v uv >/dev/null 2>&1 || pip install uv) && uv sync --package jkr-api --no-dev"
+    startCommand: "export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:/opt/render/.local/bin:$PATH\" && uv run alembic -c ../../packages/db/alembic.ini upgrade head && (uv run --package jkr-db python -m jkr_db.seed || true) && uv run --package jkr-api uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.8"
+      - key: UV_LINK_MODE
+        value: "copy"
       - key: APP_ENV
         value: production
       - key: DATABASE_URL
