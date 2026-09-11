@@ -642,7 +642,7 @@ async def _persist_turn(
 
 async def _finalize_call(
     db: AsyncSession, *, workspace_id: uuid.UUID, call_session_id: uuid.UUID, call_status: str, end_reason: str,
-    had_exchange: bool, language_code: str = FALLBACK_LANGUAGE,
+    had_exchange: bool, language_code: str = FALLBACK_LANGUAGE, settings: Settings | None = None,
 ) -> None:
     session_result = await db.execute(select(CallSession).where(CallSession.id == call_session_id))
     call_session = session_result.scalar_one_or_none()
@@ -662,25 +662,37 @@ async def _finalize_call(
     if call_session.started_at:
         call_session.duration_seconds = int((now - call_session.started_at).total_seconds())
 
-    db.add(CallTranscript(workspace_id=workspace_id, call_session_id=call_session_id, full_text=full_text, language=language_code, is_final=True))
+    existing_transcript = (await db.execute(select(CallTranscript).where(CallTranscript.call_session_id == call_session_id))).scalar_one_or_none()
+    if existing_transcript is None:
+        db.add(CallTranscript(workspace_id=workspace_id, call_session_id=call_session_id, full_text=full_text, language=language_code, is_final=True))
+    else:
+        existing_transcript.full_text = full_text
+        existing_transcript.is_final = True
 
     conversation_state = call_session.state or {}
     category, lead_score = classify_provisional_outcome(conversation_state)
     objective_status = conversation_state.get("objective_status", "in_progress" if had_exchange else "abandoned")
-    db.add(
-        CallOutcome(
-            workspace_id=workspace_id, call_session_id=call_session_id, category=category, lead_score=lead_score,
-            score_reasons=[f"{k}: {v}" for k, v in conversation_state.get("known_fields", {}).items()],
-            objective_status=objective_status,
-            notes="Real live call via Twilio + Sarvam TTS/STT + the shared jkr_conversation engine — see app/modules/live_call/service.py.",
+
+    existing_outcome = (await db.execute(select(CallOutcome).where(CallOutcome.call_session_id == call_session_id))).scalar_one_or_none()
+    if existing_outcome is None:
+        db.add(
+            CallOutcome(
+                workspace_id=workspace_id, call_session_id=call_session_id, category=category, lead_score=lead_score,
+                score_reasons=[f"{k}: {v}" for k, v in conversation_state.get("known_fields", {}).items()],
+                objective_status=objective_status,
+                notes="Real live call via Twilio + Sarvam TTS/STT + the shared jkr_conversation engine — see app/modules/live_call/service.py.",
+            )
         )
-    )
-    db.add(
-        CallSummary(
-            workspace_id=workspace_id, call_session_id=call_session_id,
-            summary_text=full_text or "No exchange occurred.", generated_by="openai_live_test",
+
+    existing_summary = (await db.execute(select(CallSummary).where(CallSummary.call_session_id == call_session_id))).scalar_one_or_none()
+    if existing_summary is None:
+        db.add(
+            CallSummary(
+                workspace_id=workspace_id, call_session_id=call_session_id,
+                summary_text=full_text or "No exchange occurred.", generated_by="openai_live_test",
+            )
         )
-    )
+
     db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session_id, event_type="call_ended", payload={"reason": end_reason}))
 
     if call_session.duration_seconds is not None:
@@ -693,17 +705,15 @@ async def _finalize_call(
 
     await db.flush()
     try:
+        from app.config import get_settings
+        eff_settings = settings or get_settings()
         from jkr_db.pipeline import run_post_call_pipeline
         await run_post_call_pipeline(
             db, workspace_id=workspace_id, call_id=call_session_id,
-            encryption_key=settings.credentials_encryption_key,
+            encryption_key=eff_settings.credentials_encryption_key,
         )
     except Exception as exc:
         logger.exception("Error executing post_call_pipeline inline: %s", exc)
-        try:
-            enqueue("run_post_call_pipeline", args=(str(call_session_id), str(workspace_id)), queue_name="intelligence")
-        except Exception:
-            pass
 
 
 async def handle_voice_webhook(*, token: str, form: dict[str, str], signature: str | None, settings: Settings, redis: Any) -> str:
@@ -850,7 +860,7 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
             await _finalize_call(
                 db, workspace_id=workspace_id, call_session_id=call_session_id,
                 call_status="abandoned", end_reason="timeout", had_exchange=state["agent_turns"] > 1,
-                language_code=language_code,
+                language_code=language_code, settings=settings,
             )
             await redis.delete(_redis_key(token))
             kind, content = await _speak(closing, language_code=language_code, settings=settings, redis=redis, speaker=state.get("tts_speaker"), pace=state.get("tts_pace", 1.0))
@@ -982,6 +992,7 @@ async def handle_closing_grace_webhook(*, token: str, form: dict[str, str], sign
             await _finalize_call(
                 db, workspace_id=workspace_id, call_session_id=call_session_id, call_status="completed",
                 end_reason=state.get("pending_end_reason", "completed"), had_exchange=True, language_code=language_code,
+                settings=settings,
             )
             await redis.delete(_redis_key(token))
             return _twiml_hangup_only()
@@ -1001,6 +1012,7 @@ async def handle_closing_grace_webhook(*, token: str, form: dict[str, str], sign
             await _finalize_call(
                 db, workspace_id=workspace_id, call_session_id=call_session_id, call_status="completed",
                 end_reason=state.get("pending_end_reason", "completed"), had_exchange=True, language_code=language_code,
+                settings=settings,
             )
             await redis.delete(_redis_key(token))
             return _twiml_hangup_only()
@@ -1079,7 +1091,7 @@ async def handle_status_webhook(*, token: str, form: dict[str, str], signature: 
             await _finalize_call(
                 db, workspace_id=workspace_id, call_session_id=call_session_id, call_status="completed",
                 end_reason=state.get("pending_end_reason", "completed"), had_exchange=state["agent_turns"] > 1,
-                language_code=state.get("language_code", FALLBACK_LANGUAGE),
+                language_code=state.get("language_code", FALLBACK_LANGUAGE), settings=settings,
             )
         await redis.delete(_redis_key(token))
         return
@@ -1095,6 +1107,6 @@ async def handle_status_webhook(*, token: str, form: dict[str, str], signature: 
         await _finalize_call(
             db, workspace_id=workspace_id, call_session_id=call_session_id,
             call_status=status_and_reason[0], end_reason=status_and_reason[1], had_exchange=state["agent_turns"] > 1,
-            language_code=state.get("language_code", FALLBACK_LANGUAGE),
+            language_code=state.get("language_code", FALLBACK_LANGUAGE), settings=settings,
         )
     await redis.delete(_redis_key(token))

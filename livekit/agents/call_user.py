@@ -36,7 +36,7 @@ def make_call(target_phone_number: str):
     # When the user picks up, Twilio dials into the LiveKit SIP endpoint matching the trunk number
     twiml_instruction = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Dial>
+    <Dial callerId="{twilio_number}">
         <Sip>sip:{twilio_number}@{sip_uri};transport=tcp</Sip>
     </Dial>
 </Response>"""

@@ -24,7 +24,7 @@ def place_twilio_outbound_call(to_number, language="en-IN"):
     from_number = os.getenv("TWILIO_PHONE_NUMBER") or os.getenv("TWILIO_FROM_NUMBER") or "+19453058074"
 
     # Connect the phone call directly to LiveKit AI agent via SIP bridge so AI actively talks and listens
-    twiml = f'<Response><Dial><Sip>sip:{from_number}@{sip_uri};transport=tcp</Sip></Dial></Response>'
+    twiml = f'<Response><Dial callerId="{from_number}"><Sip>sip:{from_number}@{sip_uri};transport=tcp</Sip></Dial></Response>'
 
     url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Calls.json"
     data = urllib.parse.urlencode({
