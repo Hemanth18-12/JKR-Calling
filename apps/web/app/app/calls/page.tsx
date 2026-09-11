@@ -58,14 +58,14 @@ export default async function CallsPage({
             href={tab.href}
             className={`flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
               filter === tab.key
-                ? "bg-primary text-white shadow-sm"
+                ? "bg-primary text-primary-foreground font-semibold shadow-sm"
                 : "text-muted-foreground hover:bg-surface-raised hover:text-foreground"
             }`}
           >
             {tab.label}
             <span
               className={`rounded-full px-1.5 py-0.5 text-xs ${
-                filter === tab.key ? "bg-white/20" : "bg-surface-raised text-muted-foreground"
+                filter === tab.key ? "bg-black/15 text-black font-bold" : "bg-surface-raised text-muted-foreground"
               }`}
             >
               {tab.count}

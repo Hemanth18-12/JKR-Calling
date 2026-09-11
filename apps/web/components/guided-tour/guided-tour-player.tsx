@@ -87,10 +87,10 @@ export function GuidedTourPlayer() {
       {highlightStyle && (
         <div
           style={highlightStyle}
-          className="pointer-events-none fixed z-40 rounded-2xl border-2 border-primary ring-4 ring-primary/30 ring-offset-4 ring-offset-background shadow-[0_0_40px_rgba(124,92,255,0.4)] transition-all duration-500 animate-pulse"
+          className="pointer-events-none fixed z-40 rounded-2xl border-2 border-primary ring-4 ring-primary/30 ring-offset-4 ring-offset-background shadow-[0_0_40px_rgba(255,212,0,0.35)] transition-all duration-500 animate-pulse"
         >
-          <div className="absolute -top-3.5 left-4 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#7C5CFF] to-[#5B3FE4] px-3 py-0.5 text-[11px] font-semibold text-white shadow-md">
-            <Sparkles className="h-3 w-3 text-amber-300" />
+          <div className="absolute -top-3.5 left-4 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-primary to-[#FFA000] px-3 py-0.5 text-[11px] font-semibold text-black shadow-md">
+            <Sparkles className="h-3 w-3 text-black fill-black" />
             <span>{currentStep.highlightName}</span>
           </div>
         </div>
@@ -102,7 +102,7 @@ export function GuidedTourPlayer() {
           {/* Header Bar */}
           <div className="flex items-center justify-between border-b border-border/60 pb-3">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[#5B3FE4] text-white shadow-md shadow-primary/30">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[#FFA000] text-black shadow-md shadow-primary/30">
                 <Headphones className="h-4 w-4" />
               </div>
               <div>
@@ -154,7 +154,7 @@ export function GuidedTourPlayer() {
                   onClick={() => setLanguage("en-IN")}
                   className={`rounded px-1.5 py-0.5 transition-all ${
                     language === "en-IN"
-                      ? "bg-primary text-white font-medium shadow-sm"
+                      ? "bg-primary text-primary-foreground font-semibold shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -165,7 +165,7 @@ export function GuidedTourPlayer() {
                   onClick={() => setLanguage("te-IN")}
                   className={`rounded px-1.5 py-0.5 transition-all ${
                     language === "te-IN"
-                      ? "bg-primary text-white font-medium shadow-sm"
+                      ? "bg-primary text-primary-foreground font-semibold shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -176,7 +176,7 @@ export function GuidedTourPlayer() {
                   onClick={() => setLanguage("hi-IN")}
                   className={`rounded px-1.5 py-0.5 transition-all ${
                     language === "hi-IN"
-                      ? "bg-primary text-white font-medium shadow-sm"
+                      ? "bg-primary text-primary-foreground font-semibold shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
@@ -226,7 +226,7 @@ export function GuidedTourPlayer() {
                   onClick={() => goToStep(idx)}
                   className={`h-2 rounded-full transition-all duration-300 ${
                     idx === currentStepIndex
-                      ? "w-6 bg-gradient-to-r from-primary to-[#5B3FE4]"
+                      ? "w-6 bg-gradient-to-r from-primary to-[#FFA000]"
                       : "w-2 bg-border hover:bg-muted-foreground/50"
                   }`}
                   title={`Go to step ${idx + 1}`}

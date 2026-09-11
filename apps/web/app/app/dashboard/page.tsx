@@ -64,13 +64,13 @@ function StatCard({
   stagger: number;
 }) {
   const accentClasses = {
-    primary: "text-primary border-primary/20 bg-primary/8",
-    amber: "text-amber-400 border-amber-500/20 bg-amber-500/8",
-    danger: "text-danger border-danger/20 bg-danger/8",
+    primary: "text-primary border-primary/30 bg-primary/10 shadow-sm shadow-primary/10",
+    amber: "text-amber-400 border-amber-500/30 bg-amber-500/10 shadow-sm shadow-amber-500/10",
+    danger: "text-danger border-danger/30 bg-danger/10 shadow-sm shadow-danger/10",
   }[accent];
 
   return (
-    <Card className={`stagger-${stagger} group overflow-hidden hover:-translate-y-1 transition-transform`}>
+    <Card className={`stagger-${stagger} group overflow-hidden card-3d`}>
       <CardContent className="p-5">
         <div className="mb-3 flex items-center justify-between">
           <span className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm ${accentClasses}`}>
@@ -151,7 +151,7 @@ export default async function DashboardPage() {
         <div>
           <h1 className="font-display text-2xl font-bold text-foreground">
             Welcome back,{" "}
-            <span className="bg-gradient-to-r from-primary to-[#A78BFF] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-primary to-[#FFE066] bg-clip-text text-transparent font-extrabold">
               {me.user.full_name.split(" ")[0]}
             </span>
           </h1>

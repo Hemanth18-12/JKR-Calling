@@ -10,21 +10,21 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-md shadow-primary/30 hover:bg-primary/90 hover:shadow-primary/50 hover:shadow-lg hover:-translate-y-[1px]",
+          "bg-primary text-primary-foreground font-semibold shadow-md shadow-primary/25 hover:bg-[#FFE033] hover:shadow-primary/45 hover:shadow-lg hover:-translate-y-[1px] active:translate-y-0",
         gradient:
-          "bg-gradient-to-r from-[#7C5CFF] to-[#5B3FE4] text-white shadow-md shadow-primary/30 hover:opacity-95 hover:shadow-primary/50 hover:shadow-lg hover:-translate-y-[1px]",
+          "bg-gradient-to-r from-[#FFD400] to-[#FFA000] text-black font-semibold shadow-md shadow-primary/25 hover:brightness-105 hover:shadow-primary/45 hover:shadow-lg hover:-translate-y-[1px] active:translate-y-0",
         secondary:
-          "bg-surface-raised text-foreground border border-border hover:border-primary/40 hover:bg-surface-raised/70 hover:-translate-y-[1px]",
+          "bg-surface-raised text-foreground border border-border hover:border-primary/50 hover:bg-surface-raised/80 hover:text-primary hover:-translate-y-[1px]",
         outline:
-          "border border-border bg-transparent hover:bg-surface-raised hover:border-primary/40 text-foreground hover:-translate-y-[1px]",
+          "border border-border bg-transparent hover:bg-surface-raised hover:border-primary/50 hover:text-primary text-foreground hover:-translate-y-[1px]",
         ghost:
-          "hover:bg-surface-raised text-foreground",
+          "hover:bg-surface-raised hover:text-foreground text-muted-foreground",
         destructive:
-          "bg-danger/10 text-danger border border-danger/30 hover:bg-danger/20 hover:border-danger/60",
+          "bg-danger/15 text-danger border border-danger/30 hover:bg-danger/25 hover:border-danger/60",
         link:
-          "text-primary underline-offset-4 hover:underline p-0 h-auto",
+          "text-primary underline-offset-4 hover:underline p-0 h-auto font-medium",
         live:
-          "bg-secondary/10 text-secondary border border-secondary/30 hover:bg-secondary/20 hover:border-secondary/60 shadow-sm shadow-secondary/20",
+          "bg-secondary/15 text-secondary border border-secondary/40 hover:bg-secondary/25 hover:border-secondary/70 shadow-sm shadow-secondary/20 font-medium",
       },
       size: {
         default: "h-10 px-4 py-2",

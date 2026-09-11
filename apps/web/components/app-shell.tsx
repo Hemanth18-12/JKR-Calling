@@ -126,9 +126,9 @@ export function AppShell({
             collapsed ? "w-16" : "w-64"
           }`}
         >
-          {/* Ambient violet glow on sidebar top */}
+          {/* Ambient yellow glow on sidebar top */}
           <div className="pointer-events-none absolute left-0 top-0 h-40 w-full overflow-hidden">
-            <div className="absolute -left-8 -top-8 h-40 w-40 rounded-full bg-primary/8 blur-3xl" />
+            <div className="absolute -left-8 -top-8 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
           </div>
 
           {/* Logo */}
@@ -138,14 +138,14 @@ export function AppShell({
             </Button>
             {!collapsed ? (
               <div className="flex items-center gap-1.5">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[#5B3FE4]">
-                  <Zap className="h-3.5 w-3.5 text-white" />
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[#FFA000] shadow-sm shadow-primary/30">
+                  <Zap className="h-3.5 w-3.5 text-black fill-black" />
                 </div>
                 <span className="font-display text-sm font-bold tracking-tight text-foreground">JKR AI Calling</span>
               </div>
             ) : (
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[#5B3FE4]">
-                <Zap className="h-3.5 w-3.5 text-white" />
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[#FFA000] shadow-sm shadow-primary/30">
+                <Zap className="h-3.5 w-3.5 text-black fill-black" />
               </div>
             )}
           </div>

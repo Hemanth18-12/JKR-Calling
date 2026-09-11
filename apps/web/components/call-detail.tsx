@@ -156,7 +156,7 @@ export function CallDetail({ call, toolExecutions }: { call: CallDetailType; too
               }}
             >
               <div
-                className="h-full bg-gradient-to-r from-primary to-[#A78BFF] transition-all"
+                className="h-full bg-gradient-to-r from-primary to-[#FFE066] transition-all"
                 style={{ width: `${playbackProgress}%` }}
               />
             </div>

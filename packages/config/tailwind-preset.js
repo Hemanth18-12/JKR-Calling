@@ -1,7 +1,7 @@
 /**
- * Shared Tailwind design tokens — JKR AI Calling v2.
- * New palette: Deep charcoal-indigo base, Electric Violet brand,
- * Cyan Teal live-voice, Marigold Amber outcomes.
+ * Shared Tailwind design tokens — JKR AI Calling.
+ * Palette: Deep true-black (#0A0A0A) base, charcoal cards (#161616),
+ * Vivid Yellow (#FFD400) brand, and Amber (#FF9F1C) live-voice/real-time.
  */
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -29,9 +29,9 @@ module.exports = {
         danger: "hsl(var(--danger))",
         ring: "hsl(var(--ring))",
         /* Named semantic tokens for the 3-accent system */
-        "voice-live": "#2DD4BF",   /* Cyan Teal — live call / real-time */
-        "voice-brand": "#7C5CFF", /* Electric Violet — brand / action */
-        "voice-outcome": "#FFA94D", /* Marigold Amber — success / outcome */
+        "voice-live": "#FF9F1C",   /* Vivid Amber — live call / real-time */
+        "voice-brand": "#FFD400",  /* Vibrant Yellow — brand / action */
+        "voice-outcome": "#FFAA00", /* Warm Yellow-Amber — success / outcome */
       },
       borderRadius: {
         xl: "1rem",
@@ -46,15 +46,15 @@ module.exports = {
       },
       backgroundImage: {
         "gradient-brand":
-          "linear-gradient(135deg, #7C5CFF 0%, #5B3FE4 100%)",
+          "linear-gradient(135deg, #FFD400 0%, #FFA000 100%)",
         "gradient-live":
-          "linear-gradient(135deg, #2DD4BF 0%, #1A9E8C 100%)",
+          "linear-gradient(135deg, #FF9F1C 0%, #E67E00 100%)",
         "gradient-hero":
-          "radial-gradient(ellipse at 60% 30%, rgba(124,92,255,0.18) 0%, rgba(45,212,191,0.10) 55%, transparent 80%)",
+          "radial-gradient(ellipse at 60% 30%, rgba(255,212,0,0.12) 0%, rgba(255,159,28,0.06) 55%, transparent 80%)",
         "gradient-mesh":
-          "radial-gradient(at 20% 80%, rgba(124,92,255,0.12) 0px, transparent 50%), radial-gradient(at 80% 20%, rgba(45,212,191,0.08) 0px, transparent 50%)",
+          "radial-gradient(at 20% 80%, rgba(255,212,0,0.08) 0px, transparent 50%), radial-gradient(at 80% 20%, rgba(255,159,28,0.05) 0px, transparent 50%)",
         "gradient-cta":
-          "linear-gradient(135deg, hsl(var(--primary)) 0%, #5B3FE4 100%)",
+          "linear-gradient(135deg, #FFD400 0%, #FFA000 100%)",
       },
       animation: {
         "wave-1": "wave-bounce 1.1s ease-in-out infinite",
@@ -71,13 +71,13 @@ module.exports = {
           "50%": { height: "24px" },
         },
         "pulse-ring": {
-          "0%": { transform: "scale(0.95)", opacity: "0.8" },
+          "0%": { transform: "scale(0.95)", opacity: "0.85" },
           "50%": { transform: "scale(1.2)", opacity: "0.2" },
-          "100%": { transform: "scale(0.95)", opacity: "0.8" },
+          "100%": { transform: "scale(0.95)", opacity: "0.85" },
         },
         "float-glow": {
-          "0%, 100%": { transform: "translateY(0px)", opacity: "0.6" },
-          "50%": { transform: "translateY(-8px)", opacity: "0.9" },
+          "0%, 100%": { transform: "translateY(0px)", opacity: "0.7" },
+          "50%": { transform: "translateY(-8px)", opacity: "1" },
         },
         "fade-rise": {
           "0%": { opacity: "0", transform: "translateY(12px)" },
@@ -85,9 +85,11 @@ module.exports = {
         },
       },
       boxShadow: {
-        "primary-glow": "0 0 20px rgba(124, 92, 255, 0.25)",
-        "live-glow": "0 0 16px rgba(45, 212, 191, 0.35)",
-        "card-raised": "0 4px 24px rgba(0, 0, 0, 0.35)",
+        "primary-glow": "0 0 24px rgba(255, 212, 0, 0.35)",
+        "live-glow": "0 0 20px rgba(255, 159, 28, 0.45)",
+        "card-raised": "0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 212, 0, 0.08)",
+        "card-3d": "0 10px 30px -5px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05)",
+        "card-3d-hover": "0 16px 36px -4px rgba(0, 0, 0, 0.9), 0 0 25px rgba(255, 212, 0, 0.2)",
       },
     },
   },

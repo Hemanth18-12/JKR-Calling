@@ -19,17 +19,17 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "relative flex flex-col items-center justify-center gap-4 overflow-hidden rounded-xl border border-dashed border-border/60 p-12 text-center",
+        "relative flex flex-col items-center justify-center gap-4 overflow-hidden rounded-xl border border-dashed border-border/80 bg-surface/40 p-12 text-center",
         className
       )}
     >
       {/* Ambient glow background */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="h-40 w-40 rounded-full bg-primary/5 blur-3xl" />
+        <div className="h-44 w-44 rounded-full bg-primary/8 blur-3xl" />
       </div>
 
       {Icon ? (
-        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10">
+        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 shadow-lg shadow-primary/5">
           <Icon className="h-6 w-6 text-primary" />
         </div>
       ) : null}

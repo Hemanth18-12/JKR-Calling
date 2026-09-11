@@ -81,14 +81,14 @@ export function CallPulse({
 
   if (isMock) {
     return (
-      <span className={cn("relative flex items-center justify-center", className)} {...props}>
-        <span className={cn("rounded-full border border-dashed border-amber-500 bg-amber-500/20", sizeClasses)} />
+      <span className={cn("relative flex items-center justify-center", className)} title="Mock telephony provider" {...props}>
+        <span className={cn("rounded-full border border-dashed border-zinc-600 bg-zinc-800/60", sizeClasses)} />
       </span>
     );
   }
 
   return (
-    <span className={cn("relative flex items-center justify-center", className)} {...props}>
+    <span className={cn("relative flex items-center justify-center", className)} title="Live audio stream active" {...props}>
       {active && (
         <span
           className={cn(
@@ -97,7 +97,7 @@ export function CallPulse({
           )}
         />
       )}
-      <span className={cn("relative inline-flex rounded-full bg-secondary shadow-[0_0_8px_rgba(45,212,191,0.8)]", sizeClasses)} />
+      <span className={cn("relative inline-flex rounded-full bg-secondary shadow-[0_0_12px_rgba(255,159,28,0.85)]", sizeClasses)} />
     </span>
   );
 }

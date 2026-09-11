@@ -26,10 +26,6 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
     }
   };
 
-  if (appointments.length === 0) {
-    return <EmptyState icon={Calendar} title="No appointments yet" description="Booked automatically when an agent successfully executes the book_appointment tool during a live call." />;
-  }
-
   // Check for time slot overlaps (Conflict Resolver)
   const sorted = [...appointments].sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime());
   const conflicts = new Set<string>();
@@ -82,96 +78,124 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
       {viewMode === "list" ? (
         <Card>
           <CardContent className="p-0">
-            <div className="divide-y divide-border">
-              {sorted.map((a) => {
-                const hasConflict = conflicts.has(a.id);
-                return (
-                  <div key={a.id} className="flex items-center justify-between px-5 py-3.5 text-sm hover:bg-surface-raised transition-colors">
-                    <div className="flex items-center gap-3.5">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
-                        <CalendarCheck2 className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-foreground">{a.contact_name}</p>
-                          {hasConflict && (
-                            <Badge variant="danger" className="text-[10px]">
-                              Time Overlap Warning
-                            </Badge>
-                          )}
+            {sorted.length === 0 ? (
+              <div className="p-6">
+                <EmptyState
+                  icon={Calendar}
+                  title="No appointments scheduled yet"
+                  description="Appointments are booked automatically by AI voice agents when executing the book_appointment tool during inbound or outbound calls."
+                />
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {sorted.map((a) => {
+                  const hasConflict = conflicts.has(a.id);
+                  return (
+                    <div key={a.id} className="flex items-center justify-between px-5 py-3.5 text-sm hover:bg-surface-raised transition-colors">
+                      <div className="flex items-center gap-3.5">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+                          <CalendarCheck2 className="h-4 w-4" />
                         </div>
-                        <p className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {new Date(a.scheduled_for).toLocaleDateString("en-IN", {
-                              weekday: "short",
-                              day: "numeric",
-                              month: "short",
-                              timeZone: "Asia/Kolkata",
-                            })} · {new Date(a.scheduled_for).toLocaleTimeString("en-IN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              timeZone: "Asia/Kolkata",
-                            })} ({a.duration_minutes}m)
-                          </span>
-                          {a.notes ? <span>· {a.notes}</span> : null}
-                        </p>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-foreground">{a.contact_name}</p>
+                            {hasConflict && (
+                              <Badge variant="danger" className="text-[10px]">
+                                Time Overlap Warning
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {new Date(a.scheduled_for).toLocaleDateString("en-IN", {
+                                weekday: "short",
+                                day: "numeric",
+                                month: "short",
+                                timeZone: "Asia/Kolkata",
+                              })} · {new Date(a.scheduled_for).toLocaleTimeString("en-IN", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                timeZone: "Asia/Kolkata",
+                              })} ({a.duration_minutes}m)
+                            </span>
+                            {a.notes ? <span>· {a.notes}</span> : null}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={APPOINTMENT_STATUS_VARIANT[a.status] ?? "secondary"}>
+                          {a.status.replace(/_/g, " ")}
+                        </Badge>
+                        {a.status === "scheduled" || a.status === "confirmed" ? (
+                          <Button size="sm" variant="ghost" className="text-xs text-danger hover:text-danger" onClick={() => cancel(a.id)} loading={busyId === a.id}>
+                            Cancel
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={APPOINTMENT_STATUS_VARIANT[a.status] ?? "secondary"}>
-                        {a.status.replace(/_/g, " ")}
-                      </Badge>
-                      {a.status === "scheduled" || a.status === "confirmed" ? (
-                        <Button size="sm" variant="ghost" className="text-xs text-danger hover:text-danger" onClick={() => cancel(a.id)} loading={busyId === a.id}>
-                          Cancel
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : (
         /* Calendar Grid View */
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sorted.map((a) => {
-            const hasConflict = conflicts.has(a.id);
-            const dateObj = new Date(a.scheduled_for);
-            return (
-              <Card key={a.id} className="border-border hover:border-primary/40 transition-colors">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-primary">
-                      {dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric" })}
-                    </span>
-                    <Badge variant={APPOINTMENT_STATUS_VARIANT[a.status] ?? "secondary"} className="text-[10px]">
-                      {a.status}
-                    </Badge>
-                  </div>
-                  <CardTitle className="text-base font-semibold">{a.contact_name}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-xs text-muted-foreground">
-                  <div className="flex items-center gap-1.5 font-medium text-foreground">
-                    <Clock className="h-3.5 w-3.5 text-secondary" />
-                    {dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} ({a.duration_minutes} mins)
-                  </div>
-                  {a.notes && <p className="italic">&ldquo;{a.notes}&rdquo;</p>}
-                  {hasConflict && (
-                    <p className="text-danger font-medium text-[11px]">⚠️ Overlaps with another booking.</p>
-                  )}
-                  {a.status === "scheduled" || a.status === "confirmed" ? (
-                    <Button size="sm" variant="outline" className="w-full text-xs h-7 text-danger" onClick={() => cancel(a.id)}>
-                      Cancel Booking
-                    </Button>
-                  ) : null}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        sorted.length === 0 ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                <div key={day} className="rounded-xl border border-border/80 bg-surface/60 p-3.5 text-center">
+                  <p className="text-xs font-semibold text-primary">{day}</p>
+                  <p className="mt-2 text-[11px] text-muted-foreground/60">0 scheduled</p>
+                </div>
+              ))}
+            </div>
+            <EmptyState
+              icon={Calendar}
+              title="Calendar grid is clear"
+              description="When agents schedule consultations, appointments, or follow-up calls, each slot appears dynamically in this calendar grid."
+            />
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {sorted.map((a) => {
+              const hasConflict = conflicts.has(a.id);
+              const dateObj = new Date(a.scheduled_for);
+              return (
+                <Card key={a.id} className="border-border hover:border-primary/40 transition-colors">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-primary">
+                        {dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric" })}
+                      </span>
+                      <Badge variant={APPOINTMENT_STATUS_VARIANT[a.status] ?? "secondary"} className="text-[10px]">
+                        {a.status}
+                      </Badge>
+                    </div>
+                    <CardTitle className="text-base font-semibold">{a.contact_name}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5 font-medium text-foreground">
+                      <Clock className="h-3.5 w-3.5 text-secondary" />
+                      {dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} ({a.duration_minutes} mins)
+                    </div>
+                    {a.notes && <p className="italic">&ldquo;{a.notes}&rdquo;</p>}
+                    {hasConflict && (
+                      <p className="text-danger font-medium text-[11px]">⚠️ Overlaps with another booking.</p>
+                    )}
+                    {a.status === "scheduled" || a.status === "confirmed" ? (
+                      <Button size="sm" variant="outline" className="w-full text-xs h-7 text-danger" onClick={() => cancel(a.id)}>
+                        Cancel Booking
+                      </Button>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )
       )}
     </div>
   );

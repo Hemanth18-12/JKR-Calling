@@ -2,49 +2,48 @@
    (apps/web) owns the actual Tailwind build; this file just defines the CSS
    variables the shared preset (packages/config/tailwind-preset.js) reads.
 
-   JKR AI Calling design tokens — spec §5.
-   Dark is the default/primary theme (near-black surfaces, electric violet
-   primary, cyan secondary); light mode is offered but not the design center
-   of gravity for an ops/call-center console. */
+   JKR AI Calling design tokens — Yellow & Black 3D Redesign.
+   True deep black base (#0A0A0A), charcoal cards (#161616), vivid primary yellow
+   (#FFD400), live-only amber (#FF9F1C), and crisp off-white text (#F5F5F0). */
 :root {
-  --background: 222 41% 7%; /* #0B0F1A */
-  --surface: 222 31% 11%; /* #141926 */
-  --surface-raised: 222 24% 15%; /* #1C2333 */
-  --border: 222 24% 19%; /* #252B3D */
-  --foreground: 228 40% 95%; /* #EDEFF7 */
-  --muted: 222 20% 18%;
-  --muted-foreground: 222 14% 60%; /* #8B93A7 */
-  --primary: 252 100% 68%; /* #7C5CFF Electric Violet */
-  --primary-foreground: 0 0% 100%;
-  --secondary: 172 66% 50%; /* #2DD4BF Cyan Teal (Live Voice) */
-  --secondary-foreground: 222 41% 7%;
-  --amber: 31 100% 65%; /* #FFA94D Marigold Amber */
-  --success: 152 60% 45%;
-  --warning: 31 100% 65%;
-  --danger: 352 100% 68%; /* #FF5C72 Warm Coral Red */
-  --ring: 252 100% 68%;
+  --background: 0 0% 4%; /* #0A0A0A True Deep Black */
+  --surface: 0 0% 8.6%; /* #161616 Charcoal Card Surface */
+  --surface-raised: 0 0% 12.5%; /* #202020 Raised Card / Dropdown */
+  --border: 0 0% 16%; /* #292929 Subtle Dark Border */
+  --foreground: 60 9% 96%; /* #F5F5F0 Bright Crisp Off-White */
+  --muted: 0 0% 14%; /* #242424 */
+  --muted-foreground: 60 3% 62%; /* #9E9E96 Readable Muted Body */
+  --primary: 49 100% 50%; /* #FFD400 Electric Vibrant Yellow */
+  --primary-foreground: 0 0% 4%; /* #0A0A0A Deep Black on Yellow */
+  --secondary: 35 100% 55%; /* #FF9F1C Vivid Amber (Exclusively for Live Calls / Streaming) */
+  --secondary-foreground: 0 0% 4%;
+  --amber: 42 100% 50%; /* #FFAA00 Warm Yellow-Amber */
+  --success: 145 65% 45%; /* #22C55E Crisp Green */
+  --warning: 42 100% 50%;
+  --danger: 355 100% 60%; /* #FF334B Vivid Danger Red */
+  --ring: 49 100% 50%; /* #FFD400 Yellow Focus Ring */
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-display: "Outfit", "Inter", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 [data-theme="light"] {
-  --background: 210 20% 98%;
+  --background: 0 0% 98%;
   --surface: 0 0% 100%;
-  --surface-raised: 210 20% 96%;
-  --border: 214 16% 88%;
-  --foreground: 224 24% 10%;
-  --muted: 214 16% 88%;
-  --muted-foreground: 218 10% 40%;
-  --primary: 252 80% 58%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 172 66% 40%;
+  --surface-raised: 0 0% 95%;
+  --border: 0 0% 88%;
+  --foreground: 0 0% 9%;
+  --muted: 0 0% 92%;
+  --muted-foreground: 0 0% 40%;
+  --primary: 48 100% 45%;
+  --primary-foreground: 0 0% 4%;
+  --secondary: 35 100% 50%;
   --secondary-foreground: 0 0% 100%;
-  --amber: 31 90% 50%;
-  --success: 152 55% 36%;
-  --warning: 31 90% 50%;
-  --danger: 352 80% 55%;
-  --ring: 252 80% 58%;
+  --amber: 42 100% 48%;
+  --success: 145 65% 38%;
+  --warning: 42 100% 48%;
+  --danger: 355 90% 52%;
+  --ring: 48 100% 45%;
 }
 
 body {
@@ -57,6 +56,26 @@ h1, h2, h3, .font-display {
   font-family: var(--font-display);
 }
 
+/* 3D Glassmorphism & Depth Utilities */
+.card-3d {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+.card-3d:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 30px -4px rgba(0, 0, 0, 0.85), 0 0 20px -2px rgba(255, 212, 0, 0.15), 0 0 0 1px rgba(255, 212, 0, 0.3);
+}
+
+.glow-yellow-sm {
+  box-shadow: 0 0 12px rgba(255, 212, 0, 0.25);
+}
+.glow-yellow-md {
+  box-shadow: 0 0 24px rgba(255, 212, 0, 0.35);
+}
+.glow-amber-live {
+  box-shadow: 0 0 16px rgba(255, 159, 28, 0.45);
+}
+
 /* Audio Waveform & Pulse Keyframes */
 @keyframes wave-bounce {
   0%, 100% { height: 6px; }
@@ -64,14 +83,14 @@ h1, h2, h3, .font-display {
 }
 
 @keyframes pulse-ring {
-  0% { transform: scale(0.95); opacity: 0.8; }
-  50% { transform: scale(1.15); opacity: 0.3; }
-  100% { transform: scale(0.95); opacity: 0.8; }
+  0% { transform: scale(0.95); opacity: 0.85; }
+  50% { transform: scale(1.2); opacity: 0.2; }
+  100% { transform: scale(0.95); opacity: 0.85; }
 }
 
 @keyframes float-glow {
-  0%, 100% { transform: translateY(0px); opacity: 0.6; }
-  50% { transform: translateY(-8px); opacity: 0.9; }
+  0%, 100% { transform: translateY(0px); opacity: 0.7; }
+  50% { transform: translateY(-8px); opacity: 1; }
 }
 
 .animate-wave-1 { animation: wave-bounce 1.1s ease-in-out infinite; }

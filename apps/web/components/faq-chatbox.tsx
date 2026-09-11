@@ -287,10 +287,10 @@ export function FaqChatbox() {
           title="Click to open FAQ assistant (Drag to move)"
         >
           {/* Ambient pulse glow */}
-          <div className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-primary to-[#5B3FE4] opacity-40 blur transition-all duration-300 group-hover:opacity-75" />
+          <div className="absolute -inset-0.5 rounded-full bg-gradient-to-r from-primary to-[#FFA000] opacity-40 blur transition-all duration-300 group-hover:opacity-75" />
 
-          <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[#5B3FE4] text-white shadow-md">
-            <MessageSquare className="h-4 w-4" />
+          <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[#FFA000] text-black shadow-md shadow-primary/30">
+            <MessageSquare className="h-4 w-4 fill-black" />
           </div>
 
           <div className="relative hidden sm:block">
@@ -307,7 +307,7 @@ export function FaqChatbox() {
         /* Expanded Draggable Chatbox Window */
         <div
           className="flex h-[520px] w-[380px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-2xl border border-border/80 bg-surface/95 shadow-2xl backdrop-blur-2xl transition-all duration-200"
-          style={{ boxShadow: "0 20px 50px rgba(0, 0, 0, 0.4), 0 0 20px rgba(124, 92, 255, 0.15)" }}
+          style={{ boxShadow: "0 20px 50px rgba(0, 0, 0, 0.7), 0 0 24px rgba(255, 212, 0, 0.15)" }}
         >
           {/* Drag Handle & Header */}
           <div
@@ -318,7 +318,7 @@ export function FaqChatbox() {
           >
             <div className="flex items-center gap-2.5">
               <GripVertical className="h-4 w-4 text-muted-foreground/60" />
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[#5B3FE4] text-white shadow-sm">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-[#FFA000] text-black shadow-sm shadow-primary/20">
                 <Bot className="h-4 w-4" />
               </div>
               <div>
@@ -379,9 +379,9 @@ export function FaqChatbox() {
                 <button
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`whitespace-nowrap rounded-md px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                  className={`whitespace-nowrap rounded-md px-2.5 py-1 text-[10px] font-semibold transition-colors ${
                     selectedCategory === cat.id
-                      ? "bg-primary text-white shadow-sm"
+                      ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
                       : "bg-surface-raised text-muted-foreground hover:text-foreground"
                   }`}
                 >

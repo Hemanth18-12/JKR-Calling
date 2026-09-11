@@ -71,8 +71,8 @@ export default function LandingPage() {
       {/* Navigation */}
       <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[#5B3FE4] shadow-lg shadow-primary/30">
-            <Zap className="h-4 w-4 text-white" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[#FFA000] shadow-lg shadow-primary/30">
+            <Zap className="h-4 w-4 text-black fill-black" />
           </div>
           <span className="font-display text-base font-bold tracking-tight text-foreground">JKR AI Calling</span>
         </div>
@@ -101,11 +101,11 @@ export default function LandingPage() {
 
           <h1 className="font-display max-w-3xl text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
             An AI revenue agent that{" "}
-            <span className="bg-gradient-to-r from-primary to-[#A78BFF] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-primary to-[#FFE066] bg-clip-text text-transparent font-extrabold">
               calls leads
             </span>
             , understands customers, and{" "}
-            <span className="bg-gradient-to-r from-secondary to-[#5EEAD4] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-secondary to-[#FFB74D] bg-clip-text text-transparent font-extrabold">
               proves it worked
             </span>
             .
