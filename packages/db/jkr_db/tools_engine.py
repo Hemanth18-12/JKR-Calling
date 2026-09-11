@@ -43,14 +43,11 @@ REAL_SIDE_EFFECT_TOOLS = {
     "send_whatsapp",
     "send_sms",
     "send_email",
-    "check_availability",
-    "check_calendar_slots",
     "create_lead",
     "create_crm_lead",
     "update_lead",
     "update_crm_stage",
     "create_followup",
-    "get_information",
 }
 
 

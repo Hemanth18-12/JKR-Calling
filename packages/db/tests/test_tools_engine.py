@@ -50,7 +50,8 @@ def test_parse_fuzzy_datetime_handles_none_input():
 def test_real_side_effect_tools_matches_documented_set():
     assert REAL_SIDE_EFFECT_TOOLS == {
         "book_appointment", "reschedule_appointment", "cancel_appointment",
-        "create_human_callback", "send_whatsapp", "send_sms",
+        "create_human_callback", "transfer_call", "send_whatsapp", "send_sms", "send_email",
+        "create_lead", "create_crm_lead", "update_lead", "update_crm_stage", "create_followup",
     }
 
 

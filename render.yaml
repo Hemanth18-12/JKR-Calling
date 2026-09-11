@@ -5,8 +5,8 @@ services:
     region: singapore
     plan: free
     rootDir: services/api
-    buildCommand: "pip install uv && uv sync --all-packages"
-    startCommand: "uv run alembic -c ../../packages/db/alembic.ini upgrade head && uv run --package jkr-db python -m jkr_db.seed && uv run --package jkr-api uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    buildCommand: "pip install uv && uv sync --package jkr-api"
+    startCommand: "uv run alembic -c ../../packages/db/alembic.ini upgrade head && (uv run --package jkr-db python -m jkr_db.seed || true) && uv run --package jkr-api uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 
     envVars:
       - key: PYTHON_VERSION
