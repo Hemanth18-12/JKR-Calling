@@ -32,12 +32,16 @@ from jkr_conversation.streaming_response import (
 )
 
 
-def _question_prefix(*, decision: PlannerDecision, rag_chunks: list[RagChunk], language: str) -> str:
+def _question_prefix(
+    *, decision: PlannerDecision, extraction: ExtractionResult | None = None, rag_chunks: list[RagChunk], language: str
+) -> str:
     if not decision.answer_question_first:
         return ""
     if rag_chunks:
         snippet = first_sentence(rag_chunks[0].text)
         return snippet + ("" if snippet.endswith((".", "!", "?")) else ".") + " "
+    if extraction and extraction.question_type == "general_knowledge":
+        return ""
     return policy.fallback_text(kind="no_knowledge_match", language=language) + " "
 
 
@@ -45,7 +49,7 @@ def _fallback_text(
     *, decision: PlannerDecision, extraction: ExtractionResult, state: dict, rag_chunks: list[RagChunk],
     objective: ObjectiveDefinition, language: str,
 ) -> str:
-    prefix = _question_prefix(decision=decision, rag_chunks=rag_chunks, language=language)
+    prefix = _question_prefix(decision=decision, extraction=extraction, rag_chunks=rag_chunks, language=language)
 
     if decision.action == "CLARIFY" and decision.target_field:
         candidates = extraction.uncertain_fields.get(decision.target_field) or [
@@ -158,11 +162,40 @@ def _build_prompt(
             '"You said X, is that correct?" phrasing. One short question only.'
         )
     elif decision.action == "DEFER_QUESTION":
-        action_guidance = (
-            "You could not confidently answer the customer's specific business question from APPROVED KNOWLEDGE above. "
-            "Acknowledge that honestly and politely — say you don't have those specific details on hand and our team will confirm. "
-            "Do NOT say anything that signals the call is ending; keep the conversation flowing smoothly."
-        )
+        if extraction.question_type == "general_knowledge":
+            action_guidance = (
+                "The customer asked a general knowledge or conversational question. Answer it directly, "
+                "accurately, and conversationally in 1-2 concise spoken sentences using your general knowledge. "
+                "Do NOT use fallback phrases like 'team will confirm' or 'not sure' for general knowledge questions."
+            )
+        else:
+            action_guidance = (
+                "You could not confidently answer the customer's specific business question from APPROVED KNOWLEDGE above. "
+                "Acknowledge that honestly and politely — say you don't have those specific details on hand and our team will confirm. "
+                "Do NOT say anything that signals the call is ending; keep the conversation flowing smoothly."
+            )
+
+    question_section = ""
+    if decision.answer_question_first:
+        if extraction.question_type == "general_knowledge":
+            question_section = (
+                f"CUSTOMER QUESTION TO ANSWER (General Knowledge / Concepts / Small Talk):\n"
+                f'"{extraction.rewritten_query or customer_utterance}"\n'
+                "GUIDANCE FOR THIS QUESTION: Answer this directly, intelligently, and conversationally in 1-2 concise spoken sentences using your general knowledge (e.g. explain the term/concept simply and clearly). "
+                "DO NOT say you don't know or that your team will confirm — this is general world knowledge, not proprietary company data. Then continue naturally with the planned next action.\n\n"
+            )
+        elif rag_chunks:
+            question_section = (
+                f"CUSTOMER QUESTION TO ANSWER (Business Knowledge - Grounded):\n"
+                f'"{extraction.rewritten_query or customer_utterance}"\n'
+                "GUIDANCE FOR THIS QUESTION: Answer this question concisely using APPROVED KNOWLEDGE above, then smoothly proceed with the planned next action.\n\n"
+            )
+        else:
+            question_section = (
+                f"CUSTOMER QUESTION TO ANSWER (Business Knowledge - No Confident Match):\n"
+                f'"{extraction.rewritten_query or customer_utterance}"\n'
+                "GUIDANCE FOR THIS QUESTION: Since this is a specific business question not found in APPROVED KNOWLEDGE, politely let the caller know you don't have those exact details on hand and the team will confirm them, then smoothly continue with the planned next action.\n\n"
+            )
 
     system = (
         f"IDENTITY & PERSONA\n"
@@ -173,7 +206,7 @@ def _build_prompt(
         f"LANGUAGE\n{_language_instruction(language)}\n\n"
         f"CUSTOMER STATE\nAlready known:\n{known_lines}\n\n"
         f"RECENT CONVERSATION (Dialogue History)\n{recent_lines}\n\n"
-        + (f"CUSTOMER QUESTION TO ANSWER\n{extraction.rewritten_query}\n\n" if decision.answer_question_first else "")
+        + question_section
         + "APPROVED KNOWLEDGE (use ONLY this to answer company-specific factual questions — never state a price, hour, "
         f"policy, or fact not present here)\n{rag_lines}\n\n"
         + (f"CUSTOMER OBJECTION TO ACKNOWLEDGE\n{decision.objection}\n\n" if decision.objection else "")
@@ -181,9 +214,9 @@ def _build_prompt(
         + (f"ACTION GUIDANCE\n{action_guidance}\n\n" if action_guidance else "")
         + "CONVERSATIONAL RULES & KNOWLEDGE GROUNDING\n"
         "1. Real understanding: Listen carefully to what the caller says. Respond intelligently, naturally, and contextually to their actual words.\n"
-        "2. Chit-chat & Small Talk: If the caller greets you ('how are you', 'good morning', 'can you hear me'), makes small talk, or asks conversational questions, respond warmly and conversationally like a real human assistant, then smoothly transition toward the call objective.\n"
-        "3. Factual Grounding: For business-specific claims (prices, operating hours, cancellation policies, guarantees, specific offerings), rely strictly on APPROVED KNOWLEDGE above. Never invent facts not present in APPROVED KNOWLEDGE.\n"
-        "4. Knowledge Gaps: If asked a specific business question not covered in APPROVED KNOWLEDGE, honestly and naturally say you don't have those exact details on hand and offer to have the team confirm. Never say you don't know when answering standard greetings or small talk.\n"
+        "2. General Knowledge & Chit-chat: If the caller asks a general knowledge question (e.g., 'what is a hackathon', 'what does this mean', definitions, technology, general facts), greets you, or makes small talk, answer directly, smartly, and warmly using your general knowledge. NEVER give a canned 'not sure / team will confirm' fallback for general knowledge questions or small talk.\n"
+        "3. Factual Grounding for Business: For business-specific claims (prices, operating hours, cancellation policies, doctor schedules, specific treatments), rely strictly on APPROVED KNOWLEDGE above. Never invent business facts not present in APPROVED KNOWLEDGE.\n"
+        "4. Business Knowledge Gaps: ONLY for specific company/clinic questions where no matching info exists in APPROVED KNOWLEDGE, politely say you don't have those specific details on hand and offer to have the team confirm with them.\n"
         "5. Never claim a booking/order/payment is confirmed unless explicitly told it succeeded. Never re-ask for information already given in CUSTOMER STATE above.\n\n"
         "SPEECH STYLE\n"
         f"Spoken dialogue ({response_length}): one or two short sentences, like a real phone conversation — not a written essay. "
@@ -276,7 +309,15 @@ async def generate(
     if llm_client is None:
         return fallback
 
-    if engine_mode == "fast" and decision.action in _FAST_RESPONSE_ELIGIBLE_ACTIONS:
+    should_fast_respond = (
+        engine_mode == "fast"
+        and decision.action in _FAST_RESPONSE_ELIGIBLE_ACTIONS
+        and not (decision.answer_question_first and extraction.question_type == "general_knowledge")
+        and not (decision.action == "DEFER_QUESTION" and extraction.question_type == "general_knowledge")
+        and extraction.turn_intent != "small_talk"
+        and not decision.objection
+    )
+    if should_fast_respond:
         return fallback
 
     system, user = _build_prompt(

@@ -37,6 +37,8 @@ def _mock_extract(*, customer_utterance: str, state: dict) -> ExtractionResult:
         field_confidence[awaiting_field] = 0.6 if len(customer_utterance.strip()) > 2 else 0.4
 
     detected_question = rag.looks_like_a_question(customer_utterance)
+    is_general_q = any(k in customer_utterance.lower() for k in ["hackathon", "what is mean", "who are you", "what are you", "weather", "meaning"])
+    question_type = "general_knowledge" if is_general_q else "business_knowledge"
 
     return ExtractionResult(
         turn_intent="question" if detected_question else "answer",
@@ -45,6 +47,7 @@ def _mock_extract(*, customer_utterance: str, state: dict) -> ExtractionResult:
         uncertain_fields={},
         detected_question=detected_question,
         rewritten_query=customer_utterance if detected_question else None,
+        question_type=question_type,
         objection=None,
         wants_human=policy.detect_human_handoff(customer_utterance),
         wrong_number=policy.detect_wrong_number(customer_utterance),
@@ -77,6 +80,7 @@ def _build_prompt(*, customer_utterance: str, state: dict, objective: ObjectiveD
         "uncertain_fields (object mapping field key to a list of ambiguous candidate values, only "
         "when genuinely unclear which the customer meant), "
         "detected_question (boolean), "
+        "question_type (if detected_question is true, one of: 'general_knowledge' for general world knowledge, definitions, concepts like hackathons or tech terms, small talk, AI identity, or conversational questions; 'business_knowledge' for specific questions about the company/clinic, services, pricing, appointments, doctor availability, operating hours, or policies), "
         "rewritten_query (a short, focused search-style query capturing just the factual question "
         "being asked, or null if detected_question is false), "
         "objection (a short description of the objection, or null), "
@@ -144,6 +148,9 @@ def _parse_llm_extraction(raw: dict, *, objective: ObjectiveDefinition) -> Extra
     objection = raw.get("objection")
     objection = objection.strip() if isinstance(objection, str) and objection.strip() else None
 
+    q_type_raw = str(raw.get("question_type", "")).lower()
+    question_type = "general_knowledge" if "general" in q_type_raw else "business_knowledge"
+
     confirmation_response_field = raw.get("confirmation_response")
     confirmation_response = confirmation_response_field if confirmation_response_field in _VALID_CONFIRMATION_RESPONSES else None
 
@@ -154,6 +161,7 @@ def _parse_llm_extraction(raw: dict, *, objective: ObjectiveDefinition) -> Extra
         uncertain_fields=uncertain_fields,
         detected_question=bool(raw.get("detected_question")),
         rewritten_query=rewritten_query,
+        question_type=question_type,
         objection=objection,
         wants_human=bool(raw.get("wants_human")),
         wrong_number=bool(raw.get("wrong_number")),

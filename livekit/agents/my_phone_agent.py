@@ -74,9 +74,10 @@ class PhoneVoiceAgent(Agent):
         super().__init__(instructions=instructions)
 
     async def on_enter(self) -> None:
-        logger.info(f"📞 Agent entered phone session. Speaking greeting: '{self._greeting}'")
+        clean_greeting = self._greeting.strip()
+        logger.info(f"📞 Agent entered phone session. Speaking greeting: '{clean_greeting}'")
         self.session.generate_reply(
-            instructions=f"Speak this exact greeting naturally to the caller: '{self._greeting}'"
+            instructions=f"Speak this exact greeting clearly to the caller word-for-word: '{clean_greeting}'. Do not add, omit, or alter any words."
         )
 
 

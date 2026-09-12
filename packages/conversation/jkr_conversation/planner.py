@@ -65,7 +65,9 @@ def decide(
     if extraction.wants_human and conversation_policy.human_transfer_enabled:
         return PlannerDecision(action="HUMAN_HANDOFF", reason="customer_requested_human")
 
-    rag_query = extraction.rewritten_query if extraction.detected_question else None
+    answer_question_first = bool(extraction.detected_question)
+    is_business_question = extraction.detected_question and extraction.question_type == "business_knowledge"
+    rag_query = extraction.rewritten_query if is_business_question else None
 
     # 3. Clarify a field just captured with low confidence — "never silently
     # guess," per conversation_policy.clarification_behavior.
@@ -75,7 +77,7 @@ def decide(
             target_field = low_confidence[0][0]
             return PlannerDecision(
                 action="CLARIFY", reason="low_confidence_extraction", target_field=target_field,
-                answer_question_first=bool(rag_query), rag_query=rag_query, objection=extraction.objection,
+                answer_question_first=answer_question_first, rag_query=rag_query, objection=extraction.objection,
             )
 
     field_ask_counts = state.get("field_ask_counts", {})
@@ -91,7 +93,7 @@ def decide(
     if pending and field_ask_counts.get(pending["field"], 0) < MAX_ASKS_PER_FIELD:
         return PlannerDecision(
             action="CONFIRM_FIELD", reason="pending_domain_confirmation", target_field=pending["field"],
-            answer_question_first=bool(rag_query), rag_query=rag_query, objection=extraction.objection,
+            answer_question_first=answer_question_first, rag_query=rag_query, objection=extraction.objection,
         )
 
     # 4. Ask the highest-priority still-missing required field, skipping any
@@ -100,7 +102,7 @@ def decide(
     if askable_required:
         return PlannerDecision(
             action="ASK_FIELD", reason="missing_required_field", target_field=askable_required[0],
-            answer_question_first=bool(rag_query), rag_query=rag_query, objection=extraction.objection,
+            answer_question_first=answer_question_first, rag_query=rag_query, objection=extraction.objection,
         )
 
     # Optional fields rank below required ones, same ask-cap logic.
@@ -108,12 +110,12 @@ def decide(
     if askable_optional:
         return PlannerDecision(
             action="ASK_FIELD", reason="missing_optional_field", target_field=askable_optional[0],
-            answer_question_first=bool(rag_query), rag_query=rag_query, objection=extraction.objection,
+            answer_question_first=answer_question_first, rag_query=rag_query, objection=extraction.objection,
         )
 
     # 5. Every required (and askable optional) field is filled or exhausted
     # its ask-cap — the objective is as done as it's going to get.
     return PlannerDecision(
         action="COMPLETE_OBJECTIVE", reason="all_fields_collected",
-        answer_question_first=bool(rag_query), rag_query=rag_query, objection=extraction.objection,
+        answer_question_first=answer_question_first, rag_query=rag_query, objection=extraction.objection,
     )

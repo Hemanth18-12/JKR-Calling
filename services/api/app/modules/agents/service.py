@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.agents.persona_templates import DEFAULT_TEMPLATE, TEMPLATES
+from app.modules.agents.safety import validate_and_sanitize_persona_field
 from app.modules.tools import service as tools_service
 
 
@@ -260,8 +261,11 @@ async def update_version(
     version = await _get_version_or_404(db, workspace_id=workspace_id, agent_id=agent_id, version_id=version_id)
     if version.status == "published":
         raise HTTPException(status.HTTP_409_CONFLICT, "Published versions are immutable — create a new version to edit")
+    persona_text_fields = {"greeting_text", "ai_disclosure_text", "closing_text"}
     for key, value in fields.items():
         if value is not None:
+            if key in persona_text_fields and isinstance(value, str):
+                value = validate_and_sanitize_persona_field(value, key.replace("_", " ").capitalize())
             setattr(version, key, value)
     await db.flush()
     return version
@@ -350,6 +354,17 @@ async def publish_version(
         errors["greeting_text"] = "Greeting is required"
     if not version.closing_text.strip():
         errors["closing_text"] = "Closing is required"
+
+    for field_key, field_name, val in [
+        ("ai_disclosure_text", "AI disclosure", version.ai_disclosure_text),
+        ("greeting_text", "Greeting", version.greeting_text),
+        ("closing_text", "Closing", version.closing_text),
+    ]:
+        if val:
+            try:
+                validate_and_sanitize_persona_field(val, field_name)
+            except HTTPException as e:
+                errors[field_key] = str(e.detail)
 
     if errors:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"message": "Cannot publish", "fields": errors})

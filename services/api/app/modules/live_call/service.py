@@ -372,6 +372,13 @@ async def start_live_test_call(
     # sentence twice back to back. Only prepend when it isn't already there.
     greeting = greeting_body if (disclosure and disclosure in greeting_body) else (disclosure + " " + greeting_body).strip()
 
+    from app.modules.agents.safety import detect_abusive_content
+    offending_term = detect_abusive_content(greeting)
+    if offending_term:
+        logger.error(f"Inappropriate text '{offending_term}' detected in greeting! Stripping and falling back to clean greeting.")
+        clean_disclosure = disclosure if not detect_abusive_content(disclosure) else f"Hello, I am an AI assistant calling on behalf of {agent.business_identity}."
+        greeting = clean_disclosure
+
     token = uuid.uuid4().hex
     webhook_url, status_callback_url, _recording_url, _closing_grace_url = _webhook_urls(settings, token)
 

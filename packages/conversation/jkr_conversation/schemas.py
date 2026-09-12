@@ -101,6 +101,7 @@ class ExtractionResult:
     uncertain_fields: dict[str, list[str]] = field(default_factory=dict)
     detected_question: bool = False
     rewritten_query: str | None = None
+    question_type: str = "business_knowledge"  # "business_knowledge" | "general_knowledge"
     objection: str | None = None
     wants_human: bool = False
     wrong_number: bool = False
