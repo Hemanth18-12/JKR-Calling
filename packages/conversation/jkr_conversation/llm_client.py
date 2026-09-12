@@ -38,6 +38,11 @@ class LLMClient(Protocol):
     async def complete_text(self, *, system: str, user: str, max_tokens: int = 150) -> str | None: ...
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 @dataclass
 class OpenAILLMClient:
     api_key: str
@@ -70,7 +75,8 @@ class OpenAILLMClient:
             response.raise_for_status()
             content = response.json()["choices"][0]["message"]["content"]
             return json.loads(content)
-        except Exception:  # noqa: BLE001 — see docstring, must never raise into a live call
+        except Exception as exc:  # noqa: BLE001 — see docstring, must never raise into a live call
+            logger.warning("OpenAI complete_json failed: %s", exc)
             return None
 
     async def complete_text(self, *, system: str, user: str, max_tokens: int = 150) -> str | None:
@@ -88,7 +94,8 @@ class OpenAILLMClient:
             )
             response.raise_for_status()
             return response.json()["choices"][0]["message"]["content"].strip()
-        except Exception:  # noqa: BLE001 — see docstring
+        except Exception as exc:  # noqa: BLE001 — see docstring
+            logger.warning("OpenAI complete_text failed: %s", exc)
             return None
 
     def stream_text(self, *, system: str, user: str, max_tokens: int = 150) -> AsyncIterator[LLMStreamEvent]:
@@ -108,14 +115,14 @@ class OpenAILLMClient:
 def get_default_client() -> LLMClient | None:
     """None means "no real LLM configured" — every caller in this package
     must treat that as a first-class, expected mode, not an error path."""
-    api_key = os.environ.get("OPENAI_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENAI_KEY")
     if not api_key:
         try:
             from dotenv import find_dotenv, load_dotenv
             dotenv_path = find_dotenv(usecwd=True)
             if dotenv_path:
                 load_dotenv(dotenv_path)
-            api_key = os.environ.get("OPENAI_API_KEY")
+            api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENAI_KEY")
         except Exception:
             pass
     if not api_key:
