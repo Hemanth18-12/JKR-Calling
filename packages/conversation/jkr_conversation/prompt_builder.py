@@ -176,10 +176,17 @@ def _build_prompt(
             )
 
     question_section = ""
-    if decision.answer_question_first:
+    if extraction.turn_intent == "small_talk":
+        question_section = (
+            f"CUSTOMER CHIT-CHAT / GREETING:\n"
+            f'"{customer_utterance}"\n'
+            "GUIDANCE: Respond warmly, politely, and naturally to this greeting or small talk in 1 short conversational sentence (e.g., 'I'm doing well, thank you for asking!'). "
+            "NEVER say you don't know, don't have details, or that your team will confirm — this is friendly small talk. Then smoothly proceed with the planned next action.\n\n"
+        )
+    elif decision.answer_question_first:
         if extraction.question_type == "general_knowledge":
             question_section = (
-                f"CUSTOMER QUESTION TO ANSWER (General Knowledge / Concepts / Small Talk):\n"
+                f"CUSTOMER QUESTION TO ANSWER (General Knowledge / Concepts):\n"
                 f'"{extraction.rewritten_query or customer_utterance}"\n'
                 "GUIDANCE FOR THIS QUESTION: Answer this directly, intelligently, and conversationally in 1-2 concise spoken sentences using your general knowledge (e.g. explain the term/concept simply and clearly). "
                 "DO NOT say you don't know or that your team will confirm — this is general world knowledge, not proprietary company data. Then continue naturally with the planned next action.\n\n"

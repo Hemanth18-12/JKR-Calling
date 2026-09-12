@@ -65,8 +65,8 @@ def decide(
     if extraction.wants_human and conversation_policy.human_transfer_enabled:
         return PlannerDecision(action="HUMAN_HANDOFF", reason="customer_requested_human")
 
-    answer_question_first = bool(extraction.detected_question)
-    is_business_question = extraction.detected_question and extraction.question_type == "business_knowledge"
+    answer_question_first = bool(extraction.detected_question) and extraction.turn_intent != "small_talk"
+    is_business_question = answer_question_first and extraction.question_type == "business_knowledge"
     rag_query = extraction.rewritten_query if is_business_question else None
 
     # 3. Clarify a field just captured with low confidence — "never silently

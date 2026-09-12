@@ -149,7 +149,12 @@ def _parse_llm_extraction(raw: dict, *, objective: ObjectiveDefinition) -> Extra
     objection = objection.strip() if isinstance(objection, str) and objection.strip() else None
 
     q_type_raw = str(raw.get("question_type", "")).lower()
-    question_type = "general_knowledge" if "general" in q_type_raw else "business_knowledge"
+    if turn_intent == "small_talk" or any(w in q_type_raw for w in ("general", "small_talk", "chit_chat", "casual", "conversation", "greeting")):
+        question_type = "general_knowledge"
+    elif any(w in q_type_raw for w in ("business", "company", "clinic", "product", "service", "pricing")):
+        question_type = "business_knowledge"
+    else:
+        question_type = "general_knowledge" if turn_intent in ("small_talk", "other") else "business_knowledge"
 
     confirmation_response_field = raw.get("confirmation_response")
     confirmation_response = confirmation_response_field if confirmation_response_field in _VALID_CONFIRMATION_RESPONSES else None
