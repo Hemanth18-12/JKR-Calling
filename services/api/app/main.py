@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import asyncio
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -36,12 +35,8 @@ logger = logging.getLogger("jkr_api.main")
 settings = get_settings()
 
 
-@asynccontextmanager
-async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    # P7 §49 — process-wide, started once; see transport/event_loop_lag.py.
-    event_loop_lag_monitor.start()
-
-    # Startup DB health check — logged immediately on deploy in Render logs
+async def _async_startup_db_check() -> None:
+    """Probes DB connectivity without blocking uvicorn from opening $PORT."""
     try:
         success, msg = await ping_database(timeout=5.0)
         if success:
@@ -51,11 +46,25 @@ async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:
         logger.error("[STARTUP ERROR] Database ping failed during startup: %s", exc, exc_info=True)
 
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    # P7 §49 — process-wide, started once; see transport/event_loop_lag.py.
+    event_loop_lag_monitor.start()
+
+    # Startup DB health check — launched as a task so uvicorn binds to $PORT immediately
+    asyncio.create_task(_async_startup_db_check())
+
     yield
     event_loop_lag_monitor.stop()
 
 
 app = FastAPI(title="JKR AI Calling API", version="0.1.0", root_path="", lifespan=_lifespan)
+
+
+@app.get("/")
+async def root() -> dict:
+    return {"status": "ok", "service": "jkr-api"}
 
 cors_origins = [settings.app_base_url, "http://localhost:3000"]
 if settings.cors_allowed_origins:

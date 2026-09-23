@@ -6,7 +6,7 @@ services:
     plan: free
     rootDir: services/api
     buildCommand: "export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:/opt/render/.local/bin:$PATH\" && (command -v uv >/dev/null 2>&1 || pip install uv) && uv sync --package jkr-api --no-dev"
-    startCommand: "export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:/opt/render/.local/bin:$PATH\" && (uv run alembic -c ../../packages/db/alembic.ini upgrade head || echo '[MIGRATION WARNING] Alembic migrations failed — database may be unreachable. Check if Render Postgres instance expired or was deleted.') && (uv run --package jkr-db python -m jkr_db.seed || true) && uv run --package jkr-api uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    startCommand: "export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:/opt/render/.local/bin:$PATH\" && (uv run alembic -c ../../packages/db/alembic.ini upgrade head || true) && (uv run --package jkr-db python -m jkr_db.seed || true) && uv run --package jkr-api uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 
     envVars:
       - key: PYTHON_VERSION
