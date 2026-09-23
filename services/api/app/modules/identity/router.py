@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, Request, Response
+import asyncpg
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
@@ -12,6 +15,8 @@ from app.deps import AuthContext, get_auth_context, user_db
 from app.modules.identity import service
 from app.modules.identity.schemas import LoginRequest, MeResponse, SignupRequest, UserOut
 from app.rate_limit import rate_limit
+
+logger = logging.getLogger("jkr_api.identity.router")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -43,18 +48,30 @@ async def signup(
     db: AsyncSession = Depends(platform_db),
     settings: Settings = Depends(get_settings),
 ) -> UserOut:
-    user = await service.create_user(
-        db, email=payload.email, full_name=payload.full_name, password=payload.password
-    )
-    _session, raw_token = await service.create_session(
-        db,
-        user=user,
-        settings=settings,
-        user_agent=request.headers.get("user-agent"),
-        ip_address=request.client.host if request.client else None,
-    )
-    _set_session_cookie(response, raw_token=raw_token, settings=settings)
-    return UserOut.model_validate(user)
+    try:
+        user = await service.create_user(
+            db, email=payload.email, full_name=payload.full_name, password=payload.password
+        )
+        _session, raw_token = await service.create_session(
+            db,
+            user=user,
+            settings=settings,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host if request.client else None,
+        )
+        _set_session_cookie(response, raw_token=raw_token, settings=settings)
+        return UserOut.model_validate(user)
+    except (SQLAlchemyError, OSError, TimeoutError, asyncpg.PostgresError) as exc:
+        logger.error(
+            "[AUTH SIGNUP DB ERROR] Database connection failure during signup for %s: %s",
+            payload.email,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="service temporarily unavailable — database connection issue",
+        ) from exc
 
 
 @router.post("/login", response_model=UserOut, dependencies=[Depends(_auth_rate_limit)])
@@ -65,16 +82,41 @@ async def login(
     db: AsyncSession = Depends(platform_db),
     settings: Settings = Depends(get_settings),
 ) -> UserOut:
-    user = await service.authenticate_user(db, email=payload.email, password=payload.password)
-    _session, raw_token = await service.create_session(
-        db,
-        user=user,
-        settings=settings,
-        user_agent=request.headers.get("user-agent"),
-        ip_address=request.client.host if request.client else None,
-    )
-    _set_session_cookie(response, raw_token=raw_token, settings=settings)
-    return UserOut.model_validate(user)
+    try:
+        user = await service.authenticate_user(db, email=payload.email, password=payload.password)
+        _session, raw_token = await service.create_session(
+            db,
+            user=user,
+            settings=settings,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host if request.client else None,
+        )
+        _set_session_cookie(response, raw_token=raw_token, settings=settings)
+        return UserOut.model_validate(user)
+    except (SQLAlchemyError, OSError, TimeoutError, asyncpg.PostgresError) as exc:
+        logger.error(
+            "[AUTH LOGIN DB ERROR] Database connection failure during login for %s: %s",
+            payload.email,
+            exc,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="service temporarily unavailable — database connection issue",
+        ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        if any(
+            isinstance(exc, err_cls)
+            for err_cls in (SQLAlchemyError, OSError, TimeoutError, asyncpg.PostgresError)
+        ):
+            logger.error("[AUTH LOGIN DB ERROR] Database failure: %s", exc, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="service temporarily unavailable — database connection issue",
+            ) from exc
+        raise
 
 
 @router.post("/logout", status_code=204)

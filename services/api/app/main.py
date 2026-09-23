@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -8,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from jkr_db.session import ping_database
 
 from app.audit import audit_log_middleware
 from app.config import get_settings
@@ -30,6 +32,7 @@ from app.modules.providers.router import router as providers_router
 from app.modules.tenancy.router import router as tenancy_router
 from app.modules.tools.router import router as tools_router
 
+logger = logging.getLogger("jkr_api.main")
 settings = get_settings()
 
 
@@ -37,6 +40,17 @@ settings = get_settings()
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # P7 §49 — process-wide, started once; see transport/event_loop_lag.py.
     event_loop_lag_monitor.start()
+
+    # Startup DB health check — logged immediately on deploy in Render logs
+    try:
+        success, msg = await ping_database(timeout=5.0)
+        if success:
+            logger.info("[STARTUP] %s", msg)
+        else:
+            logger.warning("[STARTUP WARNING] API started with degraded database connectivity: %s", msg)
+    except Exception as exc:
+        logger.error("[STARTUP ERROR] Database ping failed during startup: %s", exc, exc_info=True)
+
     yield
     event_loop_lag_monitor.stop()
 

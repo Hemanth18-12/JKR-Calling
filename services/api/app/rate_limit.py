@@ -8,19 +8,28 @@ demo-scale product, not silently pretended away.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import HTTPException, Request, status
 from jkr_messaging import get_redis
+
+logger = logging.getLogger("jkr_api.rate_limit")
 
 
 def rate_limit(key_prefix: str, *, max_requests: int, window_seconds: int):
     async def _dep(request: Request) -> None:
         client_ip = request.client.host if request.client else "unknown"
         key = f"jkr:rate_limit:{key_prefix}:{client_ip}"
-        redis_client = get_redis()
-        current = await redis_client.incr(key)
-        if current == 1:
-            await redis_client.expire(key, window_seconds)
-        if current > max_requests:
-            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many requests — try again shortly.")
+        try:
+            redis_client = get_redis()
+            current = await redis_client.incr(key)
+            if current == 1:
+                await redis_client.expire(key, window_seconds)
+            if current > max_requests:
+                raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many requests — try again shortly.")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("[RATE LIMIT] Redis unavailable, failing open: %s", exc)
 
     return _dep

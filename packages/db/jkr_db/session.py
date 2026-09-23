@@ -18,14 +18,19 @@ exactly once when the request finishes. A service function calling
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+import sys
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -33,11 +38,36 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+logger = logging.getLogger("jkr_db.session")
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(_REPO_ROOT / ".env")
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
+
+
+def get_database_info() -> dict[str, Any]:
+    """Extract non-sensitive connection details for logging and diagnostics."""
+    database_url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql+asyncpg://jkr_app:jkr_app_local_dev@localhost:55432/jkr_ai_calling",
+    )
+    try:
+        parsed = make_url(database_url)
+        return {
+            "host": parsed.host or "unknown-host",
+            "port": parsed.port or 5432,
+            "database": parsed.database or "unknown-db",
+            "user": parsed.username or "unknown-user",
+        }
+    except Exception:
+        return {
+            "host": "unparseable-host",
+            "port": 5432,
+            "database": "unknown-db",
+            "user": "unknown-user",
+        }
 
 
 def _validated_uuid_literal(value: uuid.UUID | str) -> str:
@@ -66,11 +96,70 @@ def get_engine() -> AsyncEngine:
             database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
         elif database_url.startswith("postgresql://") and not database_url.startswith("postgresql+asyncpg://"):
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-        _engine = create_async_engine(
-            database_url, pool_pre_ping=True, pool_size=10, max_overflow=10,
-            echo=bool(os.environ.get("SQL_ECHO")),
-        )
+
+        # asyncpg expects 'ssl=require' rather than 'sslmode=require'
+        if "sslmode=" in database_url and "asyncpg" in database_url:
+            database_url = database_url.replace("sslmode=", "ssl=")
+
+        engine_kwargs: dict[str, Any] = {
+            "pool_pre_ping": True,
+            "pool_size": 10,
+            "max_overflow": 10,
+            "echo": bool(os.environ.get("SQL_ECHO")),
+        }
+        if "asyncpg" in database_url:
+            connect_timeout = float(os.environ.get("DB_CONNECT_TIMEOUT", "10.0"))
+            command_timeout = float(os.environ.get("DB_COMMAND_TIMEOUT", "15.0"))
+            engine_kwargs["connect_args"] = {
+                "timeout": connect_timeout,
+                "command_timeout": command_timeout,
+            }
+
+        _engine = create_async_engine(database_url, **engine_kwargs)
     return _engine
+
+
+async def ping_database(timeout: float = 5.0) -> tuple[bool, str]:
+    """Startup health check that pings the database and logs a clear, loud error.
+
+    Pings the configured database with `SELECT 1`. If the connection fails,
+    logs an unmissable banner to stderr and application logs with target host,
+    port, database name, and an actionable hint (e.g. Render free-tier Postgres
+    instance expired or was deleted).
+    """
+    info = get_database_info()
+    host = info["host"]
+    port = info["port"]
+    db_name = info["database"]
+
+    try:
+        engine = get_engine()
+        async with asyncio.timeout(timeout):
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+
+        msg = f"[DATABASE HEALTH CHECK] Connected to PostgreSQL host: {host}:{port}/{db_name}"
+        logger.info(msg)
+        return True, msg
+    except Exception as exc:
+        err_type = type(exc).__name__
+        err_msg = str(exc)
+        loud_error = (
+            "\n" + "=" * 80 + "\n"
+            f"[DATABASE CONNECTION ERROR] Could not connect to PostgreSQL database!\n"
+            f"  Host:     {host}\n"
+            f"  Port:     {port}\n"
+            f"  Database: {db_name}\n"
+            f"  Error:    {err_type}: {err_msg}\n\n"
+            f"  HINT: Check if the Render Postgres instance expired or was deleted.\n"
+            f"        Render free-tier PostgreSQL databases expire and are deleted after 30 days.\n"
+            f"        Verify DATABASE_URL in your Render Dashboard settings or create a new database.\n"
+            + "=" * 80 + "\n"
+        )
+        logger.error(loud_error)
+        sys.stderr.write(loud_error)
+        sys.stderr.flush()
+        return False, f"Failed to connect to {host}:{port}/{db_name}: {err_type}: {err_msg}"
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
