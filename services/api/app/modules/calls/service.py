@@ -14,22 +14,61 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def _headers(settings: Settings) -> dict:
     return {"X-Internal-Token": settings.internal_service_token}
 
 
 async def start_test_call(
-    db: AsyncSession, *, settings: Settings, workspace_id: uuid.UUID, agent_id: uuid.UUID, contact_name: str | None
+    db: AsyncSession,
+    *,
+    settings: Settings,
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    contact_name: str | None,
+    contact_id: uuid.UUID | None = None,
+    phone_e164: str | None = None,
 ) -> dict:
     agent_result = await db.execute(select(Agent).where(Agent.id == agent_id, Agent.workspace_id == workspace_id))
     if agent_result.scalar_one_or_none() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found")
 
+    resolved_contact_id = contact_id
+    if resolved_contact_id is None:
+        if phone_e164:
+            contact_res = await db.execute(select(Contact).where(Contact.workspace_id == workspace_id, Contact.phone_e164 == phone_e164))
+            c = contact_res.scalar_one_or_none()
+            if c is None:
+                c = Contact(workspace_id=workspace_id, phone_e164=phone_e164, full_name=contact_name or "Test Customer", lead_source="api")
+                db.add(c)
+                await db.flush()
+            resolved_contact_id = c.id
+        else:
+            # Pick first available contact in workspace, or create a default test contact
+            first_contact_res = await db.execute(select(Contact).where(Contact.workspace_id == workspace_id).order_by(Contact.created_at.desc()))
+            c = first_contact_res.scalar_one_or_none()
+            if c is None:
+                c = Contact(workspace_id=workspace_id, phone_e164="+918019101606", full_name=contact_name or "Test Customer", lead_source="api")
+                db.add(c)
+                await db.flush()
+            resolved_contact_id = c.id
+
+    payload = {
+        "workspace_id": str(workspace_id),
+        "agent_id": str(agent_id),
+        "contact_name": contact_name,
+        "contact_id": str(resolved_contact_id) if resolved_contact_id else None,
+    }
+
     async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
         try:
             response = await client.post(
                 "/sessions",
-                json={"workspace_id": str(workspace_id), "agent_id": str(agent_id), "contact_name": contact_name},
+                json=payload,
                 headers=_headers(settings),
             )
         except httpx.ConnectError as exc:
@@ -91,8 +130,8 @@ async def end_call(db: AsyncSession, *, settings: Settings, workspace_id: uuid.U
             db, workspace_id=workspace_id, call_id=call_id,
             encryption_key=settings.credentials_encryption_key,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.exception("run_post_call_pipeline failed for call %s: %s", call_id, exc)
     return res_data
 
 
@@ -143,3 +182,133 @@ async def get_call_detail(db: AsyncSession, *, workspace_id: uuid.UUID, call_id:
         "latency_metrics": list(latency_result.scalars().all()),
         "outcome": outcome_result.scalar_one_or_none(),
     }
+
+
+async def whisper_call(
+    db: AsyncSession,
+    *,
+    settings: Settings,
+    workspace_id: uuid.UUID,
+    call_id: uuid.UUID,
+    text: str,
+    supervisor_name: str = "Supervisor",
+) -> dict:
+    session_result = await db.execute(
+        select(CallSession).where(CallSession.id == call_id, CallSession.workspace_id == workspace_id)
+    )
+    if session_result.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
+
+    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
+        try:
+            response = await client.post(
+                f"/sessions/{call_id}/whisper",
+                json={"workspace_id": str(workspace_id), "text": text, "supervisor_name": supervisor_name},
+                headers=_headers(settings),
+            )
+        except httpx.ConnectError as exc:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
+            ) from exc
+    if response.status_code >= 400:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, response.json().get("detail", "voice-worker error"))
+    return response.json()
+
+
+async def barge_call(
+    db: AsyncSession,
+    *,
+    settings: Settings,
+    workspace_id: uuid.UUID,
+    call_id: uuid.UUID,
+    action: str = "takeover",
+    supervisor_name: str = "Supervisor",
+) -> dict:
+    session_result = await db.execute(
+        select(CallSession).where(CallSession.id == call_id, CallSession.workspace_id == workspace_id)
+    )
+    if session_result.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
+
+    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
+        try:
+            response = await client.post(
+                f"/sessions/{call_id}/barge",
+                json={"workspace_id": str(workspace_id), "action": action, "supervisor_name": supervisor_name},
+                headers=_headers(settings),
+            )
+        except httpx.ConnectError as exc:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
+            ) from exc
+    if response.status_code >= 400:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, response.json().get("detail", "voice-worker error"))
+    return response.json()
+
+
+async def listen_call(
+    db: AsyncSession,
+    *,
+    settings: Settings,
+    workspace_id: uuid.UUID,
+    call_id: uuid.UUID,
+    supervisor_id: str = "supervisor",
+) -> dict:
+    session_result = await db.execute(
+        select(CallSession).where(CallSession.id == call_id, CallSession.workspace_id == workspace_id)
+    )
+    if session_result.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
+
+    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
+        try:
+            response = await client.post(
+                f"/sessions/{call_id}/listen",
+                json={"workspace_id": str(workspace_id), "supervisor_id": supervisor_id},
+                headers=_headers(settings),
+            )
+        except httpx.ConnectError as exc:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
+            ) from exc
+    if response.status_code >= 400:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, response.json().get("detail", "voice-worker error"))
+    return response.json()
+
+
+async def terminate_call(
+    db: AsyncSession,
+    *,
+    settings: Settings,
+    workspace_id: uuid.UUID,
+    call_id: uuid.UUID,
+    reason: str = "supervisor_terminated",
+) -> dict:
+    session_result = await db.execute(
+        select(CallSession).where(CallSession.id == call_id, CallSession.workspace_id == workspace_id)
+    )
+    if session_result.scalar_one_or_none() is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
+
+    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
+        try:
+            response = await client.post(
+                f"/sessions/{call_id}/end",
+                json={"workspace_id": str(workspace_id), "end_reason": reason},
+                headers=_headers(settings),
+            )
+        except httpx.ConnectError as exc:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
+            ) from exc
+    res_data = response.json()
+    try:
+        from jkr_db.pipeline import run_post_call_pipeline
+        await run_post_call_pipeline(
+            db, workspace_id=workspace_id, call_id=call_id,
+            encryption_key=settings.credentials_encryption_key,
+        )
+    except Exception as exc:
+        logger.exception("run_post_call_pipeline failed for call %s: %s", call_id, exc)
+    return res_data
+

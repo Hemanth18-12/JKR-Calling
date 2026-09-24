@@ -113,5 +113,16 @@ export const CallDetail = z.object({
       notes: z.string().nullable(),
     })
     .nullable(),
+  recording_url: z.string().nullable().optional(),
+  transcript_url: z.string().nullable().optional(),
 });
 export type CallDetail = z.infer<typeof CallDetail>;
+
+export const SupervisorActionOut = z.object({
+  call_id: z.string(),
+  status: z.string(),
+  action: z.string().nullable().optional(),
+  detail: z.record(z.unknown()).nullable().optional(),
+});
+export type SupervisorActionOut = z.infer<typeof SupervisorActionOut>;
+

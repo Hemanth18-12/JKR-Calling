@@ -136,6 +136,21 @@ async def _persist_agent_turn(
     # see docs/DECISIONS/0002-voice-runtime.md.
     await _record_latency(db, workspace_id=workspace_id, call_id=call_id, stage="llm_first_token", duration_ms=180)
     await _record_latency(db, workspace_id=workspace_id, call_id=call_id, stage="tts_first_audio", duration_ms=120)
+    try:
+        from jkr_messaging.realtime import publish_call_event
+        await publish_call_event(
+            call_id,
+            "turn",
+            {
+                "turn_ref": turn_ref,
+                "speaker": "agent",
+                "text": text,
+                "sequence_index": sequence_index,
+                "is_interrupted": False,
+            },
+        )
+    except Exception:
+        pass
 
 
 async def start_session(
@@ -235,6 +250,21 @@ async def start_session(
         turn_ref=turn_record.turn_ref, text=formatted.text, language=language,
     )
     await db.flush()
+    try:
+        from jkr_messaging.realtime import publish_call_event
+        await publish_call_event(
+            call_session.id,
+            "call_started",
+            {
+                "call_id": str(call_session.id),
+                "status": call_session.status,
+                "agent_name": agent.name,
+                "contact_name": contact_name or "Test Customer",
+                "greeting": formatted.text,
+            },
+        )
+    except Exception:
+        pass
 
     return {
         "call_id": call_session.id,
@@ -255,7 +285,7 @@ async def submit_user_turn(
     call_session = session_result.scalar_one_or_none()
     if call_session is None:
         raise ValueError("Call session not found")
-    if call_session.status != "in_progress":
+    if call_session.status not in ("in_progress", "human_takeover"):
         raise ValueError("Call is not in progress")
 
     runtime = registry_get(call_id)
@@ -285,9 +315,36 @@ async def submit_user_turn(
     )
     db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_id, event_type="user_turn", payload={"text": transcript.text}))
     await _record_latency(db, workspace_id=workspace_id, call_id=call_id, stage="stt_final", duration_ms=90)
+    try:
+        from jkr_messaging.realtime import publish_call_event
+        await publish_call_event(
+            call_id,
+            "turn",
+            {
+                "turn_ref": user_turn_ref,
+                "speaker": "customer",
+                "text": transcript.text,
+                "sequence_index": sequence_index,
+                "is_interrupted": False,
+            },
+        )
+    except Exception:
+        pass
 
     stop_latency_ms = classification.stop_latency_ms
     if classification.classification != InterruptionClassification.NONE:
+        try:
+            from jkr_messaging.realtime import publish_call_event
+            await publish_call_event(
+                call_id,
+                "interruption",
+                {
+                    "classification": classification.classification.value,
+                    "stop_latency_ms": stop_latency_ms,
+                },
+            )
+        except Exception:
+            pass
         db.add(
             InterruptionEventModel(
                 workspace_id=workspace_id, call_session_id=call_id,
@@ -325,13 +382,33 @@ async def submit_user_turn(
             call_status=call_session.status,
         )
 
+    # Check if supervisor barged in (takeover mode):
+    if getattr(runtime, "is_barged_in", False):
+        await db.flush()
+        return UserTurnOut(
+            user_turn=TurnOut(turn_ref=user_turn_ref, speaker="customer", text=transcript.text),
+            interruption_classification="none",
+            stop_latency_ms=None,
+            agent_turn=None,
+            conversation_state=state,
+            call_status="human_takeover",
+        )
+
+    # Check for active supervisor whispers:
+    active_whispers = getattr(runtime, "active_whispers", [])
+    recent_turns = list(state.get("recent_turns", []))
+    if active_whispers:
+        whisper_text = "; ".join(active_whispers)
+        runtime.active_whispers.clear()
+        recent_turns.append({"speaker": "supervisor_whisper", "text": f"[Supervisor instruction: {whisper_text}]"})
+        state["supervisor_whispers"] = active_whispers
+
     # Everything from here down — field extraction, knowledge retrieval,
     # next-action planning, response generation — is the shared engine, the
     # exact same code path the real Twilio call path uses (see
     # services/api/app/modules/live_call/service.py). This module only
     # handles transport/turn-taking and persistence, never conversation
     # reasoning itself.
-    recent_turns = list(state.get("recent_turns", []))
     result = await process_turn(
         db, workspace_id=workspace_id, call_session_id=call_id, state=state,
         customer_utterance=transcript.text, conversation_policy=runtime.policy,
@@ -442,6 +519,15 @@ async def end_session(db: AsyncSession, *, workspace_id: uuid.UUID, call_id: uui
 
     await db.flush()
     registry_discard(call_id)
+    try:
+        from jkr_messaging.realtime import publish_call_event
+        await publish_call_event(
+            call_id,
+            "call_ended",
+            {"call_id": str(call_id), "status": call_session.status, "outcome_category": category, "lead_score": lead_score},
+        )
+    except Exception:
+        pass
 
     # Off the request path — a slow/failed pipeline run must never delay
     # "call ended" from reaching the caller. Enqueued here (not by whichever
@@ -451,3 +537,119 @@ async def end_session(db: AsyncSession, *, workspace_id: uuid.UUID, call_id: uui
     enqueue("run_post_call_pipeline", args=(str(call_id), str(workspace_id)), queue_name="intelligence")
 
     return {"call_id": call_id, "status": call_session.status, "outcome_category": category, "lead_score": lead_score}
+
+
+async def whisper_to_call(
+    db: AsyncSession, *, workspace_id: uuid.UUID, call_id: uuid.UUID, text: str, supervisor_name: str = "Supervisor"
+) -> dict:
+    from app.session_registry import whisper as reg_whisper
+    success = reg_whisper(call_id, text)
+    now = datetime.now(UTC)
+    db.add(CallEvent(
+        workspace_id=workspace_id,
+        call_session_id=call_id,
+        event_type="supervisor_whisper",
+        payload={"text": text, "supervisor": supervisor_name}
+    ))
+    await db.flush()
+
+    try:
+        from jkr_messaging.realtime import publish_call_event
+        await publish_call_event(
+            call_id,
+            "whisper",
+            {
+                "text": text,
+                "supervisor": supervisor_name,
+                "timestamp": now.isoformat(),
+            },
+        )
+    except Exception:
+        pass
+
+    return {"call_id": str(call_id), "status": "whisper_injected", "whisper": text, "active": success}
+
+
+async def barge_call(
+    db: AsyncSession, *, workspace_id: uuid.UUID, call_id: uuid.UUID, action: str = "takeover", supervisor_name: str = "Supervisor"
+) -> dict:
+    from app.session_registry import set_barge
+    is_active = (action == "takeover")
+    set_barge(call_id, active=is_active)
+
+    session_result = await db.execute(
+        select(CallSession).where(CallSession.id == call_id, CallSession.workspace_id == workspace_id)
+    )
+    call_session = session_result.scalar_one_or_none()
+    if call_session:
+        call_session.status = "human_takeover" if is_active else "in_progress"
+        await db.flush()
+
+    now = datetime.now(UTC)
+    db.add(CallEvent(
+        workspace_id=workspace_id,
+        call_session_id=call_id,
+        event_type="human_barge",
+        payload={"action": action, "active": is_active, "supervisor": supervisor_name}
+    ))
+    await db.flush()
+
+    try:
+        from jkr_messaging.realtime import publish_call_event
+        await publish_call_event(
+            call_id,
+            "barge_status",
+            {
+                "active": is_active,
+                "action": action,
+                "supervisor": supervisor_name,
+                "timestamp": now.isoformat(),
+            },
+        )
+    except Exception:
+        pass
+
+    return {
+        "call_id": str(call_id),
+        "status": "human_takeover" if is_active else "in_progress",
+        "is_barged_in": is_active,
+        "action": action,
+    }
+
+
+async def listen_to_call(
+    db: AsyncSession, *, workspace_id: uuid.UUID, call_id: uuid.UUID, supervisor_id: str = "supervisor"
+) -> dict:
+    from app.session_registry import add_listener
+    add_listener(call_id, supervisor_id)
+
+    now = datetime.now(UTC)
+    db.add(CallEvent(
+        workspace_id=workspace_id,
+        call_session_id=call_id,
+        event_type="supervisor_listen",
+        payload={"supervisor_id": supervisor_id, "mode": "muted_listener"}
+    ))
+    await db.flush()
+
+    try:
+        from jkr_messaging.realtime import publish_call_event
+        await publish_call_event(
+            call_id,
+            "supervisor_listen",
+            {
+                "supervisor_id": supervisor_id,
+                "mode": "muted_listener",
+                "timestamp": now.isoformat(),
+            },
+        )
+    except Exception:
+        pass
+
+    return {
+        "call_id": str(call_id),
+        "status": "listening",
+        "mode": "muted_listener",
+        "stream_channel": f"jkr:call:{call_id}:events",
+        "timestamp": now.isoformat(),
+    }

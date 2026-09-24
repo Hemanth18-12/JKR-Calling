@@ -35,3 +35,19 @@ class IntegrationCatalogItem(BaseModel):
     label: str
     status: str
     requires_oauth: bool
+
+
+class GoogleCalendarConnectRequest(BaseModel):
+    code: str | None = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    email: str | None = None
+    calendar_id: str = "primary"
+
+
+class GoogleCalendarStatusOut(BaseModel):
+    is_connected: bool
+    display_name: str | None = None
+    calendar_id: str | None = None
+    email: str | None = None
+    last_synced_at: datetime | None = None

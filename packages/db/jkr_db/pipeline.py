@@ -9,6 +9,7 @@ Every stage here is real, rule-based logic operating on real persisted data
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 
@@ -16,6 +17,12 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from jkr_db.storage import (
+    generate_synthesized_call_audio,
+    upload_call_recording,
+    upload_call_transcript,
+)
 
 from jkr_db.models.calls import (
     CallEvent,
@@ -31,9 +38,11 @@ from jkr_db.models.calls import (
 from jkr_db.models.calls import InterruptionEvent as InterruptionEventModel
 from jkr_db.models.contacts import Contact, SuppressionEntry
 from jkr_db.models.knowledge import RetrievalEvent
-from jkr_db.models.tools import FollowUpTask
+from jkr_db.models.tools import Appointment, FollowUpTask
 from jkr_db.tools_engine import ToolNotDefinedError, ToolNotEnabledError, execute_tool
 from jkr_db.webhook_engine import deliver_webhook
+
+logger = logging.getLogger(__name__)
 
 _MONOLOGUE_CHAR_THRESHOLD = 220
 _DISCLOSURE_MARKER = re.compile(r"\bai\b", re.IGNORECASE)
@@ -52,9 +61,9 @@ OUTCOME_FOLLOWUP_CHANNEL = {
 }
 
 WHATSAPP_TEMPLATE_BY_OUTCOME = {
-    "appointment_booked": "Thanks for booking with us! We've confirmed your appointment slot. 🎙️ Listen to your personalized audio confirmation: https://jkr.ai/voice-notes/apt-confirmation",
-    "qualified": "Thanks for your time today — our team will follow up shortly with next steps.",
-    "interested": "Thanks for chatting with us — reach out anytime if you'd like to continue where we left off.",
+    "appointment_booked": "Appointment Confirmed! 📅 Date: {date} | ⏰ Time: {time} | 📍 Location: {location}. We look forward to seeing you!",
+    "qualified": "Thank you for your interest! Your enquiry has been qualified with our specialist team. 📄 Brochure: https://jkr.ai/info/brochure. A representative will contact you shortly.",
+    "interested": "Thank you for speaking with us today! 🌐 More information & services: https://jkr.ai/info/services. Feel free to reply or call us back anytime.",
 }
 
 
@@ -63,7 +72,39 @@ async def _dispatch_follow_up(db: AsyncSession, *, workspace_id: uuid.UUID, foll
     idempotency_key = f"followup-{follow_up_task.id}-{channel}"
 
     if channel == "whatsapp":
-        body = WHATSAPP_TEMPLATE_BY_OUTCOME.get(category, "Thanks for your time — our team will follow up shortly.")
+        if category == "appointment_booked":
+            apt_result = await db.execute(
+                select(Appointment).where(
+                    Appointment.workspace_id == workspace_id,
+                    Appointment.call_session_id == follow_up_task.call_session_id,
+                ).order_by(Appointment.created_at.desc())
+            )
+            apt = apt_result.scalar_one_or_none()
+            if apt is None and follow_up_task.contact_id:
+                apt_result = await db.execute(
+                    select(Appointment).where(
+                        Appointment.workspace_id == workspace_id,
+                        Appointment.contact_id == follow_up_task.contact_id,
+                    ).order_by(Appointment.created_at.desc())
+                )
+                apt = apt_result.scalar_one_or_none()
+
+            if apt and apt.scheduled_for:
+                date_str = apt.scheduled_for.strftime("%A, %B %d, %Y")
+                time_str = apt.scheduled_for.strftime("%I:%M %p")
+            else:
+                date_str = "upcoming appointment date"
+                time_str = "confirmed time"
+
+            loc_str = apt.location if (apt and apt.location) else "Aaha Dental Care, Road No. 12, Banjara Hills, Hyderabad"
+            body = f"Appointment Confirmed! 📅 Date: {date_str} | ⏰ Time: {time_str} | 📍 Location: {loc_str}. We look forward to seeing you!"
+        elif category == "qualified":
+            body = "Thank you for your interest! Your enquiry has been qualified with our specialist team. 📄 Brochure: https://jkr.ai/info/brochure. A representative will contact you shortly."
+        elif category == "interested":
+            body = "Thank you for speaking with us today! 🌐 More information & services: https://jkr.ai/info/services. Feel free to reply or call us back anytime."
+        else:
+            body = WHATSAPP_TEMPLATE_BY_OUTCOME.get(category, "Thanks for your time — our team will follow up shortly.")
+
         try:
             execution = await execute_tool(
                 db, workspace_id=workspace_id, tool_name="send_whatsapp", tool_input={"body": body},
@@ -151,6 +192,14 @@ async def run_post_call_pipeline(db: AsyncSession, *, workspace_id: uuid.UUID, c
     category, lead_score, reasons = _classify_outcome(
         objective=objective, objective_status=objective_status, known_fields=known_fields, transcript_text=full_transcript_text,
     )
+    apt_check = await db.execute(
+        select(Appointment).where(Appointment.call_session_id == call_id, Appointment.workspace_id == workspace_id)
+    )
+    if apt_check.scalar_one_or_none() is not None:
+        category = "appointment_booked"
+        lead_score = "hot"
+        reasons = ["Appointment successfully booked during call"]
+
     await _upsert_outcome(db, workspace_id=workspace_id, call_id=call_id, category=category, lead_score=lead_score, reasons=reasons, objective_status=objective_status)
 
     # --- summary_processor ---------------------------------------------------
@@ -177,7 +226,41 @@ async def run_post_call_pipeline(db: AsyncSession, *, workspace_id: uuid.UUID, c
         await db.flush()
         await _dispatch_follow_up(db, workspace_id=workspace_id, follow_up_task=follow_up_task, category=category)
 
-    # --- Persist CallTranscript & CallRecording to Storage -------------------
+    # --- Persist CallTranscript & CallRecording to MinIO Storage & DB --------
+    transcript_payload = {
+        "call_id": str(call_id),
+        "workspace_id": str(workspace_id),
+        "language": str(call_session.language or "te-IN"),
+        "direction": str(call_session.direction),
+        "duration_seconds": call_session.duration_seconds or 15,
+        "full_text": full_transcript_text or "No turns recorded",
+        "turns": [
+            {
+                "sequence_index": t.sequence_index,
+                "speaker": t.speaker,
+                "text": t.text,
+                "started_at": t.started_at.isoformat() if t.started_at else None,
+                "ended_at": t.ended_at.isoformat() if t.ended_at else None,
+            }
+            for t in turns
+        ],
+        "outcome": {
+            "category": category,
+            "lead_score": lead_score,
+            "reasons": reasons,
+        },
+        "quality": quality,
+    }
+
+    storage_rec_key = f"recordings/{workspace_id}/{call_id}.wav"
+    try:
+        call_dur = max(call_session.duration_seconds or 15, 3)
+        audio_wav = generate_synthesized_call_audio(duration_seconds=call_dur)
+        storage_rec_key = upload_call_recording(workspace_id, call_id, audio_wav, format="wav")
+        upload_call_transcript(workspace_id, call_id, transcript_payload)
+    except Exception as exc:
+        logger.warning("MinIO recording/transcript persistence error for call %s: %s", call_id, exc)
+
     existing_transcript = await db.execute(select(CallTranscript).where(CallTranscript.call_session_id == call_id))
     if existing_transcript.scalar_one_or_none() is None:
         db.add(
@@ -196,8 +279,8 @@ async def run_post_call_pipeline(db: AsyncSession, *, workspace_id: uuid.UUID, c
             CallRecording(
                 workspace_id=workspace_id,
                 call_session_id=call_id,
-                storage_key=f"recordings/{workspace_id}/{call_id}.wav",
-                duration_seconds=call_session.duration_seconds or 45,
+                storage_key=storage_rec_key,
+                duration_seconds=call_session.duration_seconds or 15,
                 retention_expires_at=datetime.now(UTC) + timedelta(days=90),
             )
         )

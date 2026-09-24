@@ -63,6 +63,8 @@ export function CallDetail({ call, toolExecutions }: { call: CallDetailType; too
   const [explanation, setExplanation] = React.useState<string | null>(null);
 
   const durationSec = call.duration_seconds || 45;
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const recordingSrc = (call as any).recording_url || `/api/v1/calls/${call.call_id}/recording`;
 
   React.useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -102,10 +104,58 @@ export function CallDetail({ call, toolExecutions }: { call: CallDetailType; too
     }, 600);
   };
 
+  const togglePlay = () => {
+    if (!audioRef.current) {
+      setIsPlaying(!isPlaying);
+      return;
+    }
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {
+        setIsPlaying(true);
+      });
+    }
+  };
+
+  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const progress = Math.max(0, Math.min(1, clickX / rect.width));
+    setPlaybackProgress(progress * 100);
+    if (audioRef.current && Number.isFinite(audioRef.current.duration)) {
+      audioRef.current.currentTime = progress * audioRef.current.duration;
+    }
+  };
+
+  const handleRateChange = (rate: number) => {
+    setPlaybackRate(rate);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = rate;
+    }
+  };
+
   const currentSeconds = Math.floor((playbackProgress / 100) * durationSec);
 
   return (
     <div className="space-y-6">
+      {/* Hidden audio element streaming from MinIO */}
+      <audio
+        ref={audioRef}
+        src={recordingSrc}
+        onTimeUpdate={() => {
+          if (audioRef.current && Number.isFinite(audioRef.current.duration) && audioRef.current.duration > 0) {
+            setPlaybackProgress((audioRef.current.currentTime / audioRef.current.duration) * 100);
+          }
+        }}
+        onEnded={() => {
+          setIsPlaying(false);
+          setPlaybackProgress(0);
+        }}
+        preload="metadata"
+        className="hidden"
+      />
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -132,7 +182,7 @@ export function CallDetail({ call, toolExecutions }: { call: CallDetailType; too
             size="sm"
             variant="gradient"
             className="h-10 w-10 shrink-0 rounded-full p-0"
-            onClick={() => setIsPlaying(!isPlaying)}
+            onClick={togglePlay}
           >
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
           </Button>
@@ -141,7 +191,7 @@ export function CallDetail({ call, toolExecutions }: { call: CallDetailType; too
             <div className="flex items-center justify-between text-xs text-muted-foreground font-mono">
               <span>0:{currentSeconds.toString().padStart(2, "0")}</span>
               <span className="flex items-center gap-1 text-[11px] text-primary">
-                <Volume2 className="h-3.5 w-3.5" /> Stereo Call Recording (LiveKit / Twilio)
+                <Volume2 className="h-3.5 w-3.5" /> Stereo Call Recording (MinIO Storage)
               </span>
               <span>0:{durationSec.toString().padStart(2, "0")}</span>
             </div>
@@ -149,11 +199,7 @@ export function CallDetail({ call, toolExecutions }: { call: CallDetailType; too
             {/* Scrubber */}
             <div
               className="relative h-2 w-full cursor-pointer rounded-full bg-surface-raised overflow-hidden"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const clickX = e.clientX - rect.left;
-                setPlaybackProgress((clickX / rect.width) * 100);
-              }}
+              onClick={handleSeek}
             >
               <div
                 className="h-full bg-gradient-to-r from-primary to-[#FFE066] transition-all"
@@ -168,7 +214,7 @@ export function CallDetail({ call, toolExecutions }: { call: CallDetailType; too
               <button
                 key={rate}
                 type="button"
-                onClick={() => setPlaybackRate(rate)}
+                onClick={() => handleRateChange(rate)}
                 className={`rounded px-2 py-1 text-xs font-semibold transition-colors ${
                   playbackRate === rate
                     ? "bg-primary text-primary-foreground"

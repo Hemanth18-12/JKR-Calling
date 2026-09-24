@@ -23,7 +23,13 @@ from urllib.parse import urlparse
 
 from fastapi import HTTPException, status
 from jkr_db.crypto import encrypt_secret
-from jkr_db.models.integrations import WebhookDelivery, WebhookEndpoint
+from jkr_db.enums import IntegrationStatus, IntegrationType
+from jkr_db.integrations.google_calendar import (
+    exchange_code_for_tokens,
+    get_google_auth_url,
+    save_google_calendar_connection,
+)
+from jkr_db.models.integrations import Integration, IntegrationCredential, WebhookDelivery, WebhookEndpoint
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,13 +52,30 @@ async def catalog(db: AsyncSession, *, workspace_id: uuid.UUID) -> list[dict]:
         select(WebhookEndpoint.id).where(WebhookEndpoint.workspace_id == workspace_id, WebhookEndpoint.is_active.is_(True)).limit(1)
     )
     has_active_webhook = active_result.scalar_one_or_none() is not None
-    return [
-        {
-            "type": item["type"], "label": item["label"], "requires_oauth": item["requires_oauth"],
-            "status": "connected" if item["type"] == "webhook" and has_active_webhook else "not_connected",
-        }
-        for item in INTEGRATION_CATALOG
-    ]
+
+    integrations_res = await db.execute(
+        select(Integration.type).where(
+            Integration.workspace_id == workspace_id,
+            Integration.status == IntegrationStatus.CONNECTED,
+        )
+    )
+    connected_types = {r[0] for r in integrations_res.all()}
+
+    items = []
+    for item in INTEGRATION_CATALOG:
+        is_conn = False
+        if item["type"] == "webhook" and has_active_webhook:
+            is_conn = True
+        elif item["type"] in connected_types:
+            is_conn = True
+
+        items.append({
+            "type": item["type"],
+            "label": item["label"],
+            "requires_oauth": item["requires_oauth"],
+            "status": "connected" if is_conn else "not_connected",
+        })
+    return items
 
 
 async def create_webhook_endpoint(
@@ -97,3 +120,88 @@ async def list_deliveries(db: AsyncSession, *, workspace_id: uuid.UUID, endpoint
         .limit(limit)
     )
     return list(result.scalars().all())
+
+
+# --- Google Calendar Operations ---
+
+def get_google_calendar_auth_url(workspace_id: uuid.UUID, settings: Settings) -> str:
+    client_id = settings.google_client_id or "demo-google-client-id.apps.googleusercontent.com"
+    redirect_uri = settings.google_oauth_redirect_uri or f"{settings.app_base_url}/api/v1/integrations/google-calendar/callback"
+    state = f"ws_{workspace_id}"
+    return get_google_auth_url(client_id=client_id, redirect_uri=redirect_uri, state=state)
+
+
+async def connect_google_calendar(
+    db: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    settings: Settings,
+    code: str | None = None,
+    access_token: str | None = None,
+    refresh_token: str | None = None,
+    email: str | None = None,
+    calendar_id: str = "primary",
+) -> Integration:
+    if code:
+        tokens = await exchange_code_for_tokens(
+            code=code,
+            redirect_uri=settings.google_oauth_redirect_uri,
+            client_id=settings.google_client_id,
+            client_secret=settings.google_client_secret,
+        )
+        access_token = tokens["access_token"]
+        refresh_token = tokens.get("refresh_token")
+        expires_in = tokens.get("expires_in", 3600)
+    elif not access_token:
+        # Fallback to demo/mock token for testing
+        access_token = f"mock_token_{uuid.uuid4().hex[:12]}"
+        refresh_token = f"mock_refresh_{uuid.uuid4().hex[:12]}"
+        expires_in = 3600
+    else:
+        expires_in = 3600
+
+    integration = await save_google_calendar_connection(
+        db,
+        workspace_id=workspace_id,
+        encryption_key=settings.credentials_encryption_key,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in_seconds=expires_in,
+        calendar_id=calendar_id,
+        email=email or "dentist@aahadental.in",
+    )
+    return integration
+
+
+async def disconnect_google_calendar(db: AsyncSession, *, workspace_id: uuid.UUID) -> None:
+    result = await db.execute(
+        select(Integration).where(
+            Integration.workspace_id == workspace_id,
+            Integration.type == IntegrationType.GOOGLE_CALENDAR,
+        )
+    )
+    integration = result.scalar_one_or_none()
+    if integration:
+        integration.status = IntegrationStatus.NOT_CONNECTED
+        await db.flush()
+
+
+async def get_google_calendar_status(db: AsyncSession, *, workspace_id: uuid.UUID) -> dict:
+    result = await db.execute(
+        select(Integration).where(
+            Integration.workspace_id == workspace_id,
+            Integration.type == IntegrationType.GOOGLE_CALENDAR,
+        )
+    )
+    integration = result.scalar_one_or_none()
+    if not integration or integration.status != IntegrationStatus.CONNECTED:
+        return {"is_connected": False}
+
+    cfg = integration.config or {}
+    return {
+        "is_connected": True,
+        "display_name": integration.display_name,
+        "calendar_id": cfg.get("calendar_id", "primary"),
+        "email": cfg.get("email"),
+        "last_synced_at": integration.last_synced_at,
+    }

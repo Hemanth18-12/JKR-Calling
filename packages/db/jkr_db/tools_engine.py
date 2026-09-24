@@ -243,16 +243,61 @@ async def _run_book_appointment(
 ) -> dict:
     if contact_id is None:
         raise ToolInputError("book_appointment requires a contact_id (no real contact attached to this call)")
-    await _get_workspace_contact(db, workspace_id=workspace_id, contact_id=contact_id)
+    contact = await _get_workspace_contact(db, workspace_id=workspace_id, contact_id=contact_id)
     scheduled_for = parse_fuzzy_datetime(tool_input.get("preferred_date"), tool_input.get("preferred_time"))
+    location = tool_input.get("location") or "Aaha Dental Care, Road No. 12, Banjara Hills, Hyderabad"
     appointment = Appointment(
         workspace_id=workspace_id, contact_id=contact_id, call_session_id=call_session_id,
         scheduled_for=scheduled_for, duration_minutes=30, status="scheduled",
+        location=location,
         notes=tool_input.get("reason_for_visit"),
     )
     db.add(appointment)
     await db.flush()
-    return {"appointment_id": str(appointment.id), "scheduled_for": scheduled_for.isoformat()}
+
+    # --- Sync to Google Calendar if connected ---
+    gcal_info = None
+    try:
+        from jkr_db.integrations.google_calendar import (
+            create_google_calendar_event,
+            get_active_google_calendar_token,
+        )
+        encryption_key = os.environ.get("CREDENTIALS_ENCRYPTION_KEY", "change_me_dev_only_fernet_key_44_bytes_base64")
+        token, cal_id = await get_active_google_calendar_token(
+            db, workspace_id=workspace_id, encryption_key=encryption_key
+        )
+        if token:
+            patient_name = contact.full_name or "Customer"
+            gcal_event = await create_google_calendar_event(
+                access_token=token,
+                calendar_id=cal_id,
+                summary=f"Dental Consultation: {patient_name}",
+                description=f"Automated Booking via JKR Calling AI Agent\nReason: {appointment.notes or 'General Consultation'}\nPhone: {contact.phone_e164}",
+                start_time=scheduled_for,
+                duration_minutes=30,
+                location=location,
+            )
+            gcal_info = {
+                "event_id": gcal_event.get("id"),
+                "html_link": gcal_event.get("htmlLink"),
+                "status": gcal_event.get("status"),
+            }
+            if appointment.notes:
+                appointment.notes = f"{appointment.notes}\n[Google Calendar Event: {gcal_event.get('id')}]"
+            else:
+                appointment.notes = f"[Google Calendar Event: {gcal_event.get('id')}]"
+            await db.flush()
+    except Exception as exc:
+        logger.warning("Google Calendar sync failed: %s", exc)
+
+    res = {
+        "appointment_id": str(appointment.id),
+        "scheduled_for": scheduled_for.isoformat(),
+        "location": location,
+    }
+    if gcal_info:
+        res["google_calendar"] = gcal_info
+    return res
 
 
 async def _get_workspace_appointment(db: AsyncSession, *, workspace_id: uuid.UUID, appointment_id: str) -> Appointment:
@@ -337,7 +382,12 @@ async def _dispatch_twilio_message(*, channel: str, to_e164: str, body: str) -> 
                 return ("sent", msg_sid, None)
             else:
                 err_text = response.text
-                if "63015" in err_text or "could not find recipient" in err_text.lower():
+                if "63007" in err_text or "channel with the specified from address" in err_text.lower():
+                    detailed_err = (
+                        f"Twilio WhatsApp Error 63007: WhatsApp sender '{from_param}' not configured/active on Twilio account. "
+                        f"To activate Twilio WhatsApp sandbox, visit Twilio Console -> Messaging -> Try it out -> Send a WhatsApp message."
+                    )
+                elif "63015" in err_text or "could not find recipient" in err_text.lower():
                     detailed_err = (
                         f"Twilio WhatsApp Sandbox Error 63015: Recipient '{to_param}' has not joined Sandbox. "
                         f"Recipient must send Sandbox Join Code (e.g. 'join <keyword>') to +14155238886 first."
@@ -347,6 +397,22 @@ async def _dispatch_twilio_message(*, channel: str, to_e164: str, body: str) -> 
                 else:
                     detailed_err = f"Twilio HTTP {response.status_code}: {err_text}"
                 logger.warning("Twilio %s failed (HTTP %s): %s", channel, response.status_code, detailed_err)
+
+                # If WhatsApp failed due to Sandbox/Sender setup, attempt SMS fallback so customer actually receives notification
+                if channel == "whatsapp" and from_number:
+                    try:
+                        logger.info("Dispatching SMS fallback to %s for appointment/follow-up message...", clean_to)
+                        sms_res = await client.post(
+                            url,
+                            data={"From": from_number, "To": clean_to, "Body": body},
+                        )
+                        if sms_res.status_code < 400:
+                            sms_sid = sms_res.json().get("sid")
+                            logger.info("SMS fallback dispatched successfully: SID %s to %s", sms_sid, clean_to)
+                            return ("sent", sms_sid, f"Delivered via SMS fallback (SID: {sms_sid}) because WhatsApp sender pending join/config: {detailed_err}")
+                    except Exception as sms_exc:
+                        logger.warning("SMS fallback failed: %s", sms_exc)
+
                 return ("failed", None, detailed_err)
     except Exception as exc:
         logger.exception("Error dispatching Twilio %s message: %s", channel, exc)

@@ -20,7 +20,13 @@ from datetime import UTC, datetime
 import pytest
 import pytest_asyncio
 
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://jkr_app:jkr_app_local_dev@localhost:55432/jkr_ai_calling")
+from dotenv import load_dotenv
+
+load_dotenv()
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+asyncpg://neondb_owner:npg_sbRlIBVy2U5o@ep-orange-wildflower-b3lhp0xw.c-4.ap-southeast-1.aws.neon.tech/neondb?ssl=require",
+)
 
 from app.modules.live_call import service  # noqa: E402
 from jkr_conversation.schemas import ToolCallRequest  # noqa: E402

@@ -1,4 +1,12 @@
-import type { CallDetail, CallListItem, EndCallResponse, TestCallCreate, TestCallStarted, UserTurnResponse } from "@jkr/contracts";
+import type {
+  CallDetail,
+  CallListItem,
+  EndCallResponse,
+  SupervisorActionOut,
+  TestCallCreate,
+  TestCallStarted,
+  UserTurnResponse,
+} from "@jkr/contracts";
 
 import { type ApiFetchOptions, apiBaseUrl, apiFetch } from "./client";
 
@@ -22,4 +30,29 @@ export const callsApi = {
   list: (workspaceId: string, status?: string, opts?: ApiFetchOptions) =>
     apiFetch<CallListItem[]>(`/calls${qs(workspaceId)}${status ? `&status=${status}` : ""}`, { ...opts, method: "GET" }),
   eventsUrl: (workspaceId: string, callId: string) => `${apiBaseUrl()}/api/v1/calls/${callId}/events${qs(workspaceId)}`,
+  whisper: (workspaceId: string, callId: string, text: string, supervisorName = "Supervisor", opts?: ApiFetchOptions) =>
+    apiFetch<SupervisorActionOut>(`/calls/${callId}/whisper${qs(workspaceId)}`, {
+      ...opts,
+      method: "POST",
+      body: { text, supervisor_name: supervisorName },
+    }),
+  barge: (workspaceId: string, callId: string, action: "takeover" | "release" = "takeover", supervisorName = "Supervisor", opts?: ApiFetchOptions) =>
+    apiFetch<SupervisorActionOut>(`/calls/${callId}/barge${qs(workspaceId)}`, {
+      ...opts,
+      method: "POST",
+      body: { action, supervisor_name: supervisorName },
+    }),
+  listen: (workspaceId: string, callId: string, supervisorId = "supervisor", opts?: ApiFetchOptions) =>
+    apiFetch<SupervisorActionOut>(`/calls/${callId}/listen${qs(workspaceId)}`, {
+      ...opts,
+      method: "POST",
+      body: { supervisor_id: supervisorId },
+    }),
+  terminate: (workspaceId: string, callId: string, reason = "supervisor_terminated", opts?: ApiFetchOptions) =>
+    apiFetch<SupervisorActionOut>(`/calls/${callId}/terminate${qs(workspaceId)}`, {
+      ...opts,
+      method: "POST",
+      body: { reason },
+    }),
 };
+

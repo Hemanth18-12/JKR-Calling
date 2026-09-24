@@ -40,6 +40,8 @@ __pycache__/
 # Docker volumes / local data
 infra/docker/data/
 *.sqlite3
+.minio_storage/
+scratch/
 
 # Logs
 *.log

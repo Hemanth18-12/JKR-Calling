@@ -31,6 +31,9 @@ class CallRuntime:
     human_transfer_enabled: bool = True
     policy: ConversationPolicySnapshot = field(default_factory=ConversationPolicySnapshot)
     business_identity: str = ""
+    is_barged_in: bool = False
+    active_whispers: list[str] = field(default_factory=list)
+    listeners: set[str] = field(default_factory=set)
 
 
 _REGISTRY: dict[uuid.UUID, CallRuntime] = {}
@@ -64,6 +67,7 @@ def put(call_id: uuid.UUID, runtime: CallRuntime) -> None:
                 "language": runtime.language,
                 "human_transfer_enabled": runtime.human_transfer_enabled,
                 "business_identity": runtime.business_identity,
+                "is_barged_in": runtime.is_barged_in,
             }
             loop.create_task(_save_to_redis(call_id, data))
     except Exception:
@@ -72,6 +76,30 @@ def put(call_id: uuid.UUID, runtime: CallRuntime) -> None:
 
 def get(call_id: uuid.UUID) -> CallRuntime | None:
     return _REGISTRY.get(call_id)
+
+
+def whisper(call_id: uuid.UUID, hint: str) -> bool:
+    runtime = _REGISTRY.get(call_id)
+    if not runtime:
+        return False
+    runtime.active_whispers.append(hint)
+    return True
+
+
+def set_barge(call_id: uuid.UUID, active: bool = True) -> bool:
+    runtime = _REGISTRY.get(call_id)
+    if not runtime:
+        return False
+    runtime.is_barged_in = active
+    return True
+
+
+def add_listener(call_id: uuid.UUID, listener_id: str) -> bool:
+    runtime = _REGISTRY.get(call_id)
+    if not runtime:
+        return False
+    runtime.listeners.add(listener_id)
+    return True
 
 
 def discard(call_id: uuid.UUID) -> None:

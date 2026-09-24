@@ -9,6 +9,8 @@ from pydantic import BaseModel
 class TestCallCreate(BaseModel):
     agent_id: uuid.UUID
     contact_name: str | None = None
+    contact_id: uuid.UUID | None = None
+    phone_e164: str | None = None
 
 
 class TurnInfo(BaseModel):
@@ -102,3 +104,31 @@ class CallDetail(BaseModel):
     interruptions: list[InterruptionEventOut]
     latency_metrics: list[CallLatencyMetricOut]
     outcome: CallOutcomeOut | None
+    recording_url: str | None = None
+    transcript_url: str | None = None
+
+
+class WhisperCreate(BaseModel):
+    text: str
+    supervisor_name: str = "Supervisor"
+
+
+class BargeCreate(BaseModel):
+    action: str = "takeover"
+    supervisor_name: str = "Supervisor"
+
+
+class ListenCreate(BaseModel):
+    supervisor_id: str = "supervisor"
+
+
+class TerminateCreate(BaseModel):
+    reason: str = "supervisor_terminated"
+
+
+class SupervisorActionOut(BaseModel):
+    call_id: str
+    status: str
+    action: str | None = None
+    detail: dict | None = None
+

@@ -33,7 +33,15 @@ function LiveTranscript({ workspaceId, callId }: { workspaceId: string; callId: 
       const turn = JSON.parse((e as MessageEvent).data) as LiveTurn;
       setTurns((prev) => (prev.some((t) => t.turn_ref === turn.turn_ref) ? prev : [...prev, turn]));
     });
+    source.addEventListener("barge", (e) => {
+      const payload = JSON.parse((e as MessageEvent).data);
+      setIsBargedIn(payload.action === "takeover");
+    });
     source.addEventListener("call_ended", () => {
+      setEnded(true);
+      source.close();
+    });
+    source.addEventListener("call_terminated", () => {
       setEnded(true);
       source.close();
     });
@@ -48,22 +56,59 @@ function LiveTranscript({ workspaceId, callId }: { workspaceId: string; callId: 
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns]);
 
-  const handleSendWhisper = (e: React.FormEvent) => {
+  const [whisperLoading, setWhisperLoading] = React.useState(false);
+  const [actionLoading, setActionLoading] = React.useState(false);
+
+  const handleSendWhisper = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!whisperText.trim()) return;
-    setWhisperSent(true);
-    setWhisperText("");
-    setTimeout(() => setWhisperSent(false), 3000);
+    setWhisperLoading(true);
+    try {
+      await callsApi.whisper(workspaceId, callId, whisperText);
+      setWhisperSent(true);
+      setWhisperText("");
+      setTimeout(() => setWhisperSent(false), 4000);
+    } catch (err) {
+      console.error("Failed to send whisper:", err);
+    } finally {
+      setWhisperLoading(false);
+    }
+  };
+
+  const handleToggleListen = async () => {
+    setActionLoading(true);
+    try {
+      await callsApi.listen(workspaceId, callId);
+      setIsListening((prev) => !prev);
+    } catch (err) {
+      console.error("Failed to toggle listen:", err);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleToggleBarge = async () => {
+    setActionLoading(true);
+    try {
+      const nextAction = isBargedIn ? "release" : "takeover";
+      await callsApi.barge(workspaceId, callId, nextAction);
+      setIsBargedIn(!isBargedIn);
+    } catch (err) {
+      console.error("Failed to toggle barge:", err);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleEndCall = async () => {
     try {
-      await callsApi.end(workspaceId, callId);
+      await callsApi.terminate(workspaceId, callId, "supervisor_terminated");
       setEnded(true);
     } catch {
       setEnded(true);
     }
   };
+
 
   return (
     <Card className={`h-full flex flex-col ${!ended ? "border-secondary/40 shadow-live-glow" : ""}`}>
@@ -132,7 +177,8 @@ function LiveTranscript({ workspaceId, callId }: { workspaceId: string; callId: 
                 size="sm"
                 variant={isListening ? "secondary" : "outline"}
                 className="text-xs h-8"
-                onClick={() => setIsListening(!isListening)}
+                disabled={actionLoading}
+                onClick={handleToggleListen}
               >
                 <Headphones className="h-3.5 w-3.5" />
                 {isListening ? "Listening In (Active)" : "Listen In"}
@@ -142,7 +188,8 @@ function LiveTranscript({ workspaceId, callId }: { workspaceId: string; callId: 
                 size="sm"
                 variant={isBargedIn ? "destructive" : "outline"}
                 className="text-xs h-8"
-                onClick={() => setIsBargedIn(!isBargedIn)}
+                disabled={actionLoading}
+                onClick={handleToggleBarge}
               >
                 <PhoneForwarded className="h-3.5 w-3.5" />
                 {isBargedIn ? "Release Barge" : "Barge / Take Over"}
@@ -168,7 +215,7 @@ function LiveTranscript({ workspaceId, callId }: { workspaceId: string; callId: 
               placeholder="Whisper hint to AI agent (e.g. 'Offer 10% discount if hesitant')..."
               className="h-8 text-xs bg-surface"
             />
-            <Button type="submit" size="sm" variant="gradient" className="h-8 px-3 text-xs shrink-0">
+            <Button type="submit" size="sm" variant="gradient" className="h-8 px-3 text-xs shrink-0" disabled={whisperLoading}>
               <Send className="h-3.5 w-3.5" /> Whisper
             </Button>
           </form>

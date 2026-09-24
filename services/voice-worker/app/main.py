@@ -119,3 +119,44 @@ async def end_session(call_id: uuid.UUID, payload: EndSessionRequest) -> dict:
         "outcome_category": result["outcome_category"],
         "lead_score": result["lead_score"],
     }
+
+
+class WhisperRequest(BaseModel):
+    workspace_id: uuid.UUID
+    text: str
+    supervisor_name: str = "Supervisor"
+
+
+@app.post("/sessions/{call_id}/whisper", dependencies=[Depends(require_internal_token)])
+async def session_whisper(call_id: uuid.UUID, payload: WhisperRequest) -> dict:
+    async with workspace_scoped_session(payload.workspace_id) as db:
+        return await conversation_engine.whisper_to_call(
+            db, workspace_id=payload.workspace_id, call_id=call_id, text=payload.text, supervisor_name=payload.supervisor_name
+        )
+
+
+class BargeRequest(BaseModel):
+    workspace_id: uuid.UUID
+    action: str = "takeover"
+    supervisor_name: str = "Supervisor"
+
+
+@app.post("/sessions/{call_id}/barge", dependencies=[Depends(require_internal_token)])
+async def session_barge(call_id: uuid.UUID, payload: BargeRequest) -> dict:
+    async with workspace_scoped_session(payload.workspace_id) as db:
+        return await conversation_engine.barge_call(
+            db, workspace_id=payload.workspace_id, call_id=call_id, action=payload.action, supervisor_name=payload.supervisor_name
+        )
+
+
+class ListenRequest(BaseModel):
+    workspace_id: uuid.UUID
+    supervisor_id: str = "supervisor"
+
+
+@app.post("/sessions/{call_id}/listen", dependencies=[Depends(require_internal_token)])
+async def session_listen(call_id: uuid.UUID, payload: ListenRequest) -> dict:
+    async with workspace_scoped_session(payload.workspace_id) as db:
+        return await conversation_engine.listen_to_call(
+            db, workspace_id=payload.workspace_id, call_id=call_id, supervisor_id=payload.supervisor_id
+        )
