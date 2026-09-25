@@ -106,6 +106,7 @@ class ExtractionResult:
     wants_human: bool = False
     wrong_number: bool = False
     do_not_call: bool = False
+    appointment_confirmed: bool = False
     sentiment: str = "neutral"  # "positive" | "neutral" | "negative"
     is_mock: bool = True
     raw_model_output: dict | None = None

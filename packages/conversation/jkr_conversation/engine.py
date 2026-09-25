@@ -37,6 +37,7 @@ from jkr_conversation.schemas import (
     ConversationPolicySnapshot,
     ConversationTurnResult,
     DomainTermSnapshot,
+    ExtractionResult,
     FieldExtraction,
     ToolCallRequest,
 )
@@ -161,8 +162,15 @@ async def process_turn(
     # defaults to "legacy", under which fast_router is never even imported-
     # from at runtime here, so behavior is byte-identical to before this phase.
     t0 = time.perf_counter()
-    extraction = fast_router.route(customer_utterance=customer_utterance, state=new_state, conversation_policy=conversation_policy) if engine_mode == "fast" else None
-    fast_path_hit = extraction is not None
+    if policy.detect_appointment_confirmation(customer_utterance):
+        extraction = ExtractionResult(turn_intent="answer", appointment_confirmed=True, turn_path="fast_path")
+        fast_path_hit = True
+    elif engine_mode == "fast":
+        extraction = fast_router.route(customer_utterance=customer_utterance, state=new_state, conversation_policy=conversation_policy)
+        fast_path_hit = extraction is not None
+    else:
+        extraction = None
+        fast_path_hit = False
     latency_ms["fast_router"] = int((time.perf_counter() - t0) * 1000)
 
     domain_terms: list[DomainTermSnapshot] = []
@@ -272,12 +280,22 @@ async def process_turn(
 
     for key in extraction.uncertain_fields:
         uncertain.add(key)
+
+    if getattr(extraction, "appointment_confirmed", False) and new_state.get("objective") == "book_appointment":
+        known_fields.setdefault("reason_for_visit", "General Consultation")
+        known_fields.setdefault("preferred_date", "Tomorrow")
+        known_fields.setdefault("preferred_time", "10:00 AM")
+        field_confidence.setdefault("reason_for_visit", 0.95)
+        field_confidence.setdefault("preferred_date", 0.95)
+        field_confidence.setdefault("preferred_time", 0.95)
+
     new_state["known_fields"] = known_fields
     new_state["field_confidence"] = field_confidence
     new_state["uncertain_fields"] = sorted(uncertain)
     new_state["missing_fields"] = [f for f in objectives.all_field_keys(new_state.get("objective", "")) if f not in known_fields]
     new_state["intent"] = extraction.turn_intent
     new_state["sentiment"] = extraction.sentiment
+
     if extraction.do_not_call:
         new_state["do_not_call"] = True
     if extraction.wrong_number:

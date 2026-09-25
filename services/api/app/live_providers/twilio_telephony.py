@@ -35,6 +35,7 @@ class TwilioClient:
                     "StatusCallback": status_callback_url,
                     "StatusCallbackMethod": "POST",
                     "StatusCallbackEvent": "completed",
+                    "Timeout": "60",
                 },
             )
         if response.is_error:

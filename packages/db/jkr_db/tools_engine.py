@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from jkr_db.models.agents import AgentTool, ToolDefinition
-from jkr_db.models.contacts import Contact
+from jkr_db.models.contacts import Contact, ContactTag
 from jkr_db.models.knowledge import KnowledgeChunk, RetrievalEvent
 from jkr_db.models.tools import Appointment, FollowUpTask, HumanHandoff, Message, ToolExecution
 
@@ -469,14 +469,19 @@ async def _run_create_lead(db: AsyncSession, *, workspace_id: uuid.UUID, contact
             workspace_id=workspace_id,
             phone_e164=normalized_phone,
             full_name=name,
-            tags=tags,
-            consent_obtained=True,
-            consent_method="ai_call",
+            consent_status="opted_in",
+            lead_source="ai_call",
         )
         db.add(contact)
         await db.flush()
+        for t in tags:
+            db.add(ContactTag(workspace_id=workspace_id, contact_id=contact.id, tag=t))
+        await db.flush()
     elif contact:
-        contact.tags = list(set((contact.tags or []) + tags))
+        for t in tags:
+            tag_exists = await db.execute(select(ContactTag).where(ContactTag.contact_id == contact.id, ContactTag.tag == t))
+            if not tag_exists.scalar_one_or_none():
+                db.add(ContactTag(workspace_id=workspace_id, contact_id=contact.id, tag=t))
         await db.flush()
 
     return {
@@ -495,9 +500,13 @@ async def _run_update_lead(db: AsyncSession, *, workspace_id: uuid.UUID, contact
         result = await db.execute(select(Contact).where(Contact.id == contact_id, Contact.workspace_id == workspace_id))
         contact = result.scalar_one_or_none()
         if contact:
-            contact.tags = list(set((contact.tags or []) + tags))
+            contact.conversion_status = stage
+            for t in tags:
+                tag_exists = await db.execute(select(ContactTag).where(ContactTag.contact_id == contact.id, ContactTag.tag == t))
+                if not tag_exists.scalar_one_or_none():
+                    db.add(ContactTag(workspace_id=workspace_id, contact_id=contact.id, tag=t))
             await db.flush()
-            return {"status": "updated", "contact_id": str(contact.id), "stage": stage, "tags": contact.tags}
+            return {"status": "updated", "contact_id": str(contact.id), "stage": stage, "tags": tags}
 
     return {"status": "updated", "stage": stage, "mock": True}
 

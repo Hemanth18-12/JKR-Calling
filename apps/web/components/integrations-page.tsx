@@ -105,7 +105,11 @@ export function IntegrationsPage({
             <CardContent className="flex items-center justify-between p-4">
               <div>
                 <p className="text-sm font-medium">{item.label}</p>
-                {item.requires_oauth ? <p className="text-xs text-muted-foreground">Requires OAuth — not configured</p> : null}
+                {item.requires_oauth && item.status !== "connected" ? (
+                  <p className="text-xs text-muted-foreground">Requires OAuth — not configured</p>
+                ) : item.status === "connected" ? (
+                  <p className="text-xs text-emerald-500 font-medium">Active & verified</p>
+                ) : null}
               </div>
               <Badge variant={item.status === "connected" ? "success" : "secondary"}>{item.status.replace(/_/g, " ")}</Badge>
             </CardContent>

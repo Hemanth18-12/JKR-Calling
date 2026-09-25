@@ -38,7 +38,7 @@ settings = get_settings()
 async def _async_startup_db_check() -> None:
     """Probes DB connectivity without blocking uvicorn from opening $PORT."""
     try:
-        success, msg = await ping_database(timeout=5.0)
+        success, msg = await ping_database(timeout=15.0)
         if success:
             logger.info("[STARTUP] %s", msg)
         else:

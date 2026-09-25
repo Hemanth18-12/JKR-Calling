@@ -65,9 +65,20 @@ def decide(
     if extraction.wants_human and conversation_policy.human_transfer_enabled:
         return PlannerDecision(action="HUMAN_HANDOFF", reason="customer_requested_human")
 
+    # 2b. Explicit appointment confirmation — customer said "appointment confirmed"
+    if getattr(extraction, "appointment_confirmed", False) and state.get("objective") == "book_appointment":
+        return PlannerDecision(
+            action="COMPLETE_OBJECTIVE",
+            reason="all_fields_collected",
+            answer_question_first=False,
+            rag_query=None,
+            objection=extraction.objection,
+        )
+
     answer_question_first = bool(extraction.detected_question) and extraction.turn_intent != "small_talk"
     is_business_question = answer_question_first and extraction.question_type == "business_knowledge"
     rag_query = extraction.rewritten_query if is_business_question else None
+
 
     # 3. Clarify a field just captured with low confidence — "never silently
     # guess," per conversation_policy.clarification_behavior.

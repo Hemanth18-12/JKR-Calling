@@ -108,8 +108,8 @@ def get_engine() -> AsyncEngine:
             "echo": bool(os.environ.get("SQL_ECHO")),
         }
         if "asyncpg" in database_url:
-            connect_timeout = float(os.environ.get("DB_CONNECT_TIMEOUT", "10.0"))
-            command_timeout = float(os.environ.get("DB_COMMAND_TIMEOUT", "15.0"))
+            connect_timeout = float(os.environ.get("DB_CONNECT_TIMEOUT", "30.0"))
+            command_timeout = float(os.environ.get("DB_COMMAND_TIMEOUT", "30.0"))
             engine_kwargs["connect_args"] = {
                 "timeout": connect_timeout,
                 "command_timeout": command_timeout,

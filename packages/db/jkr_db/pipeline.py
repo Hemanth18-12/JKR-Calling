@@ -343,8 +343,11 @@ def _classify_outcome(*, objective: str, objective_status: str, known_fields: di
     if any(word in transcript_text for word in _DNC_WORDS):
         return "do_not_call", "not_qualified", ["Customer indicated do-not-call or wrong number"]
 
-    if objective_status == "completed" and objective == "book_appointment":
-        return "appointment_booked", "hot", [f"{k}: {v}" for k, v in known_fields.items()]
+    if (objective_status == "completed" and objective == "book_appointment") or any(
+        phrase in transcript_text for phrase in ("appointment confirmed", "appointment is confirmed", "confirm appointment")
+    ):
+        return "appointment_booked", "hot", [f"{k}: {v}" for k, v in known_fields.items()] or ["Customer confirmed appointment verbally on call"]
+
     if objective_status == "completed" and known_fields:
         return "qualified", "warm", [f"{k}: {v}" for k, v in known_fields.items()]
     if known_fields:

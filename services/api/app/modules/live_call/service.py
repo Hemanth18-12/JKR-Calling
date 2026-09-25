@@ -98,7 +98,7 @@ FALLBACK_LANGUAGE = "en-IN"  # only used if Sarvam TTS errors and we fall back t
 # gap. This whole class of bug goes away once real streaming VAD (which
 # can tell "still thinking" apart from "done talking") replaces <Record> —
 # see docs/REALTIME_VOICE_MIGRATION_AUDIT.md.
-RECORD_SILENCE_TIMEOUT_SECONDS = 5
+RECORD_SILENCE_TIMEOUT_SECONDS = 2
 
 
 def _sarvam_language_code(primary_language: str | None) -> str:
@@ -170,19 +170,27 @@ def _audio_url(settings: Settings, audio_id: str) -> str:
     return f"{base}/api/v1/live-call/audio/{audio_id}.wav"
 
 
+from pathlib import Path
+
+_AUDIO_DIR = Path(__file__).resolve().parents[5] / "scratch" / "audio_cache"
+_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+
 async def cache_audio(redis: Any, *, audio_bytes: bytes) -> str:
     audio_id = uuid.uuid4().hex
-    await redis.set(_audio_redis_key(audio_id), base64.b64encode(audio_bytes).decode("ascii"), ex=AUDIO_TTL_SECONDS)
+    file_path = _AUDIO_DIR / f"{audio_id}.wav"
+    file_path.write_bytes(audio_bytes)
     return audio_id
 
 
 async def get_cached_audio(redis: Any, *, audio_id: str) -> bytes | None:
-    raw = await redis.get(_audio_redis_key(audio_id))
-    if raw is None:
-        return None
-    if isinstance(raw, bytes):
-        raw = raw.decode("ascii")
-    return base64.b64decode(raw)
+    file_path = _AUDIO_DIR / f"{audio_id}.wav"
+    if file_path.exists():
+        try:
+            return file_path.read_bytes()
+        except Exception as exc:
+            logger.warning("Error reading cached audio file: %s", exc)
+    return None
 
 
 async def _speak(
@@ -423,6 +431,7 @@ async def start_live_test_call(
         "greeting_kind": greeting_kind,
         "greeting_content": greeting_content,
     }
+    state["objective"] = version.primary_objective
     await redis.set(_redis_key(token), json.dumps(state), ex=REDIS_TTL_SECONDS)
 
     async with workspace_scoped_session(workspace_id) as write_db:
@@ -430,7 +439,7 @@ async def start_live_test_call(
         dialing_session = result.scalar_one_or_none()
         if dialing_session is not None:
             dialing_session.status = "dialing"
-            dialing_session.state = {"live_real_call": True, "provider_call_sid": call_sid}
+            dialing_session.state = {**conversation_state, "live_real_call": True, "provider_call_sid": call_sid}
 
     return {"call_id": call_session_id, "call_sid": call_sid, "status": "dialing"}
 
@@ -889,6 +898,8 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
         session_result = await db.execute(select(CallSession).where(CallSession.id == call_session_id))
         call_session = session_result.scalar_one_or_none()
         conversation_state = dict(call_session.state) if call_session is not None and call_session.state else {}
+        if not conversation_state.get("objective") and state.get("objective"):
+            conversation_state["objective"] = state["objective"]
         policy_snapshot = ConversationPolicySnapshot(**state.get("policy", {}))
 
         result = await process_turn(

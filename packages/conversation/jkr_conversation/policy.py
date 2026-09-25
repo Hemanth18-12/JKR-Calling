@@ -30,6 +30,20 @@ HUMAN_HANDOFF_TRIGGERS = [
     "మనిషితో మాట్లాడాలి", "మనిషిని కలపండి", "इंसान से बात", "किसी आदमी से बात करनी है",
 ]
 
+APPOINTMENT_CONFIRMATION_TRIGGERS = [
+    "appointment confirmed",
+    "appointment is confirmed",
+    "confirm appointment",
+    "confirm the appointment",
+    "confirmed appointment",
+    "book the appointment",
+    "book my appointment",
+    "అపాయింట్‌మెంట్ కన్ఫర్మ్",
+    "అపాయింట్మెంట్ కన్ఫర్మ్",
+    "appointment confirm",
+]
+
+
 # Used when a field's candidate correction is pending confirmation — a short
 # yes/no reply resolves it without needing a full extraction call in mock
 # mode. Real mode also uses these as a hint alongside the LLM's own
@@ -115,17 +129,35 @@ def is_acknowledgement_only(text: str, *, phrases: list[str]) -> bool:
     return any(normalized == p.strip().lower() for p in phrases)
 
 
+def detect_appointment_confirmation(text: str) -> bool:
+    lowered = text.strip().lower()
+    return any(trigger in lowered for trigger in APPOINTMENT_CONFIRMATION_TRIGGERS)
+
+
 def apply_backstop(extraction: ExtractionResult, *, raw_text: str) -> ExtractionResult:
-    """A real do-not-call/wrong-number/human-handoff phrase in the customer's
-    actual words always wins, regardless of what the LLM (or the mock
+    """A real do-not-call/wrong-number/human-handoff/appointment-confirmation phrase
+    in the customer's actual words always wins, regardless of what the LLM (or the mock
     heuristic) classified — called unconditionally in engine.py right after
     extraction, before the planner ever sees the result."""
     do_not_call = extraction.do_not_call or detect_do_not_call(raw_text)
     wrong_number = extraction.wrong_number or detect_wrong_number(raw_text)
     wants_human = extraction.wants_human or detect_human_handoff(raw_text)
-    if do_not_call == extraction.do_not_call and wrong_number == extraction.wrong_number and wants_human == extraction.wants_human:
+    appointment_confirmed = extraction.appointment_confirmed or detect_appointment_confirmation(raw_text)
+    if (
+        do_not_call == extraction.do_not_call
+        and wrong_number == extraction.wrong_number
+        and wants_human == extraction.wants_human
+        and appointment_confirmed == extraction.appointment_confirmed
+    ):
         return extraction
-    return replace(extraction, do_not_call=do_not_call, wrong_number=wrong_number, wants_human=wants_human)
+    return replace(
+        extraction,
+        do_not_call=do_not_call,
+        wrong_number=wrong_number,
+        wants_human=wants_human,
+        appointment_confirmed=appointment_confirmed,
+    )
+
 
 
 def fallback_text(*, kind: str, language: str) -> str:
