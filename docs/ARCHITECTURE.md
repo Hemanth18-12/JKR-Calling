@@ -117,9 +117,9 @@ text, credentials) is never placed in log lines — see `docs/SECURITY_AND_COMPL
 
 ## 8. Voice runtime abstraction
 
-`voice-worker` depends only on interfaces (`TelephonyProvider`, `SpeechToTextProvider`,
-`LLMProvider`, `TextToSpeechProvider`, `MediaRuntime`) defined in `packages/db`-adjacent shared
-code (`services/voice-worker/app/providers/base.py`). The default `MediaRuntime` implementation
-is `MockMediaRuntime` (text-simulated, no external dependency). A `LiveKitMediaRuntime` adapter
-stub exists so the platform can move to real LiveKit/SIP without touching `TurnManager` or the
-conversation engine. See `docs/VOICE_ARCHITECTURE.md` and `docs/DECISIONS/0002-voice-runtime.md`.
+`voice-worker` depends on provider interfaces (`TelephonyProvider`, `SpeechToTextProvider`,
+`LLMProvider`, `TextToSpeechProvider`, `MediaRuntime`) defined in
+`services/voice-worker/app/providers/base.py`. The platform's real-time voice and telephony
+engine is powered by **Dograh** (`infra/dograh/`), deploying as a self-hosted Pipecat-based voice
+engine with native Sarvam STT/TTS and Twilio/Exotel telephony. The default `MockMediaRuntime`
+provides text-simulated execution for rapid headless testing. See `docs/VOICE_ARCHITECTURE.md`.

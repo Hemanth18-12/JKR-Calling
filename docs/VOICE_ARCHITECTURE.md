@@ -3,15 +3,17 @@
 ## 1. Pipeline (per master spec §10)
 
 ```
-Phone/SIP participant → LiveKit room → noise cancellation → VAD → streaming STT →
-language/turn detection → conversation state update → knowledge retrieval / tools →
-LLM response generation → SpokenResponseFormatter → streaming TTS → LiveKit audio output
+Telephony (Twilio / Exotel) → Dograh Realtime Audio Stream (Pipecat) → Silero VAD →
+Sarvam Streaming STT (saarika:v2.5) → language/turn detection → conversation state update →
+knowledge retrieval / HTTP API tools (book_appointment, send_whatsapp) →
+LLM response generation (OpenAI gpt-4o-mini) → SpokenResponseFormatter →
+Sarvam Streaming TTS (bulbul:v3-beta) → Dograh real-time audio output
 ```
 
-In this build, the pipeline runs against a **text-simulated** transport by default
-(`MockMediaRuntime`): "audio" is typed/fixture text plus simulated timing, so every stage above
-the transport (STT boundary through TTS boundary) is real code exercised by real timers, not a
-demo-only shortcut. See `docs/DECISIONS/0002-voice-runtime.md`.
+In this build, the production real-time voice pipeline is powered by **Dograh** (`infra/dograh/`),
+with native Sarvam STT/TTS (Telugu `te-IN`, Hindi `hi-IN`, English `en-IN`) and telephony
+integration for Twilio and Exotel. The internal test lab transport is supported via `MockMediaRuntime`
+for non-telephony text/timing simulations.
 
 ## 2. Provider interfaces (`services/voice-worker/app/providers/base.py`)
 

@@ -51,18 +51,44 @@ services:
       timeout: 5s
       retries: 10
 
-  # LiveKit ships for architectural completeness (spec §4/§10/§32). The local
-  # demo path does not require this to be healthy — voice-worker defaults to
-  # MockMediaRuntime. See docs/DECISIONS/0002-voice-runtime.md.
-  livekit:
-    image: livekit/livekit-server:latest
-    command: --dev --bind 0.0.0.0
+  # Dograh real-time voice engine (replaces LiveKit Agents)
+  # Provides low-latency real-time voice streaming with native Sarvam STT/TTS
+  # and telephony (Twilio & Exotel), integrated with Postgres, Redis, and MinIO.
+  dograh-api:
+    image: ${DOGRAH_REGISTRY:-ghcr.io/dograh-hq}/dograh-api:latest
     environment:
-      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-change_me_dev_only_livekit_secret}"
+      ENVIRONMENT: "${ENVIRONMENT:-local}"
+      LOG_LEVEL: "INFO"
+      DATABASE_URL: "postgresql://${APP_DB_USER:-jkr_app}:${APP_DB_PASSWORD:-jkr_app_local_dev}@postgres:5432/${POSTGRES_DB:-jkr_ai_calling}"
+      REDIS_URL: "redis://redis:6379/0"
+      S3_ENDPOINT_URL: "http://minio:9000"
+      SARVAM_API_KEY: "${SARVAM_API_KEY}"
+      SARVAM_TTS_API_KEY: "${SARVAM_TTS_API_KEY}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      TWILIO_ACCOUNT_SID: "${TWILIO_ACCOUNT_SID}"
+      TWILIO_AUTH_TOKEN: "${TWILIO_AUTH_TOKEN}"
+      TWILIO_PHONE_NUMBER: "${TWILIO_PHONE_NUMBER}"
+      EXOTEL_API_KEY: "${EXOTEL_API_KEY:-}"
+      EXOTEL_API_TOKEN: "${EXOTEL_API_TOKEN:-}"
+      EXOTEL_SUBDOMAIN: "${EXOTEL_SUBDOMAIN:-}"
     ports:
-      - "7880:7880"
-      - "7881:7881"
-      - "50000-50100:50000-50100/udp"
+      - "8002:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  dograh-ui:
+    image: ${DOGRAH_REGISTRY:-ghcr.io/dograh-hq}/dograh-ui:latest
+    environment:
+      BACKEND_API_ENDPOINT: "http://dograh-api:8000"
+    ports:
+      - "3001:3000"
+    depends_on:
+      - dograh-api
 
   api:
     build:

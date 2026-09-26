@@ -34,13 +34,11 @@ adaptation site, plus listed here.
 - Where: `services/api/app/modules/knowledge/`, `services/intelligence-worker/app/`,
   `docs/VOICE_ARCHITECTURE.md` §5.
 
-## 4. blackdwarftech/siphon
-- License: check upstream repository at time of integration (early-stage project; license terms
-  should be re-verified before any production use of even the architectural ideas below).
-- Patterns reimplemented (not copied): LiveKit-based SIP/WebRTC voice infra shape, worker-based
-  call processing, provider-plugin boundary, self-hosted/data-sovereignty framing.
-- Where: `services/voice-worker/` service boundary, `MediaRuntime` interface,
-  `docs/DECISIONS/0002-voice-runtime.md`.
+## 4. dograh-hq/dograh
+- License: Apache-2.0 / MIT (per upstream repository: https://github.com/dograh-hq/dograh).
+- Patterns and integration: Self-hosted Pipecat voice pipeline, Sarvam STT/TTS BYOK integration,
+  telephony integration (Twilio / Exotel), MCP and HTTP API tool execution.
+- Where: `infra/dograh/`, `docker-compose.yml`, `docs/VOICE_ARCHITECTURE.md`.
 
 ## 5. Direct dependencies
 

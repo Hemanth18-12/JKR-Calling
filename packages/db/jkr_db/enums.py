@@ -353,7 +353,7 @@ class UsageEventType(StrEnum):
     STT_SECONDS = "stt_seconds"
     LLM_TOKENS = "llm_tokens"
     TTS_CHARACTERS = "tts_characters"
-    LIVEKIT_MINUTES = "livekit_minutes"
+    DOGRAH_MINUTES = "dograh_minutes"
     RECORDING_STORAGE_MB = "recording_storage_mb"
     VECTOR_STORAGE_MB = "vector_storage_mb"
     MESSAGES = "messages"

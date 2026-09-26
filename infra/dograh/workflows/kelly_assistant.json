@@ -1,0 +1,139 @@
+{
+  "name": "Kelly Assistant (Multilingual te-IN/hi-IN/en-IN)",
+  "description": "JKR AI Calling conversational agent powered by Dograh with Sarvam STT/TTS",
+  "version": "1.0.0",
+  "stt": {
+    "provider": "sarvam",
+    "model": "saarika:v2.5",
+    "language": "en-IN",
+    "supported_languages": ["en-IN", "te-IN", "hi-IN"]
+  },
+  "tts": {
+    "provider": "sarvam",
+    "model": "bulbul:v3-beta",
+    "speaker": "shubh",
+    "pace": 1.0,
+    "language_speakers": {
+      "en-IN": "shubh",
+      "te-IN": "kavitha",
+      "hi-IN": "shubh"
+    }
+  },
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "temperature": 0.4
+  },
+  "workflow_definition": {
+    "nodes": [
+      {
+        "id": "global-persona",
+        "type": "Global",
+        "data": {
+          "name": "Global Persona & Compliance",
+          "instructions": "You are Kelly, an intelligent, warm, and natural conversational AI voice assistant for JKR AI Calling.\n- Always identify yourself transparently as an AI assistant when asked.\n- Keep all responses short, natural, and conversational in 1 to 2 spoken sentences, matching the caller's language (English, Telugu, or Hindi).\n- Never use markdown, bullet points, asterisks, or emojis.\n- When the customer wants to schedule or book a time, invoke the book_appointment tool.\n- When follow-up details are agreed, invoke the send_whatsapp tool.\n- If the customer asks for a human supervisor or is agitated, initiate a call transfer."
+        }
+      },
+      {
+        "id": "start-call",
+        "type": "StartCall",
+        "data": {
+          "name": "Start Call & Greeting",
+          "greeting_templates": {
+            "en-IN": "Hello! I am Kelly from JKR AI Calling. How can I help you today?",
+            "te-IN": "నమస్కారం! నేను జేకేఆర్ ఏఐ కాలింగ్ అసిస్టెంట్ ని. మీకు ఎలా సహాయపడగలను?",
+            "hi-IN": "नमस्ते! मैं जेकेआर एआई कॉलिंग से आपका सहायक हूँ। मैं आपकी क्या मदद कर सकता हूँ?"
+          },
+          "initial_context": ["contact_name", "campaign_id", "language", "objective"]
+        }
+      },
+      {
+        "id": "agent-conversation",
+        "type": "Agent",
+        "data": {
+          "name": "Conversation & Assistance",
+          "prompt": "Listen attentively to the caller. Answer questions regarding JKR AI Calling services, pricing, or support.\nGuide the caller smoothly toward their objective.\nIf the caller wants to schedule an appointment, collect their preferred date and time, then invoke book_appointment.\nIf the caller requests a summary over WhatsApp, confirm their number and invoke send_whatsapp.",
+          "tools": [
+            "book_appointment",
+            "send_whatsapp",
+            "call_transfer"
+          ]
+        }
+      },
+      {
+        "id": "end-call",
+        "type": "EndCall",
+        "data": {
+          "name": "End Call",
+          "goodbye_message": {
+            "en-IN": "Thank you for speaking with JKR AI Calling. Have a wonderful day!",
+            "te-IN": "జేకేఆర్ ఏఐ కాలింగ్‌తో మాట్లాడినందుకు ధన్యవాదాలు. మంచి రోజు కావాలని కోరుకుంటున్నాను!",
+            "hi-IN": "जेकेआर एआई कॉलिंग से बात करने के लिए धन्यवाद। आपका दिन शुभ हो!"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge-start-to-convo",
+        "source": "start-call",
+        "target": "agent-conversation"
+      },
+      {
+        "id": "edge-convo-to-end",
+        "source": "agent-conversation",
+        "target": "end-call",
+        "condition": "user_intends_to_hang_up"
+      }
+    ],
+    "tools": [
+      {
+        "id": "book_appointment",
+        "type": "http_api",
+        "name": "book_appointment",
+        "description": "Book a new appointment for the caller with JKR team",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "contact_name": { "type": "string", "description": "Customer name" },
+            "preferred_date": { "type": "string", "description": "Date requested e.g. YYYY-MM-DD or tomorrow" },
+            "preferred_time": { "type": "string", "description": "Time requested e.g. 10:00 AM" },
+            "service_type": { "type": "string", "description": "Type of service or consultation requested" }
+          },
+          "required": ["preferred_date"]
+        },
+        "endpoint": "http://api:8000/internal/tools/book_appointment",
+        "method": "POST"
+      },
+      {
+        "id": "send_whatsapp",
+        "type": "http_api",
+        "name": "send_whatsapp",
+        "description": "Send a WhatsApp confirmation or follow-up message to the caller",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "phone_number": { "type": "string", "description": "Caller E.164 phone number" },
+            "message_text": { "type": "string", "description": "Message content to send" }
+          },
+          "required": ["phone_number", "message_text"]
+        },
+        "endpoint": "http://api:8000/internal/tools/send_whatsapp",
+        "method": "POST"
+      },
+      {
+        "id": "call_transfer",
+        "type": "telephony_transfer",
+        "name": "call_transfer",
+        "description": "Transfer the live caller to a human supervisor or specialist",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "reason": { "type": "string", "description": "Reason for supervisor escalation" }
+          }
+        },
+        "target": "sip:supervisor@jkr.internal"
+      }
+    ]
+  }
+}

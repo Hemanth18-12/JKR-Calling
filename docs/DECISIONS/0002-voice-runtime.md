@@ -1,29 +1,22 @@
-# ADR-0002: Voice runtime defaults to text-simulated mock, LiveKit kept as an adapter
+# ADR-0002: Voice runtime powered by Dograh (Pipecat pipeline), replacing LiveKit
 
 ## Status
-Accepted
+Accepted (Migrated from LiveKit Agents to Dograh)
 
 ## Context
-Spec §4/§10 wants LiveKit Agents as the primary real-time voice runtime, with Siphon/Bolna/mock
-as alternates behind an abstraction. Real LiveKit + real STT/LLM/TTS credentials are not
-available in this local build, and spec §2 rule 18-20 requires the platform to be demonstrable
-without spending telephony credits and to never place real calls by default. Confirmed with the
-project owner: simulate via typed/fixture text rather than real captured/synthesized audio, to
-spend the engineering budget on real conversation-engine logic (TurnManager, interruption
-classification, spoken formatting, conversation state) rather than audio plumbing.
+Initial prototypes evaluated LiveKit Agents, but turn-by-turn response latency across WebRTC room
+joins, SIP trunk gateways, and worker dispatch caused callers to experience noticeable response lag.
+Dograh (https://github.com/dograh-hq/dograh) was chosen to replace LiveKit as the primary real-time
+voice runtime due to its ultra-low latency Pipecat streaming core, native BYOK support for Sarvam STT/TTS
+(Telugu, Hindi, English), and native telephony integrations for Twilio and Exotel.
 
 ## Decision
-`voice-worker` defines `MediaRuntime`/`SpeechToTextProvider`/`LLMProvider`/`TextToSpeechProvider`
-as `Protocol` interfaces. `MockMediaRuntime` + `MockSTT` + `MockTTS` are the default
-implementation for every workspace; they operate on text input/output with simulated (seeded,
-reproducible) timing metadata standing in for real audio latency. `MockLLM` is rule-driven by
-default but the `LLMProvider` interface is satisfied by real `OpenAILLM`/`AnthropicLLM` adapters
-if API keys are present in env — so the conversational *content* can be real even when the
-*audio* is simulated. `LiveKitMediaRuntime` exists as a typed adapter stub (raises
-`NotConfiguredError` without a running LiveKit server + credentials) so swapping in real
-infrastructure later touches only the provider registration, not `TurnManager` or the
-conversation engine. `docker-compose.yml` includes a LiveKit server for architectural
-completeness; the demo path (`make demo`) does not depend on it being healthy.
+The real-time voice and telephony pipeline is standardized on **Dograh** (`infra/dograh/`),
+running via Docker Compose alongside PostgreSQL, Redis, and MinIO. Dograh handles low-latency
+media streaming directly via WebSockets/WebRTC, routing audio to Sarvam Streaming STT (`saarika:v2.5`),
+OpenAI LLM (`gpt-4o-mini`), and Sarvam Streaming TTS (`bulbul:v3-beta`). Custom business tools
+(`book_appointment`, `send_whatsapp`) are bound as HTTP API / MCP tools executed against `services/api`.
+The headless text-simulated `MockMediaRuntime` remains available for offline testing.
 
 ## Consequences
 Latency numbers shown in local analytics are simulated (flagged `is_simulated=true` on

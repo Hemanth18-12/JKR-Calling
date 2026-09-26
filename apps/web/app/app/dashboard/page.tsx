@@ -185,7 +185,7 @@ export default async function DashboardPage() {
             </div>
             <div className="text-xs">
               <p className="font-medium text-foreground">Live Telephony & SIP Pipeline</p>
-              <p className="text-muted-foreground">LiveKit Cloud connected · Ready for calls</p>
+              <p className="text-muted-foreground">Dograh Engine connected · Ready for calls</p>
             </div>
           </CardContent>
         </Card>

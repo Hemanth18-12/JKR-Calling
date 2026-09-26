@@ -38,11 +38,11 @@ export const TOUR_SCRIPTS: Record<string, PageTour> = {
         },
         narration: {
           "en-IN":
-            "These quick action cards give you real-time visibility into your LiveKit telephony pipeline, direct access to test the AI voice agent in the browser lab, and bulk CSV contact imports.",
+            "These quick action cards give you real-time visibility into your Dograh telephony pipeline, direct access to test the AI voice agent in the browser lab, and bulk CSV contact imports.",
           "te-IN":
-            "ఈ క్విక్ యాక్షన్ కార్డ్స్ ద్వారా లైవ్‌కిట్ టెలిఫోనీ పైప్‌లైన్ స్థితిని చూడవచ్చు, బ్రౌజర్ ల్యాబ్‌లో ఏఐ వాయిస్ ఏజెంట్‌ను నేరుగా టెస్ట్ చేయవచ్చు మరియు కాంటాక్ట్‌లను సులభంగా ఇంపోర్ట్ చేసుకోవచ్చు.",
+            "ఈ క్విక్ యాక్షన్ కార్డ్స్ ద్వారా డోగ్రా టెలిఫోనీ పైప్‌లైన్ స్థితిని చూడవచ్చు, బ్రౌజర్ ల్యాబ్‌లో ఏఐ వాయిస్ ఏజెంట్‌ను నేరుగా టెస్ట్ చేయవచ్చు మరియు కాంటాక్ట్‌లను సులభంగా ఇంపోర్ట్ చేసుకోవచ్చు.",
           "hi-IN":
-            "ये त्वरित कार्य कार्ड आपको लाइवकिट टेलीफोनी पाइपलाइन की लाइव स्थिति दिखाते हैं, जहां से आप ब्राउज़र में वॉयस एजेंट का परीक्षण और संपर्कों को आयात कर सकते हैं।",
+            "ये त्वरित कार्य कार्ड आपको डोग्राह टेलीफोनी पाइपलाइन की लाइव स्थिति दिखाते हैं, जहां से आप ब्राउज़र में वॉयस एजेंट का परीक्षण और संपर्कों को आयात कर सकते हैं।",
         },
       },
       {
