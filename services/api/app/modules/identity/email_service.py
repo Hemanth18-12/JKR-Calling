@@ -186,9 +186,15 @@ async def send_otp_email(to_email: str, code: str, purpose: str = "signup") -> b
             logger.error("[EMAIL OTP SMTP ERROR] Failed to send to %s: %s", to_email, exc)
 
     # 3. Development / unconfigured provider fallback
-    logger.info(
-        "[EMAIL OTP DEV MODE] No external SMTP/Resend configured. Dispatching code for %s (purpose=%s)",
-        to_email,
-        purpose,
+    banner = (
+        "\n" + "=" * 60 + "\n"
+        f"[EMAIL OTP CODE DISPATCH]\n"
+        f"  To:      {to_email}\n"
+        f"  Purpose: {purpose}\n"
+        f"  Code:    {code}\n"
+        f"  Note:    Configure SMTP_HOST or RESEND_API_KEY to send real emails to inbox.\n"
+        + "=" * 60 + "\n"
     )
+    logger.info(banner)
+    print(banner, flush=True)
     return True
