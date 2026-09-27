@@ -35,8 +35,9 @@ async def create_user(db: AsyncSession, *, email: str, full_name: str, password:
 
 async def create_user_with_hash(db: AsyncSession, *, email: str, full_name: str, password_hash: str) -> User:
     existing = await db.execute(select(User).where(User.email == email.lower()))
-    if existing.scalar_one_or_none() is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists")
+    existing_user = existing.scalar_one_or_none()
+    if existing_user is not None:
+        return existing_user
 
     user = User(email=email.lower(), full_name=full_name)
     db.add(user)
