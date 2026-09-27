@@ -45,8 +45,6 @@ async def deliver_webhook(
     body = json.dumps(body_dict, default=str).encode("utf-8")
 
     for endpoint in endpoints:
-        secret = decrypt_secret(endpoint.secret_encrypted, encryption_key)
-        signature = sign_payload(secret, body)
         delivery = WebhookDelivery(
             workspace_id=workspace_id, webhook_endpoint_id=endpoint.id, event_type=event_type, payload=body_dict,
             status="pending", attempt_count=1, last_attempted_at=datetime.now(UTC),
@@ -55,6 +53,8 @@ async def deliver_webhook(
         await db.flush()
 
         try:
+            secret = decrypt_secret(endpoint.secret_encrypted, encryption_key)
+            signature = sign_payload(secret, body)
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     endpoint.url, content=body,
@@ -62,6 +62,6 @@ async def deliver_webhook(
                 )
             delivery.response_status = response.status_code
             delivery.status = "delivered" if 200 <= response.status_code < 300 else "failed"
-        except httpx.HTTPError:
+        except Exception:
             delivery.status = "failed"
         await db.flush()

@@ -33,8 +33,18 @@ class WebhookDeliveryOut(BaseModel):
 class IntegrationCatalogItem(BaseModel):
     type: str
     label: str
+    description: str | None = None
     status: str
     requires_oauth: bool
+    connected_account: str | None = None
+    external_url: str | None = None
+    last_synced_at: datetime | None = None
+
+
+class OAuthUrlResponse(BaseModel):
+    auth_url: str | None = None
+    configured: bool
+    message: str | None = None
 
 
 class GoogleCalendarConnectRequest(BaseModel):
@@ -50,4 +60,21 @@ class GoogleCalendarStatusOut(BaseModel):
     display_name: str | None = None
     calendar_id: str | None = None
     email: str | None = None
+    external_url: str | None = None
     last_synced_at: datetime | None = None
+
+
+class N8nVerifyRequest(BaseModel):
+    instance_url: str = Field(min_length=1, max_length=500)
+    api_key: str | None = None
+    webhook_url: str | None = None
+
+
+class MetaVerifyRequest(BaseModel):
+    page_id: str = Field(min_length=1, max_length=200)
+    access_token: str = Field(min_length=10, max_length=1000)
+
+
+class CrmVerifyRequest(BaseModel):
+    webhook_url: str = Field(min_length=1, max_length=1000)
+    crm_name: str = Field(default="Custom CRM", max_length=100)

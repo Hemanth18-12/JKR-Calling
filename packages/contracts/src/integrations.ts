@@ -33,7 +33,11 @@ export type WebhookDeliveryOut = z.infer<typeof WebhookDeliveryOut>;
 export const IntegrationCatalogItem = z.object({
   type: z.string(),
   label: z.string(),
+  description: z.string().nullable().optional(),
   status: z.string(),
   requires_oauth: z.boolean(),
+  connected_account: z.string().nullable().optional(),
+  external_url: z.string().nullable().optional(),
+  last_synced_at: z.string().nullable().optional(),
 });
 export type IntegrationCatalogItem = z.infer<typeof IntegrationCatalogItem>;

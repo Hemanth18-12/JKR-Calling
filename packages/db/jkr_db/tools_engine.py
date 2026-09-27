@@ -290,6 +290,37 @@ async def _run_book_appointment(
     except Exception as exc:
         logger.warning("Google Calendar sync failed: %s", exc)
 
+    # --- Sync to Google Sheets if connected ---
+    gsheet_info = None
+    try:
+        from jkr_db.integrations.google_sheets import (
+            append_appointment_row,
+            get_active_google_sheets_token,
+        )
+        encryption_key = os.environ.get("CREDENTIALS_ENCRYPTION_KEY", "change_me_dev_only_fernet_key_44_bytes_base64")
+        gs_token, gs_cfg = await get_active_google_sheets_token(
+            db, workspace_id=workspace_id, encryption_key=encryption_key
+        )
+        if gs_token and gs_cfg.get("spreadsheet_id"):
+            patient_name = contact.full_name or "Customer"
+            await append_appointment_row(
+                access_token=gs_token,
+                spreadsheet_id=gs_cfg["spreadsheet_id"],
+                sheet_name=gs_cfg.get("sheet_name", "Appointments & Leads"),
+                values=[
+                    scheduled_for.strftime("%Y-%m-%d"),
+                    scheduled_for.strftime("%I:%M %p"),
+                    patient_name,
+                    contact.phone_e164,
+                    appointment.notes or "General Consultation",
+                    location,
+                    "Confirmed",
+                ],
+            )
+            gsheet_info = {"status": "synced", "spreadsheet_id": gs_cfg["spreadsheet_id"]}
+    except Exception as exc:
+        logger.warning("Google Sheets sync failed: %s", exc)
+
     res = {
         "appointment_id": str(appointment.id),
         "scheduled_for": scheduled_for.isoformat(),
@@ -297,6 +328,8 @@ async def _run_book_appointment(
     }
     if gcal_info:
         res["google_calendar"] = gcal_info
+    if gsheet_info:
+        res["google_sheets"] = gsheet_info
     return res
 
 

@@ -17,4 +17,4 @@ import redis.asyncio as redis
 @lru_cache
 def get_redis() -> redis.Redis:
     redis_url = os.environ.get("REDIS_URL", "redis://localhost:16379/0")
-    return redis.from_url(redis_url, decode_responses=True)
+    return redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=0.5, socket_timeout=0.5)

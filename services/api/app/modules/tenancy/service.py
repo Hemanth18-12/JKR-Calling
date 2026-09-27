@@ -197,6 +197,10 @@ async def update_member(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown role '{role_key}'")
         member.role_id = role.id
     if status_value is not None:
+        if status_value == "suspended":
+            role_result = await db.execute(select(Role.key).where(Role.id == member.role_id))
+            if role_result.scalar_one_or_none() == "workspace_owner":
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot suspend the workspace owner.")
         member.status = status_value
         if status_value == "active" and member.joined_at is None:
             member.joined_at = datetime.now(UTC)

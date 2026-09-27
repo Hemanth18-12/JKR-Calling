@@ -102,13 +102,27 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    from fastapi.encoders import jsonable_encoder
+
+    errors = exc.errors()
+    if errors:
+        first_err = errors[0]
+        msg = str(first_err.get("msg", "Validation failed"))
+        if msg.startswith("Value error, "):
+            msg = msg[len("Value error, "):]
+        field_loc = [str(x) for x in first_err.get("loc", []) if x not in ("body",)]
+        field_name = ".".join(field_loc)
+        message = f"{field_name}: {msg}" if field_name else msg
+    else:
+        message = "Validation failed"
+
     return JSONResponse(
         status_code=422,
         content={
             "error": {
                 "code": 422,
-                "message": "Validation failed",
-                "details": {"fields": exc.errors()},
+                "message": message,
+                "details": {"fields": jsonable_encoder(errors)},
             }
         },
     )

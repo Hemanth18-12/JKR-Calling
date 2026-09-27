@@ -4,16 +4,31 @@
  */
 import { z } from "zod";
 
+// RFC 5322 compliant regex requiring valid domain and TLD (at least 2 letters, e.g. name@domain.com)
+const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+
 export const SignupRequest = z.object({
-  email: z.string().email(),
-  full_name: z.string().min(1).max(200),
-  password: z.string().min(10).max(200),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(5, "Email is too short")
+    .max(254, "Email is too long")
+    .regex(emailRegex, "Please enter a valid email address with a valid domain (e.g. name@domain.com)"),
+  full_name: z.string().min(1, "Full name is required").max(200),
+  password: z.string().min(10, "Password must be at least 10 characters").max(200),
 });
 export type SignupRequest = z.infer<typeof SignupRequest>;
 
 export const LoginRequest = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(5, "Email is too short")
+    .max(254, "Email is too long")
+    .regex(emailRegex, "Please enter a valid email address with a valid domain (e.g. name@domain.com)"),
+  password: z.string().min(1, "Password is required"),
 });
 export type LoginRequest = z.infer<typeof LoginRequest>;
 
