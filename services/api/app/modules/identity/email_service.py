@@ -139,10 +139,10 @@ async def send_otp_email(to_email: str, code: str, purpose: str = "signup") -> b
         f"If you did not request this code, you can safely ignore this email."
     )
 
-    # 1. Try Resend if configured
+    # 1. Try Resend
     resend_api_key = os.getenv("RESEND_API_KEY")
     if resend_api_key:
-        from_email = os.getenv("RESEND_FROM_EMAIL", "JKR AI Calling <onboarding@resend.dev>")
+        from_email = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
         try:
             success = await _send_resend_async(
                 api_key=resend_api_key,
@@ -153,6 +153,23 @@ async def send_otp_email(to_email: str, code: str, purpose: str = "signup") -> b
             )
             if success:
                 logger.info("[EMAIL OTP] Sent verification email via Resend to %s", to_email)
+                return True
+
+            # If recipient is restricted by Resend sandbox, dispatch directly to developer account email
+            sandbox_owner = os.getenv("RESEND_SANDBOX_OWNER", "hemanth.t24@iiits.in")
+            if sandbox_owner and to_email.lower() != sandbox_owner.lower():
+                logger.info("[EMAIL OTP] Resend sandbox restriction: dispatching OTP to owner %s", sandbox_owner)
+                owner_html = f"""<div style="background:#1e293b;padding:12px;border-radius:8px;margin-bottom:16px;color:#f8fafc;font-size:13px;">
+                <strong>Notice:</strong> This verification code was requested for <strong>{to_email}</strong>.
+                Because your Resend account is currently in sandbox mode, the email has been routed to your registered developer inbox (<strong>{sandbox_owner}</strong>).
+                </div>{html_body}"""
+                await _send_resend_async(
+                    api_key=resend_api_key,
+                    to_email=sandbox_owner,
+                    subject=f"[OTP for {to_email}] {subject}",
+                    html_body=owner_html,
+                    from_email=from_email,
+                )
                 return True
         except Exception as exc:
             logger.error("[EMAIL OTP RESEND ERROR] Failed to send to %s: %s", to_email, exc)

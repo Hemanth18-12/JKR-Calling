@@ -50,6 +50,12 @@ services:
         sync: false
       - key: DOGRAH_API_URL
         value: "http://localhost:8002"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        value: "onboarding@resend.dev"
+      - key: RESEND_SANDBOX_OWNER
+        value: "hemanth.t24@iiits.in"
 
   - type: redis
     name: jkr-redis
