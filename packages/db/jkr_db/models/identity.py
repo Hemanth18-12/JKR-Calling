@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -66,3 +66,22 @@ class Session(Base, UUIDPKMixin, TimestampMixin):
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class EmailVerificationCode(Base, UUIDPKMixin, TimestampMixin):
+    """Secure OTP storage for signup and login verification.
+
+    The 6-digit plain OTP is NEVER stored in database plaintext — only
+    its SHA-256 hash with a server secret salt is stored.
+    """
+
+    __tablename__ = "email_verification_codes"
+
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    purpose: Mapped[str] = mapped_column(String(32), nullable=False)  # "signup" | "login"
+    code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+

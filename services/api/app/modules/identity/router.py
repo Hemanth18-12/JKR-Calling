@@ -13,8 +13,20 @@ from app.config import Settings, get_settings
 from app.db import platform_db
 from app.deps import AuthContext, get_auth_context, user_db
 from app.modules.identity import service
-from app.modules.identity.schemas import LoginRequest, MeResponse, SignupRequest, UserOut
+from app.modules.identity.schemas import (
+    LoginRequest,
+    MeResponse,
+    OtpRequiredResponse,
+    OtpResentResponse,
+    ResendOtpRequest,
+    SignupRequest,
+    UserOut,
+    VerifyOtpRequest,
+)
 from app.rate_limit import rate_limit
+from app.security import hash_password
+from jkr_db.models.identity import User
+from sqlalchemy import select
 
 logger = logging.getLogger("jkr_api.identity.router")
 
@@ -40,30 +52,41 @@ def _set_session_cookie(response: Response, *, raw_token: str, settings: Setting
     )
 
 
-@router.post("/signup", response_model=UserOut, status_code=201, dependencies=[Depends(_auth_rate_limit)])
+@router.post("/signup", response_model=OtpRequiredResponse | UserOut, dependencies=[Depends(_auth_rate_limit)])
 async def signup(
     payload: SignupRequest,
     response: Response,
     request: Request,
     db: AsyncSession = Depends(platform_db),
     settings: Settings = Depends(get_settings),
-) -> UserOut:
+) -> OtpRequiredResponse | UserOut:
     try:
-        user = await service.create_user(
-            db, email=payload.email, full_name=payload.full_name, password=payload.password
-        )
-        _session, raw_token = await service.create_session(
+        # Check if email is already registered
+        existing = await db.execute(select(User).where(User.email == payload.email.lower()))
+        if existing.scalar_one_or_none() is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists")
+
+        # Hash password in advance so plaintext is never held in DB
+        hashed = hash_password(payload.password)
+
+        await service.issue_verification_otp(
             db,
-            user=user,
+            email=payload.email,
+            purpose="signup",
             settings=settings,
-            user_agent=request.headers.get("user-agent"),
-            ip_address=request.client.host if request.client else None,
+            metadata={"full_name": payload.full_name, "password_hash": hashed},
         )
-        _set_session_cookie(response, raw_token=raw_token, settings=settings)
-        return UserOut.model_validate(user)
+        return OtpRequiredResponse(
+            status="otp_required",
+            email=payload.email,
+            purpose="signup",
+            message="A 6-digit verification code has been sent to your email. Please enter it to complete signup.",
+        )
+    except HTTPException:
+        raise
     except (SQLAlchemyError, OSError, TimeoutError, asyncpg.PostgresError) as exc:
         logger.error(
-            "[AUTH SIGNUP DB ERROR] Database connection failure during signup for %s: %s",
+            "[AUTH SIGNUP DB ERROR] Database failure during signup for %s: %s",
             payload.email,
             exc,
             exc_info=True,
@@ -74,25 +97,32 @@ async def signup(
         ) from exc
 
 
-@router.post("/login", response_model=UserOut, dependencies=[Depends(_auth_rate_limit)])
+@router.post("/login", response_model=OtpRequiredResponse | UserOut, dependencies=[Depends(_auth_rate_limit)])
 async def login(
     payload: LoginRequest,
     response: Response,
     request: Request,
     db: AsyncSession = Depends(platform_db),
     settings: Settings = Depends(get_settings),
-) -> UserOut:
+) -> OtpRequiredResponse | UserOut:
     try:
         user = await service.authenticate_user(db, email=payload.email, password=payload.password)
-        _session, raw_token = await service.create_session(
+
+        await service.issue_verification_otp(
             db,
-            user=user,
+            email=payload.email,
+            purpose="login",
             settings=settings,
-            user_agent=request.headers.get("user-agent"),
-            ip_address=request.client.host if request.client else None,
+            metadata={"user_id": str(user.id)},
         )
-        _set_session_cookie(response, raw_token=raw_token, settings=settings)
-        return UserOut.model_validate(user)
+        return OtpRequiredResponse(
+            status="otp_required",
+            email=payload.email,
+            purpose="login",
+            message="A 6-digit verification code has been sent to your email.",
+        )
+    except HTTPException:
+        raise
     except (SQLAlchemyError, OSError, TimeoutError, asyncpg.PostgresError) as exc:
         logger.error(
             "[AUTH LOGIN DB ERROR] Database connection failure during login for %s: %s",
@@ -104,19 +134,99 @@ async def login(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="service temporarily unavailable — database connection issue",
         ) from exc
+
+
+@router.post("/verify-otp", response_model=UserOut, dependencies=[Depends(_auth_rate_limit)])
+async def verify_otp(
+    payload: VerifyOtpRequest,
+    response: Response,
+    request: Request,
+    db: AsyncSession = Depends(platform_db),
+    settings: Settings = Depends(get_settings),
+) -> UserOut:
+    try:
+        record = await service.verify_otp_code(
+            db,
+            email=payload.email,
+            purpose=payload.purpose,
+            code=payload.code,
+            settings=settings,
+        )
+
+        if payload.purpose == "signup":
+            import json
+            meta = json.loads(record.metadata_json or "{}")
+            full_name = meta.get("full_name") or "User"
+            password_hash = meta.get("password_hash")
+            if not password_hash:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Signup session expired. Please sign up again.")
+            user = await service.create_user_with_hash(
+                db,
+                email=payload.email,
+                full_name=full_name,
+                password_hash=password_hash,
+            )
+        else:
+            # Login
+            result = await db.execute(select(User).where(User.email == payload.email.lower()))
+            user = result.scalar_one_or_none()
+            if user is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "User account not found")
+
+        _session, raw_token = await service.create_session(
+            db,
+            user=user,
+            settings=settings,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host if request.client else None,
+        )
+        _set_session_cookie(response, raw_token=raw_token, settings=settings)
+        return UserOut.model_validate(user)
     except HTTPException:
         raise
     except Exception as exc:
-        if any(
-            isinstance(exc, err_cls)
-            for err_cls in (SQLAlchemyError, OSError, TimeoutError, asyncpg.PostgresError)
-        ):
-            logger.error("[AUTH LOGIN DB ERROR] Database failure: %s", exc, exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="service temporarily unavailable — database connection issue",
-            ) from exc
-        raise
+        logger.error("[VERIFY OTP ERROR] Unexpected error: %s", exc, exc_info=True)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Verification failed. Please try again.") from exc
+
+
+@router.post("/resend-otp", response_model=OtpResentResponse, dependencies=[Depends(_auth_rate_limit)])
+async def resend_otp(
+    payload: ResendOtpRequest,
+    db: AsyncSession = Depends(platform_db),
+    settings: Settings = Depends(get_settings),
+) -> OtpResentResponse:
+    import json
+    from jkr_db.models.identity import EmailVerificationCode
+
+    # Lookup previous unconsumed verification code for metadata
+    prev_result = await db.execute(
+        select(EmailVerificationCode)
+        .where(
+            EmailVerificationCode.email == payload.email.lower(),
+            EmailVerificationCode.purpose == payload.purpose,
+        )
+        .order_by(EmailVerificationCode.created_at.desc())
+        .limit(1)
+    )
+    prev = prev_result.scalar_one_or_none()
+    meta = json.loads(prev.metadata_json) if prev and prev.metadata_json else None
+
+    if payload.purpose == "signup" and not meta:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Signup session not found. Please sign up again.")
+
+    await service.issue_verification_otp(
+        db,
+        email=payload.email,
+        purpose=payload.purpose,
+        settings=settings,
+        metadata=meta,
+    )
+    return OtpResentResponse(
+        status="otp_sent",
+        email=payload.email,
+        message="A new 6-digit verification code has been sent.",
+    )
+
 
 
 @router.post("/logout", status_code=204)

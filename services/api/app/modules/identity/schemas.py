@@ -50,6 +50,41 @@ class LoginRequest(BaseModel):
         return _validate_and_normalize_email(v, check_mx=True)
 
 
+class VerifyOtpRequest(BaseModel):
+    email: str = Field(description="User email address")
+    purpose: str = Field(pattern=r"^(signup|login)$")
+    code: str = Field(pattern=r"^\d{6}$", description="6-digit verification code")
+
+    @field_validator("email")
+    @classmethod
+    def validate_verify_email(cls, v: str) -> str:
+        return _validate_and_normalize_email(v, check_mx=False)
+
+
+class ResendOtpRequest(BaseModel):
+    email: str = Field(description="User email address")
+    purpose: str = Field(pattern=r"^(signup|login)$")
+
+    @field_validator("email")
+    @classmethod
+    def validate_resend_email(cls, v: str) -> str:
+        return _validate_and_normalize_email(v, check_mx=False)
+
+
+class OtpRequiredResponse(BaseModel):
+    status: str = "otp_required"
+    email: str
+    purpose: str
+    message: str
+
+
+class OtpResentResponse(BaseModel):
+    status: str = "otp_sent"
+    email: str
+    message: str
+
+
+
 class WorkspaceMembershipOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

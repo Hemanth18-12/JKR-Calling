@@ -57,6 +57,39 @@ export const MeResponse = z.object({
 });
 export type MeResponse = z.infer<typeof MeResponse>;
 
+export const VerifyOtpRequest = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(5, "Email is too short")
+    .max(254, "Email is too long")
+    .regex(emailRegex, "Please enter a valid email address with a valid domain"),
+  purpose: z.enum(["signup", "login"]),
+  code: z.string().trim().regex(/^\d{6}$/, "Verification code must be exactly 6 digits"),
+});
+export type VerifyOtpRequest = z.infer<typeof VerifyOtpRequest>;
+
+export const ResendOtpRequest = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(5, "Email is too short")
+    .max(254, "Email is too long")
+    .regex(emailRegex, "Please enter a valid email address with a valid domain"),
+  purpose: z.enum(["signup", "login"]),
+});
+export type ResendOtpRequest = z.infer<typeof ResendOtpRequest>;
+
+export const OtpRequiredResponse = z.object({
+  status: z.literal("otp_required"),
+  email: z.string(),
+  purpose: z.enum(["signup", "login"]),
+  message: z.string(),
+});
+export type OtpRequiredResponse = z.infer<typeof OtpRequiredResponse>;
+
 export const ApiError = z.object({
   error: z.object({
     code: z.number(),
@@ -65,3 +98,4 @@ export const ApiError = z.object({
   }),
 });
 export type ApiError = z.infer<typeof ApiError>;
+
