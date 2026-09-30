@@ -50,6 +50,12 @@ services:
         sync: false
       - key: DOGRAH_API_URL
         value: "http://localhost:8002"
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: "JKR AI Calling"
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_FROM_EMAIL

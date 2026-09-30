@@ -123,13 +123,91 @@ async def _send_resend_async(
         return False
 
 
-async def send_otp_email(to_email: str, code: str, purpose: str = "signup") -> bool:
+async def _send_brevo_async(
+    *,
+    api_key: str,
+    sender_email: str,
+    sender_name: str,
+    to_email: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+) -> tuple[bool, str]:
+    """Dispatches a transactional email via Brevo REST API v3 (POST /v3/smtp/email).
+    Returns (success: bool, error_message: str).
+    """
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "api-key": api_key.strip(),
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    payload = {
+        "sender": {
+            "name": sender_name.strip() if sender_name else "JKR AI Calling",
+            "email": sender_email.strip(),
+        },
+        "to": [
+            {
+                "email": to_email.strip(),
+            }
+        ],
+        "subject": subject,
+        "htmlContent": html_body,
+        "textContent": text_body,
+    }
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code in (200, 201):
+                try:
+                    data = resp.json()
+                    msg_id = data.get("messageId", "ok")
+                except Exception:
+                    msg_id = "ok"
+                logger.info("[BREVO SUCCESS] Verification email sent to %s (messageId: %s)", to_email, msg_id)
+                return True, ""
+
+            # Parse error safely without logging any credentials
+            err_detail = "Failed to deliver email"
+            try:
+                err_json = resp.json()
+                msg = err_json.get("message") or err_json.get("code") or resp.text
+                err_detail = str(msg)
+            except Exception:
+                err_detail = resp.text[:200]
+
+            logger.error("[BREVO ERROR] Status %d: %s", resp.status_code, err_detail)
+
+            # Handle 300/day free limit and rate limits gracefully
+            if resp.status_code in (402, 429) or "quota" in err_detail.lower() or "credit" in err_detail.lower():
+                return False, "Brevo daily sending limit reached (300 emails/day free tier). Please try again tomorrow or contact support."
+
+            if resp.status_code == 401:
+                return False, "Email authorization error. Please check your Brevo API key configuration."
+
+            if "sender" in err_detail.lower():
+                return False, f"Email sender verification issue: {err_detail}. Make sure BREVO_SENDER_EMAIL matches an authorized sender in Brevo."
+
+            return False, f"Email delivery failed ({resp.status_code}): {err_detail}"
+
+        except httpx.TimeoutException:
+            logger.error("[BREVO TIMEOUT] Timed out sending email to %s", to_email)
+            return False, "Email service timed out. Please try again."
+        except Exception as exc:
+            logger.error("[BREVO EXCEPTION] Failed to send email to %s: %s", to_email, exc)
+            return False, f"Email service error: {exc}"
+
+
+async def send_otp_email(to_email: str, code: str, purpose: str = "signup") -> tuple[bool, str]:
     """Dispatches a 6-digit OTP email to the user.
 
     Supports:
-    1. Resend API if RESEND_API_KEY is configured.
-    2. SMTP (e.g. Gmail SMTP with App Password, Brevo, AWS SES) if SMTP_HOST is configured.
-    3. Safe development fallback logging if no provider is configured yet.
+    1. Brevo REST API (v3) if BREVO_API_KEY is configured (recommended free tier provider, 300/day).
+    2. Resend API if RESEND_API_KEY is configured.
+    3. SMTP (e.g. Gmail SMTP with App Password, AWS SES) if SMTP_HOST is configured.
+    4. Safe development fallback logging if no provider is configured yet.
     """
     subject = f"Your JKR AI Calling verification code: {code}"
     html_body = _build_otp_html(code, purpose)
@@ -139,7 +217,32 @@ async def send_otp_email(to_email: str, code: str, purpose: str = "signup") -> b
         f"If you did not request this code, you can safely ignore this email."
     )
 
-    # 1. Try Resend
+    # 1. Try Brevo API (primary transactional email provider)
+    brevo_api_key = os.getenv("BREVO_API_KEY")
+    if brevo_api_key:
+        sender_email = (
+            os.getenv("BREVO_SENDER_EMAIL")
+            or os.getenv("SMTP_FROM_EMAIL")
+            or os.getenv("RESEND_SANDBOX_OWNER")
+            or "hemanth.t24@iiits.in"
+        )
+        sender_name = os.getenv("BREVO_SENDER_NAME", "JKR AI Calling")
+
+        success, err_msg = await _send_brevo_async(
+            api_key=brevo_api_key,
+            sender_email=sender_email,
+            sender_name=sender_name,
+            to_email=to_email,
+            subject=subject,
+            html_body=html_body,
+            text_body=text_body,
+        )
+        if success:
+            logger.info("[EMAIL OTP] Sent verification email via Brevo to %s", to_email)
+            return True, ""
+        return False, err_msg
+
+    # 2. Try Resend
     resend_api_key = os.getenv("RESEND_API_KEY")
     if resend_api_key:
         from_email = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
@@ -153,7 +256,7 @@ async def send_otp_email(to_email: str, code: str, purpose: str = "signup") -> b
             )
             if success:
                 logger.info("[EMAIL OTP] Sent verification email via Resend to %s", to_email)
-                return True
+                return True, ""
 
             # If recipient is restricted by Resend sandbox, dispatch directly to developer account email
             sandbox_owner = os.getenv("RESEND_SANDBOX_OWNER", "hemanth.t24@iiits.in")
@@ -170,11 +273,13 @@ async def send_otp_email(to_email: str, code: str, purpose: str = "signup") -> b
                     html_body=owner_html,
                     from_email=from_email,
                 )
-                return True
+                return True, ""
+            return False, "Failed to deliver email via Resend"
         except Exception as exc:
             logger.error("[EMAIL OTP RESEND ERROR] Failed to send to %s: %s", to_email, exc)
+            return False, f"Resend error: {exc}"
 
-    # 2. Try SMTP if configured
+    # 3. Try SMTP if configured
     smtp_host = os.getenv("SMTP_HOST")
     if smtp_host:
         smtp_port = int(os.getenv("SMTP_PORT", "587"))
@@ -198,20 +303,21 @@ async def send_otp_email(to_email: str, code: str, purpose: str = "signup") -> b
                 from_name=smtp_from_name,
             )
             logger.info("[EMAIL OTP] Sent verification email via SMTP to %s", to_email)
-            return True
+            return True, ""
         except Exception as exc:
             logger.error("[EMAIL OTP SMTP ERROR] Failed to send to %s: %s", to_email, exc)
+            return False, f"SMTP error: {exc}"
 
-    # 3. Development / unconfigured provider fallback
+    # 4. Safe development / unconfigured provider fallback
     banner = (
         "\n" + "=" * 60 + "\n"
         f"[EMAIL OTP CODE DISPATCH]\n"
         f"  To:      {to_email}\n"
         f"  Purpose: {purpose}\n"
         f"  Code:    {code}\n"
-        f"  Note:    Configure SMTP_HOST or RESEND_API_KEY to send real emails to inbox.\n"
+        f"  Note:    Configure BREVO_API_KEY, SMTP_HOST, or RESEND_API_KEY to send real emails to inbox.\n"
         + "=" * 60 + "\n"
     )
     logger.info(banner)
     print(banner, flush=True)
-    return True
+    return True, ""

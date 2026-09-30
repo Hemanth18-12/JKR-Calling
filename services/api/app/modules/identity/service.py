@@ -111,7 +111,12 @@ async def issue_verification_otp(
     await db.flush()
 
     # Dispatch email
-    await send_otp_email(to_email=clean_email, code=raw_code, purpose=purpose)
+    sent, error_msg = await send_otp_email(to_email=clean_email, code=raw_code, purpose=purpose)
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=error_msg or "Failed to deliver verification email. Please try again.",
+        )
     return record, raw_code
 
 
