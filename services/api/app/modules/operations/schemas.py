@@ -33,12 +33,23 @@ class HumanHandoffOut(BaseModel):
 
 class AppointmentOut(BaseModel):
     id: uuid.UUID
-    contact_id: uuid.UUID
-    contact_name: str
-    call_session_id: uuid.UUID | None
+    contact_id: uuid.UUID | None = None
+    contact_name: str | None = None
+    call_session_id: uuid.UUID | None = None
     scheduled_for: datetime
-    duration_minutes: int
+    duration_minutes: int = 30
     status: str
-    location: str | None
-    notes: str | None
+    location: str | None = None
+    notes: str | None = None
     created_at: datetime
+
+
+class AppointmentCreate(BaseModel):
+    contact_id: uuid.UUID | None = None
+    customer_name: str | None = None
+    phone: str | None = None
+    scheduled_for: datetime
+    duration_minutes: int = 30
+    location: str | None = None
+    notes: str | None = None
+

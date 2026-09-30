@@ -78,3 +78,24 @@ class MetaVerifyRequest(BaseModel):
 class CrmVerifyRequest(BaseModel):
     webhook_url: str = Field(min_length=1, max_length=1000)
     crm_name: str = Field(default="Custom CRM", max_length=100)
+
+
+class GoogleSheetsConnectRequest(BaseModel):
+    email: str | None = None
+    spreadsheet_id: str | None = None
+    sheet_name: str | None = "Appointments & Leads"
+    access_token: str | None = None
+    code: str | None = None
+
+
+class MetaConnectRequest(BaseModel):
+    page_id: str = Field(min_length=1, max_length=200)
+    page_name: str | None = None
+    access_token: str | None = None
+
+
+class WhatsAppConnectRequest(BaseModel):
+    phone_number: str = Field(min_length=1, max_length=100)
+    waba_id: str | None = None
+    access_token: str | None = None
+

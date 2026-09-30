@@ -14,12 +14,16 @@ from app.modules.integrations.schemas import (
     CrmVerifyRequest,
     GoogleCalendarConnectRequest,
     GoogleCalendarStatusOut,
+    GoogleSheetsConnectRequest,
     IntegrationCatalogItem,
+    MetaConnectRequest,
+    MetaVerifyRequest,
     N8nVerifyRequest,
     OAuthUrlResponse,
     WebhookDeliveryOut,
     WebhookEndpointCreate,
     WebhookEndpointOut,
+    WhatsAppConnectRequest,
 )
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
@@ -165,6 +169,65 @@ async def get_google_calendar_status_endpoint(
         email=gcal["connected_account"],
         external_url=gcal["external_url"],
         last_synced_at=gcal["last_synced_at"],
+    )
+
+
+@router.post("/google-sheets/connect")
+async def connect_google_sheets_endpoint(
+    payload: GoogleSheetsConnectRequest,
+    auth: AuthContext = Depends(require_permission("integrations:manage")),
+    db: AsyncSession = Depends(workspace_db_for("integrations:manage")),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    integration = await service.connect_google_sheets(
+        db,
+        workspace_id=auth.workspace_id,
+        settings=settings,
+        code=payload.code,
+        access_token=payload.access_token,
+        email=payload.email,
+        spreadsheet_id=payload.spreadsheet_id,
+        sheet_name=payload.sheet_name or "Appointments & Leads",
+    )
+    email = (integration.config or {}).get("email")
+    ext_url = f"https://docs.google.com/spreadsheets/u/0/?authuser={email}" if email else "https://docs.google.com/spreadsheets/u/0/"
+    return {
+        "is_connected": True,
+        "display_name": integration.display_name,
+        "email": email,
+        "external_url": ext_url,
+        "spreadsheet_id": (integration.config or {}).get("spreadsheet_id"),
+        "last_synced_at": integration.last_synced_at,
+    }
+
+
+@router.post("/meta/connect")
+async def connect_meta_endpoint(
+    payload: MetaConnectRequest,
+    auth: AuthContext = Depends(require_permission("integrations:manage")),
+    db: AsyncSession = Depends(workspace_db_for("integrations:manage")),
+) -> dict:
+    return await service.connect_meta_lead_ads(
+        db,
+        workspace_id=auth.workspace_id,
+        page_id=payload.page_id,
+        page_name=payload.page_name,
+        access_token=payload.access_token,
+    )
+
+
+@router.post("/whatsapp/connect")
+async def connect_whatsapp_endpoint(
+    payload: WhatsAppConnectRequest,
+    auth: AuthContext = Depends(require_permission("integrations:manage")),
+    db: AsyncSession = Depends(workspace_db_for("integrations:manage")),
+) -> dict:
+    return await service.connect_whatsapp_business(
+        db,
+        workspace_id=auth.workspace_id,
+        phone_number=payload.phone_number,
+        waba_id=payload.waba_id,
+        access_token=payload.access_token,
     )
 
 

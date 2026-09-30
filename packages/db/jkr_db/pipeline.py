@@ -195,10 +195,39 @@ async def run_post_call_pipeline(db: AsyncSession, *, workspace_id: uuid.UUID, c
     apt_check = await db.execute(
         select(Appointment).where(Appointment.call_session_id == call_id, Appointment.workspace_id == workspace_id)
     )
-    if apt_check.scalar_one_or_none() is not None:
+    existing_apt = apt_check.scalar_one_or_none()
+    if existing_apt is not None:
         category = "appointment_booked"
         lead_score = "hot"
         reasons = ["Appointment successfully booked during call"]
+    else:
+        has_confirmed_appointment = (
+            category == "appointment_booked"
+            or (objective == "book_appointment" and objective_status in ("completed", "in_progress"))
+            or any(k in known_fields for k in ("preferred_date", "preferred_time", "appointment_date", "date", "slot"))
+            or ("appointment" in full_transcript_text and any(w in full_transcript_text for w in ("confirm", "schedule", "book", "done", "fixed", "okay", "yes", "సరే", "కుదిరింది")))
+        )
+        if has_confirmed_appointment and call_session.contact_id is not None:
+            try:
+                from jkr_db.tools_engine import _run_book_appointment
+                tool_input = {
+                    "preferred_date": known_fields.get("preferred_date") or known_fields.get("date") or "tomorrow",
+                    "preferred_time": known_fields.get("preferred_time") or known_fields.get("time") or "11:00 AM",
+                    "reason_for_visit": known_fields.get("reason_for_visit") or known_fields.get("service_type") or "Confirmed Consultation",
+                    "location": known_fields.get("location") or "Aaha Dental Care, Road No. 12, Banjara Hills, Hyderabad",
+                }
+                await _run_book_appointment(
+                    db,
+                    workspace_id=workspace_id,
+                    call_session_id=call_id,
+                    contact_id=call_session.contact_id,
+                    tool_input=tool_input,
+                )
+                category = "appointment_booked"
+                lead_score = "hot"
+                reasons = ["Appointment confirmed and recorded from call"]
+            except Exception as exc:
+                logger.warning("Auto appointment booking in pipeline failed: %s", exc)
 
     await _upsert_outcome(db, workspace_id=workspace_id, call_id=call_id, category=category, lead_score=lead_score, reasons=reasons, objective_status=objective_status)
 

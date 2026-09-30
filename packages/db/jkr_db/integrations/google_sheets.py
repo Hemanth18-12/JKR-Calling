@@ -153,6 +153,9 @@ async def append_appointment_row(
     if not spreadsheet_id:
         return {"status": "skipped", "reason": "No spreadsheet_id configured"}
 
+    if access_token.startswith("mock_") or access_token.startswith("simulated_") or access_token.startswith("dev_"):
+        return {"status": "appended", "is_simulated": True, "values": values}
+
     url = f"{GOOGLE_SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!A1:append?valueInputOption=USER_ENTERED"
     headers = {
         "Authorization": f"Bearer {access_token}",

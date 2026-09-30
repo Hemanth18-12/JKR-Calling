@@ -20,6 +20,18 @@ export const integrationsApi = {
   getGoogleAuthUrl: (workspaceId: string, integrationType: string = "google_calendar", opts?: ApiFetchOptions) =>
     apiFetch<OAuthUrlResponse>(`/integrations/google/auth-url${qs(workspaceId, { integration_type: integrationType })}`, { ...opts, method: "GET" }),
 
+  connectGoogleCalendar: (workspaceId: string, data: { email?: string; calendar_id?: string; access_token?: string; code?: string }, opts?: ApiFetchOptions) =>
+    apiFetch<{ is_connected: boolean; email?: string }>(`/integrations/google-calendar/connect${qs(workspaceId)}`, { ...opts, method: "POST", body: data }),
+
+  connectGoogleSheets: (workspaceId: string, data: { email?: string; spreadsheet_id?: string; sheet_name?: string; access_token?: string; code?: string }, opts?: ApiFetchOptions) =>
+    apiFetch<{ is_connected: boolean; email?: string }>(`/integrations/google-sheets/connect${qs(workspaceId)}`, { ...opts, method: "POST", body: data }),
+
+  connectMeta: (workspaceId: string, data: { page_id: string; page_name?: string; access_token?: string }, opts?: ApiFetchOptions) =>
+    apiFetch<{ status: string; page_id: string }>(`/integrations/meta/connect${qs(workspaceId)}`, { ...opts, method: "POST", body: data }),
+
+  connectWhatsapp: (workspaceId: string, data: { phone_number: string; waba_id?: string; access_token?: string }, opts?: ApiFetchOptions) =>
+    apiFetch<{ status: string; phone_number: string }>(`/integrations/whatsapp/connect${qs(workspaceId)}`, { ...opts, method: "POST", body: data }),
+
   disconnect: (workspaceId: string, integrationType: string, opts?: ApiFetchOptions) =>
     apiFetch<{ status: string; type: string }>(`/integrations/${integrationType}/disconnect${qs(workspaceId)}`, { ...opts, method: "POST" }),
 

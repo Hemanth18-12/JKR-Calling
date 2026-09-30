@@ -2,8 +2,8 @@
 
 import { APPOINTMENT_STATUS_VARIANT, type AppointmentOut } from "@jkr/contracts";
 import { ApiClientError, operationsApi } from "@jkr/sdk";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, useToast } from "@jkr/ui";
-import { Calendar, CalendarCheck2, Clock, Grid, List, ShieldCheck, User } from "lucide-react";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Label, useToast } from "@jkr/ui";
+import { Calendar, CalendarCheck2, Clock, ExternalLink, FileSpreadsheet, Grid, List, Plus, ShieldCheck, User, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -12,6 +12,46 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
   const { toast } = useToast();
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [viewMode, setViewMode] = React.useState<"list" | "calendar">("list");
+
+  // Create appointment modal state
+  const [isCreateOpen, setIsCreateOpen] = React.useState(false);
+  const [customerName, setCustomerName] = React.useState("");
+  const [customerPhone, setCustomerPhone] = React.useState("+91");
+  const [appointmentDate, setAppointmentDate] = React.useState(new Date().toISOString().split("T")[0]);
+  const [appointmentTime, setAppointmentTime] = React.useState("11:00");
+  const [appointmentLocation, setAppointmentLocation] = React.useState("Aaha Dental Care, Road No. 12, Banjara Hills");
+  const [appointmentNotes, setAppointmentNotes] = React.useState("General Consultation");
+  const [submitting, setSubmitting] = React.useState(false);
+  const [createError, setCreateError] = React.useState<string | null>(null);
+
+  const handleCreateAppointment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setCreateError(null);
+    try {
+      const scheduledIso = new Date(`${appointmentDate}T${appointmentTime}:00`).toISOString();
+      await operationsApi.createAppointment(workspaceId, {
+        customer_name: customerName,
+        phone: customerPhone,
+        scheduled_for: scheduledIso,
+        location: appointmentLocation,
+        notes: appointmentNotes,
+        duration_minutes: 30,
+      });
+      toast({
+        title: "Appointment Scheduled",
+        description: "Appointment created and synced with Google Calendar and Google Sheets.",
+        variant: "success",
+      });
+      setIsCreateOpen(false);
+      setCustomerName("");
+      router.refresh();
+    } catch (err) {
+      setCreateError(err instanceof ApiClientError ? err.message : "Failed to schedule appointment.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const cancel = async (appointmentId: string) => {
     setBusyId(appointmentId);
@@ -24,6 +64,13 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
     } finally {
       setBusyId(null);
     }
+  };
+
+  // Helper to extract Google Calendar URL from notes
+  const getGoogleCalendarUrl = (notes?: string | null) => {
+    if (!notes) return null;
+    const match = notes.match(/https:\/\/calendar\.google\.com\/calendar\/[^\s\]]+/);
+    return match ? match[0] : null;
   };
 
   // Check for time slot overlaps (Conflict Resolver)
@@ -45,16 +92,16 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
 
   return (
     <div className="space-y-4">
-      {/* Top Bar: View Switcher & Sync Status */}
+      {/* Top Bar: View Switcher, Create Button & Sync Status */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface border border-border p-3 rounded-xl">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant={viewMode === "list" ? "secondary" : "ghost"}
             className="text-xs h-8"
             onClick={() => setViewMode("list")}
           >
-            <List className="h-3.5 w-3.5" /> List View
+            <List className="h-3.5 w-3.5 mr-1" /> List View
           </Button>
           <Button
             size="sm"
@@ -62,16 +109,28 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
             className="text-xs h-8"
             onClick={() => setViewMode("calendar")}
           >
-            <Grid className="h-3.5 w-3.5" /> Calendar Grid
+            <Grid className="h-3.5 w-3.5 mr-1" /> Calendar Grid
+          </Button>
+          <Button
+            size="sm"
+            className="text-xs h-8 ml-2"
+            onClick={() => {
+              setCreateError(null);
+              setIsCreateOpen(true);
+            }}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Schedule Appointment
           </Button>
         </div>
 
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="flex items-center gap-1 text-emerald-400 font-medium">
-            <ShieldCheck className="h-3.5 w-3.5" /> Live Conflict Protection Active
+            <ShieldCheck className="h-3.5 w-3.5" /> Conflict Protection
           </span>
           <span>·</span>
-          <span>Google / Outlook Sync Connected</span>
+          <span className="flex items-center gap-1 text-blue-400">
+            <Calendar className="h-3.5 w-3.5" /> Google Calendar & Sheets Ready
+          </span>
         </div>
       </div>
 
@@ -83,13 +142,14 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
                 <EmptyState
                   icon={Calendar}
                   title="No appointments scheduled yet"
-                  description="Appointments are booked automatically by AI voice agents when executing the book_appointment tool during inbound or outbound calls."
+                  description="Appointments are booked automatically by AI voice agents when caller confirms, or you can schedule one manually above."
                 />
               </div>
             ) : (
               <div className="divide-y divide-border">
                 {sorted.map((a) => {
                   const hasConflict = conflicts.has(a.id);
+                  const gcalUrl = getGoogleCalendarUrl(a.notes);
                   return (
                     <div key={a.id} className="flex items-center justify-between px-5 py-3.5 text-sm hover:bg-surface-raised transition-colors">
                       <div className="flex items-center gap-3.5">
@@ -98,15 +158,25 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <p className="font-medium text-foreground">{a.contact_name}</p>
+                            <p className="font-medium text-foreground">{a.contact_name || "Customer"}</p>
                             {hasConflict && (
                               <Badge variant="danger" className="text-[10px]">
                                 Time Overlap Warning
                               </Badge>
                             )}
+                            {gcalUrl && (
+                              <a
+                                href={gcalUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:underline bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-500/20"
+                              >
+                                <Calendar className="h-2.5 w-2.5" /> Google Calendar <ExternalLink className="h-2.5 w-2.5" />
+                              </a>
+                            )}
                           </div>
-                          <p className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                            <span className="flex items-center gap-1">
+                          <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-2 mt-0.5">
+                            <span className="flex items-center gap-1 font-mono">
                               <Clock className="h-3 w-3" />
                               {new Date(a.scheduled_for).toLocaleDateString("en-IN", {
                                 weekday: "short",
@@ -119,7 +189,8 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
                                 timeZone: "Asia/Kolkata",
                               })} ({a.duration_minutes}m)
                             </span>
-                            {a.notes ? <span>· {a.notes}</span> : null}
+                            {a.location ? <span>· 📍 {a.location}</span> : null}
+                            {a.notes ? <span className="italic">· {a.notes.replace(/\[Google Calendar:[^\]]+\]/, "")}</span> : null}
                           </p>
                         </div>
                       </div>
@@ -196,6 +267,104 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
             })}
           </div>
         )
+      )}
+
+      {/* Modal: Schedule Appointment */}
+      {isCreateOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md border-border bg-surface shadow-2xl">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-primary" /> Schedule Appointment
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Creates appointment and syncs to Google Calendar & Google Sheets.
+                </p>
+              </div>
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setIsCreateOpen(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleCreateAppointment} className="space-y-3.5">
+                <div>
+                  <Label htmlFor="apt-name" className="text-xs font-medium">Customer / Patient Name</Label>
+                  <Input
+                    id="apt-name"
+                    placeholder="Gowtham Krishna"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    required
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="apt-phone" className="text-xs font-medium">Phone Number (E.164)</Label>
+                  <Input
+                    id="apt-phone"
+                    placeholder="+919876543210"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    required
+                    className="mt-1"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label htmlFor="apt-date" className="text-xs font-medium">Date</Label>
+                    <Input
+                      id="apt-date"
+                      type="date"
+                      value={appointmentDate}
+                      onChange={(e) => setAppointmentDate(e.target.value)}
+                      required
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="apt-time" className="text-xs font-medium">Time</Label>
+                    <Input
+                      id="apt-time"
+                      type="time"
+                      value={appointmentTime}
+                      onChange={(e) => setAppointmentTime(e.target.value)}
+                      required
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="apt-loc" className="text-xs font-medium">Location</Label>
+                  <Input
+                    id="apt-loc"
+                    value={appointmentLocation}
+                    onChange={(e) => setAppointmentLocation(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="apt-notes" className="text-xs font-medium">Reason for Visit / Notes</Label>
+                  <Input
+                    id="apt-notes"
+                    value={appointmentNotes}
+                    onChange={(e) => setAppointmentNotes(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                {createError ? <p className="text-xs text-danger">{createError}</p> : null}
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setIsCreateOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" loading={submitting}>
+                    Schedule & Sync
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

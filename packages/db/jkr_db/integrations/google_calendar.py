@@ -235,10 +235,21 @@ async def create_google_calendar_event(
     # If simulated / mock token
     if access_token.startswith("mock_") or access_token.startswith("simulated_") or access_token.startswith("dev_"):
         event_id = f"gcal_{uuid.uuid4().hex[:16]}"
+        import urllib.parse
+        start_utc_str = start_time.strftime("%Y%m%dT%H%M%SZ")
+        end_utc_str = end_time.strftime("%Y%m%dT%H%M%SZ")
+        gcal_render_url = (
+            f"https://calendar.google.com/calendar/render?action=TEMPLATE"
+            f"&text={urllib.parse.quote(summary)}"
+            f"&dates={start_utc_str}/{end_utc_str}"
+            f"&details={urllib.parse.quote(description)}"
+        )
+        if location:
+            gcal_render_url += f"&location={urllib.parse.quote(location)}"
         return {
             "id": event_id,
             "status": "confirmed",
-            "htmlLink": f"https://www.google.com/calendar/event?eid={event_id}",
+            "htmlLink": gcal_render_url,
             "summary": summary,
             "description": description,
             "location": location,

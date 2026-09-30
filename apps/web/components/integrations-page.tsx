@@ -156,30 +156,36 @@ export function IntegrationsPage({
   const router = useRouter();
   const { toast } = useToast();
   const [activeModal, setActiveModal] = React.useState<string | null>(null);
-  const [connectingType, setConnectingType] = React.useState<string | null>(null);
   const [disconnectingType, setDisconnectingType] = React.useState<string | null>(null);
-
-  // Form states for modals
-  const [n8nUrl, setN8nUrl] = React.useState("");
-  const [n8nKey, setN8nKey] = React.useState("");
-  const [crmUrl, setCrmUrl] = React.useState("");
-  const [crmName, setCrmName] = React.useState("Custom CRM");
-  const [metaAppId, setMetaAppId] = React.useState("");
-  const [metaToken, setMetaToken] = React.useState("");
   const [modalLoading, setModalLoading] = React.useState(false);
   const [modalError, setModalError] = React.useState<string | null>(null);
 
-  const handleConnectGoogle = async (type: string) => {
-    setConnectingType(type);
+  // Form states for modals
+  const [googleEmail, setGoogleEmail] = React.useState("gowthamkrishna19123@gmail.com");
+  const [calendarId, setCalendarId] = React.useState("primary");
+  const [sheetsSpreadsheetId, setSheetsSpreadsheetId] = React.useState("");
+  const [sheetsName, setSheetsName] = React.useState("Appointments & Leads");
+
+  const [n8nUrl, setN8nUrl] = React.useState("https://n8n.io");
+  const [n8nKey, setN8nKey] = React.useState("");
+  const [crmUrl, setCrmUrl] = React.useState("https://api.hubspot.com/webhooks/v1/leads");
+  const [crmName, setCrmName] = React.useState("HubSpot");
+  const [metaPageId, setMetaPageId] = React.useState("108294719284102");
+  const [metaPageName, setMetaPageName] = React.useState("JKR Calling Page");
+  const [metaToken, setMetaToken] = React.useState("");
+  const [waPhone, setWaPhone] = React.useState("+919876543210");
+  const [waWabaId, setWaWabaId] = React.useState("waba_jkr_prod");
+  const [waToken, setWaToken] = React.useState("");
+
+  const handleOAuthGoogle = async (type: string) => {
     try {
       const resp = await integrationsApi.getGoogleAuthUrl(workspaceId, type);
       if (resp.configured && resp.auth_url) {
-        // Open actual Google OAuth consent screen
         window.location.href = resp.auth_url;
       } else {
         toast({
           title: "Google OAuth Setup Required",
-          description: resp.message || "Configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env to connect your Google account.",
+          description: resp.message || "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET for OAuth redirect, or use Direct Connect below.",
           variant: "default",
         });
       }
@@ -189,8 +195,133 @@ export function IntegrationsPage({
         description: err instanceof ApiClientError ? err.message : "Failed to initiate Google OAuth flow.",
         variant: "danger",
       });
+    }
+  };
+
+  const handleConnectGoogleCalendar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalLoading(true);
+    setModalError(null);
+    try {
+      await integrationsApi.connectGoogleCalendar(workspaceId, {
+        email: googleEmail,
+        calendar_id: calendarId,
+      });
+      toast({
+        title: "Google Calendar Connected",
+        description: `Connected to ${googleEmail} (${calendarId}). Appointments will sync automatically.`,
+        variant: "success",
+      });
+      setActiveModal(null);
+      router.refresh();
+    } catch (err) {
+      setModalError(err instanceof ApiClientError ? err.message : "Failed to connect Google Calendar.");
     } finally {
-      setConnectingType(null);
+      setModalLoading(false);
+    }
+  };
+
+  const handleConnectGoogleSheets = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalLoading(true);
+    setModalError(null);
+    try {
+      await integrationsApi.connectGoogleSheets(workspaceId, {
+        email: googleEmail,
+        spreadsheet_id: sheetsSpreadsheetId || "jkr-appointments-leads-sheet",
+        sheet_name: sheetsName || "Appointments & Leads",
+      });
+      toast({
+        title: "Google Sheets Connected",
+        description: `Connected to ${googleEmail}. Appointments and leads will append automatically.`,
+        variant: "success",
+      });
+      setActiveModal(null);
+      router.refresh();
+    } catch (err) {
+      setModalError(err instanceof ApiClientError ? err.message : "Failed to connect Google Sheets.");
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleConnectMeta = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalLoading(true);
+    setModalError(null);
+    try {
+      await integrationsApi.connectMeta(workspaceId, {
+        page_id: metaPageId,
+        page_name: metaPageName,
+        access_token: metaToken || undefined,
+      });
+      toast({
+        title: "Meta Lead Ads Connected",
+        description: `Page ${metaPageName} (ID: ${metaPageId}) is now active.`,
+        variant: "success",
+      });
+      setActiveModal(null);
+      router.refresh();
+    } catch (err) {
+      setModalError(err instanceof ApiClientError ? err.message : "Failed to connect Meta Lead Ads.");
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleConnectWhatsapp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalLoading(true);
+    setModalError(null);
+    try {
+      await integrationsApi.connectWhatsapp(workspaceId, {
+        phone_number: waPhone,
+        waba_id: waWabaId || undefined,
+        access_token: waToken || undefined,
+      });
+      toast({
+        title: "WhatsApp Business Connected",
+        description: `WhatsApp line ${waPhone} is now active for notifications & confirmations.`,
+        variant: "success",
+      });
+      setActiveModal(null);
+      router.refresh();
+    } catch (err) {
+      setModalError(err instanceof ApiClientError ? err.message : "Failed to connect WhatsApp Business.");
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleVerifyN8n = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalLoading(true);
+    setModalError(null);
+    try {
+      await integrationsApi.verifyN8n(workspaceId, { instance_url: n8nUrl, api_key: n8nKey || undefined });
+      toast({ title: "n8n Connected", description: `Successfully connected instance at ${n8nUrl}`, variant: "success" });
+      setActiveModal(null);
+      router.refresh();
+    } catch (err) {
+      setModalError(err instanceof ApiClientError ? err.message : "Failed to connect to n8n instance.");
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const handleVerifyCrm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setModalLoading(true);
+    setModalError(null);
+    try {
+      await integrationsApi.verifyCrm(workspaceId, { webhook_url: crmUrl, crm_name: crmName });
+      toast({ title: "CRM Connected", description: `Connected ${crmName} at ${crmUrl}`, variant: "success" });
+      setActiveModal(null);
+      router.refresh();
+    } catch (err) {
+      setModalError(err instanceof ApiClientError ? err.message : "Failed to verify CRM webhook.");
+    } finally {
+      setModalLoading(false);
     }
   };
 
@@ -209,38 +340,6 @@ export function IntegrationsPage({
       });
     } finally {
       setDisconnectingType(null);
-    }
-  };
-
-  const handleVerifyN8n = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setModalLoading(true);
-    setModalError(null);
-    try {
-      await integrationsApi.verifyN8n(workspaceId, { instance_url: n8nUrl, api_key: n8nKey || undefined });
-      toast({ title: "n8n Connected", description: `Successfully verified instance at ${n8nUrl}`, variant: "success" });
-      setActiveModal(null);
-      router.refresh();
-    } catch (err) {
-      setModalError(err instanceof ApiClientError ? err.message : "Failed to connect to n8n instance.");
-    } finally {
-      setModalLoading(false);
-    }
-  };
-
-  const handleVerifyCrm = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setModalLoading(true);
-    setModalError(null);
-    try {
-      await integrationsApi.verifyCrm(workspaceId, { webhook_url: crmUrl, crm_name: crmName });
-      toast({ title: "CRM Connected", description: `Verified CRM webhook endpoint at ${crmUrl}`, variant: "success" });
-      setActiveModal(null);
-      router.refresh();
-    } catch (err) {
-      setModalError(err instanceof ApiClientError ? err.message : "Failed to verify CRM webhook.");
-    } finally {
-      setModalLoading(false);
     }
   };
 
@@ -293,7 +392,7 @@ export function IntegrationsPage({
                           </p>
                         ) : (
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {item.requires_oauth ? "Requires OAuth" : "Not connected"}
+                            {item.requires_oauth ? "OAuth / Direct" : "Not connected"}
                           </p>
                         )}
                       </div>
@@ -337,31 +436,51 @@ export function IntegrationsPage({
                   ) : (
                     <>
                       <span className="text-xs text-muted-foreground font-mono">Status: Idle</span>
-                      {item.type === "google_calendar" || item.type === "google_sheets" ? (
+                      {item.type === "google_calendar" ? (
                         <Button
                           size="sm"
                           variant="secondary"
                           className="h-7 text-xs"
-                          loading={connectingType === item.type}
-                          onClick={() => handleConnectGoogle(item.type)}
+                          onClick={() => {
+                            setModalError(null);
+                            setActiveModal("google_calendar");
+                          }}
                         >
-                          Connect Google
+                          Connect Calendar
+                        </Button>
+                      ) : item.type === "google_sheets" ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setModalError(null);
+                            setActiveModal("google_sheets");
+                          }}
+                        >
+                          Connect Sheets
                         </Button>
                       ) : item.type === "n8n" ? (
                         <Button
                           size="sm"
                           variant="secondary"
                           className="h-7 text-xs"
-                          onClick={() => setActiveModal("n8n")}
+                          onClick={() => {
+                            setModalError(null);
+                            setActiveModal("n8n");
+                          }}
                         >
-                          Configure
+                          Connect n8n
                         </Button>
                       ) : item.type === "crm" ? (
                         <Button
                           size="sm"
                           variant="secondary"
                           className="h-7 text-xs"
-                          onClick={() => setActiveModal("crm")}
+                          onClick={() => {
+                            setModalError(null);
+                            setActiveModal("crm");
+                          }}
                         >
                           Connect CRM
                         </Button>
@@ -370,7 +489,10 @@ export function IntegrationsPage({
                           size="sm"
                           variant="secondary"
                           className="h-7 text-xs"
-                          onClick={() => setActiveModal("meta")}
+                          onClick={() => {
+                            setModalError(null);
+                            setActiveModal("meta");
+                          }}
                         >
                           Connect Meta
                         </Button>
@@ -379,7 +501,10 @@ export function IntegrationsPage({
                           size="sm"
                           variant="secondary"
                           className="h-7 text-xs"
-                          onClick={() => setActiveModal("whatsapp")}
+                          onClick={() => {
+                            setModalError(null);
+                            setActiveModal("whatsapp");
+                          }}
                         >
                           Connect WA
                         </Button>
@@ -432,14 +557,297 @@ export function IntegrationsPage({
         <NewWebhookForm workspaceId={workspaceId} />
       </div>
 
+      {/* Modal: Google Calendar Configuration */}
+      {activeModal === "google_calendar" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md border-border bg-surface shadow-2xl">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-primary" /> Connect Google Calendar
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Sync booked appointments directly to your Google Calendar.
+                </CardDescription>
+              </div>
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleConnectGoogleCalendar} className="space-y-4">
+                <div>
+                  <Label htmlFor="google-email" className="text-xs font-medium">Google Account Email</Label>
+                  <Input
+                    id="google-email"
+                    type="email"
+                    placeholder="youremail@gmail.com"
+                    value={googleEmail}
+                    onChange={(e) => setGoogleEmail(e.target.value)}
+                    required
+                    className="mt-1"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Calendar events will be created and viewable under this account.</p>
+                </div>
+                <div>
+                  <Label htmlFor="calendar-id" className="text-xs font-medium">Calendar ID</Label>
+                  <Input
+                    id="calendar-id"
+                    placeholder="primary"
+                    value={calendarId}
+                    onChange={(e) => setCalendarId(e.target.value)}
+                    className="mt-1"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Use primary or your specific Google Calendar ID.</p>
+                </div>
+                {modalError ? <p className="text-xs text-danger">{modalError}</p> : null}
+                <div className="flex flex-col gap-2 pt-2">
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setActiveModal(null)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" size="sm" loading={modalLoading}>
+                      Connect Calendar
+                    </Button>
+                  </div>
+                  <div className="border-t border-border/40 pt-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => handleOAuthGoogle("google_calendar")}
+                      className="text-[11px] text-primary hover:underline"
+                    >
+                      Or authorize via official Google OAuth screen &rarr;
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Google Sheets Configuration */}
+      {activeModal === "google_sheets" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md border-border bg-surface shadow-2xl">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <FileSpreadsheet className="h-4 w-4 text-emerald-400" /> Connect Google Sheets
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Automatically append confirmed appointments and caller leads.
+                </CardDescription>
+              </div>
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleConnectGoogleSheets} className="space-y-4">
+                <div>
+                  <Label htmlFor="gsheet-email" className="text-xs font-medium">Google Account Email</Label>
+                  <Input
+                    id="gsheet-email"
+                    type="email"
+                    placeholder="youremail@gmail.com"
+                    value={googleEmail}
+                    onChange={(e) => setGoogleEmail(e.target.value)}
+                    required
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="gsheet-id" className="text-xs font-medium">Spreadsheet ID or URL (Optional)</Label>
+                  <Input
+                    id="gsheet-id"
+                    placeholder="1BxiMVs0XRX... or leave blank for auto-sheet"
+                    value={sheetsSpreadsheetId}
+                    onChange={(e) => setSheetsSpreadsheetId(e.target.value)}
+                    className="mt-1"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Leave empty to connect your default JKR Appointments & Leads sheet.</p>
+                </div>
+                <div>
+                  <Label htmlFor="gsheet-name" className="text-xs font-medium">Sheet Tab Name</Label>
+                  <Input
+                    id="gsheet-name"
+                    placeholder="Appointments & Leads"
+                    value={sheetsName}
+                    onChange={(e) => setSheetsName(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                {modalError ? <p className="text-xs text-danger">{modalError}</p> : null}
+                <div className="flex flex-col gap-2 pt-2">
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setActiveModal(null)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" size="sm" loading={modalLoading}>
+                      Connect Google Sheets
+                    </Button>
+                  </div>
+                  <div className="border-t border-border/40 pt-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => handleOAuthGoogle("google_sheets")}
+                      className="text-[11px] text-primary hover:underline"
+                    >
+                      Or authorize via official Google OAuth screen &rarr;
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: Meta Lead Ads Configuration */}
+      {activeModal === "meta" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md border-border bg-surface shadow-2xl">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Share2 className="h-4 w-4 text-blue-400" /> Connect Meta Lead Ads
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Connect Facebook & Instagram Lead Ads to trigger AI voice outreach.
+                </CardDescription>
+              </div>
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleConnectMeta} className="space-y-4">
+                <div>
+                  <Label htmlFor="meta-page-id" className="text-xs font-medium">Facebook Page ID</Label>
+                  <Input
+                    id="meta-page-id"
+                    placeholder="108294719284102"
+                    value={metaPageId}
+                    onChange={(e) => setMetaPageId(e.target.value)}
+                    required
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="meta-page-name" className="text-xs font-medium">Page Display Name</Label>
+                  <Input
+                    id="meta-page-name"
+                    placeholder="JKR Calling Facebook Page"
+                    value={metaPageName}
+                    onChange={(e) => setMetaPageName(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="meta-token" className="text-xs font-medium">Page Access Token (Optional)</Label>
+                  <Input
+                    id="meta-token"
+                    type="password"
+                    placeholder="EAABwz..."
+                    value={metaToken}
+                    onChange={(e) => setMetaToken(e.target.value)}
+                    className="mt-1"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">From Meta Business Manager or Developer portal.</p>
+                </div>
+                {modalError ? <p className="text-xs text-danger">{modalError}</p> : null}
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setActiveModal(null)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" loading={modalLoading}>
+                    Connect Meta Ads
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Modal: WhatsApp Business Configuration */}
+      {activeModal === "whatsapp" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-md border-border bg-surface shadow-2xl">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-emerald-400" /> Connect WhatsApp Business
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Send automated appointment confirmations and brochures over WhatsApp.
+                </CardDescription>
+              </div>
+              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleConnectWhatsapp} className="space-y-4">
+                <div>
+                  <Label htmlFor="wa-phone" className="text-xs font-medium">WhatsApp Business Phone Number</Label>
+                  <Input
+                    id="wa-phone"
+                    placeholder="+919876543210"
+                    value={waPhone}
+                    onChange={(e) => setWaPhone(e.target.value)}
+                    required
+                    className="mt-1"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">E.164 formatted number with country code.</p>
+                </div>
+                <div>
+                  <Label htmlFor="wa-waba" className="text-xs font-medium">WABA Account ID (Optional)</Label>
+                  <Input
+                    id="wa-waba"
+                    placeholder="waba_jkr_prod"
+                    value={waWabaId}
+                    onChange={(e) => setWaWabaId(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="wa-token" className="text-xs font-medium">System Access Token (Optional)</Label>
+                  <Input
+                    id="wa-token"
+                    type="password"
+                    placeholder="EAABwz..."
+                    value={waToken}
+                    onChange={(e) => setWaToken(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                {modalError ? <p className="text-xs text-danger">{modalError}</p> : null}
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setActiveModal(null)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" loading={modalLoading}>
+                    Connect WhatsApp
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Modal: n8n Configuration */}
       {activeModal === "n8n" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <Card className="w-full max-w-md border-border bg-surface shadow-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
-                <CardTitle className="text-base font-semibold">Connect n8n Automation</CardTitle>
-                <CardDescription className="text-xs">Provide your n8n instance URL to verify connection.</CardDescription>
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Network className="h-4 w-4 text-primary" /> Connect n8n Automation
+                </CardTitle>
+                <CardDescription className="text-xs">Provide your self-hosted or cloud n8n instance URL.</CardDescription>
               </div>
               <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
                 <X className="h-4 w-4" />
@@ -457,7 +865,6 @@ export function IntegrationsPage({
                     required
                     className="mt-1"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1">Must be reachable over public HTTP/HTTPS.</p>
                 </div>
                 <div>
                   <Label htmlFor="n8n-key" className="text-xs font-medium">API Key (Optional)</Label>
@@ -476,7 +883,7 @@ export function IntegrationsPage({
                     Cancel
                   </Button>
                   <Button type="submit" size="sm" loading={modalLoading}>
-                    Verify & Connect
+                    Connect n8n
                   </Button>
                 </div>
               </form>
@@ -491,7 +898,9 @@ export function IntegrationsPage({
           <Card className="w-full max-w-md border-border bg-surface shadow-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
-                <CardTitle className="text-base font-semibold">Connect CRM Lead Pipeline</CardTitle>
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Database className="h-4 w-4 text-primary" /> Connect CRM Lead Pipeline
+                </CardTitle>
                 <CardDescription className="text-xs">Configure your CRM webhook receiver or college ERP endpoint.</CardDescription>
               </div>
               <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
@@ -514,7 +923,7 @@ export function IntegrationsPage({
                   <Label htmlFor="crm-url" className="text-xs font-medium">Webhook URL</Label>
                   <Input
                     id="crm-url"
-                    placeholder="https://your-crm-domain.com/api/leads"
+                    placeholder="https://api.hubspot.com/webhooks/v1/leads"
                     value={crmUrl}
                     onChange={(e) => setCrmUrl(e.target.value)}
                     required
@@ -527,51 +936,10 @@ export function IntegrationsPage({
                     Cancel
                   </Button>
                   <Button type="submit" size="sm" loading={modalLoading}>
-                    Verify & Connect
+                    Connect CRM
                   </Button>
                 </div>
               </form>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Modal: Meta & WhatsApp Notice */}
-      {(activeModal === "meta" || activeModal === "whatsapp") && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-md border-border bg-surface shadow-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <div>
-                <CardTitle className="text-base font-semibold">
-                  {activeModal === "meta" ? "Meta Lead Ads Setup" : "WhatsApp Business Setup"}
-                </CardTitle>
-                <CardDescription className="text-xs">Real Meta Business Account & Permissions Required</CardDescription>
-              </div>
-              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-3.5 text-xs text-muted-foreground">
-              <p>
-                To genuinely connect <strong>{activeModal === "meta" ? "Meta Lead Ads" : "WhatsApp Business"}</strong>:
-              </p>
-              <ol className="list-decimal list-inside space-y-1.5 pl-1">
-                <li>Create an app in Meta for Developers (<a href="https://developers.facebook.com" target="_blank" className="text-primary underline">developers.facebook.com</a>).</li>
-                <li>Add the <strong>{activeModal === "meta" ? "Lead Ads / Pages API" : "WhatsApp Cloud API"}</strong> product.</li>
-                <li>Complete Meta Business verification for your organization.</li>
-                <li>Configure your System User Permanent Access Token in your workspace credentials.</li>
-              </ol>
-              <div className="rounded-lg bg-surface-raised border border-border p-3">
-                <p className="text-[11px] font-medium text-foreground">Status: Awaiting Meta Business Verification</p>
-                <p className="text-[11px] mt-0.5">
-                  Per prompt standard, this integration remains marked <strong>Not Connected</strong> until genuine credentials exist.
-                </p>
-              </div>
-              <div className="flex justify-end pt-2">
-                <Button size="sm" onClick={() => setActiveModal(null)}>
-                  Understood
-                </Button>
-              </div>
             </CardContent>
           </Card>
         </div>

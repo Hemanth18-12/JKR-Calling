@@ -19,6 +19,8 @@ export const operationsApi = {
     apiFetch<HumanHandoffOut>(`/handoffs/${handoffId}/action${qs(workspaceId)}`, { ...opts, method: "POST", body: { action } }),
   listAppointments: (workspaceId: string, status?: string, opts?: ApiFetchOptions) =>
     apiFetch<AppointmentOut[]>(`/appointments${qs(workspaceId, status)}`, { ...opts, method: "GET" }),
+  createAppointment: (workspaceId: string, data: { contact_id?: string; customer_name?: string; phone?: string; scheduled_for: string; duration_minutes?: number; location?: string; notes?: string }, opts?: ApiFetchOptions) =>
+    apiFetch<AppointmentOut>(`/appointments${qs(workspaceId)}`, { ...opts, method: "POST", body: data }),
   cancelAppointment: (workspaceId: string, appointmentId: string, opts?: ApiFetchOptions) =>
     apiFetch<AppointmentOut>(`/appointments/${appointmentId}/cancel${qs(workspaceId)}`, { ...opts, method: "POST" }),
 };

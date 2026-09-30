@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import AuthContext, require_permission, workspace_db_for
 from app.modules.operations import service
-from app.modules.operations.schemas import AppointmentOut, FollowUpTaskOut, HumanHandoffOut
+from app.modules.operations.schemas import AppointmentCreate, AppointmentOut, FollowUpTaskOut, HumanHandoffOut
 
 router = APIRouter(tags=["operations"])
 
@@ -68,6 +68,26 @@ async def list_appointments(
 ) -> list[AppointmentOut]:
     rows = await service.list_appointments(db, workspace_id=auth.workspace_id, status_filter=status)
     return [AppointmentOut(**r) for r in rows]
+
+
+@router.post("/appointments", response_model=AppointmentOut, status_code=201)
+async def create_appointment_endpoint(
+    payload: AppointmentCreate,
+    auth: AuthContext = Depends(require_permission("contacts:edit")),
+    db: AsyncSession = Depends(workspace_db_for("contacts:edit")),
+) -> AppointmentOut:
+    row = await service.create_appointment(
+        db,
+        workspace_id=auth.workspace_id,
+        contact_id=payload.contact_id,
+        customer_name=payload.customer_name,
+        phone=payload.phone,
+        scheduled_for=payload.scheduled_for,
+        duration_minutes=payload.duration_minutes,
+        location=payload.location,
+        notes=payload.notes,
+    )
+    return AppointmentOut(**row)
 
 
 @router.post("/appointments/{appointment_id}/cancel", response_model=AppointmentOut)

@@ -32,17 +32,28 @@ export type HumanHandoffOut = z.infer<typeof HumanHandoffOut>;
 
 export const AppointmentOut = z.object({
   id: z.string().uuid(),
-  contact_id: z.string().uuid(),
-  contact_name: z.string(),
+  contact_id: z.string().uuid().nullable().optional(),
+  contact_name: z.string().nullable().optional(),
   call_session_id: z.string().uuid().nullable(),
   scheduled_for: z.string(),
-  duration_minutes: z.number(),
+  duration_minutes: z.number().default(30),
   status: z.string(),
-  location: z.string().nullable(),
-  notes: z.string().nullable(),
+  location: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
   created_at: z.string(),
 });
 export type AppointmentOut = z.infer<typeof AppointmentOut>;
+
+export const AppointmentCreate = z.object({
+  contact_id: z.string().uuid().optional(),
+  customer_name: z.string().optional(),
+  phone: z.string().optional(),
+  scheduled_for: z.string(),
+  duration_minutes: z.number().optional().default(30),
+  location: z.string().optional(),
+  notes: z.string().optional(),
+});
+export type AppointmentCreate = z.infer<typeof AppointmentCreate>;
 
 export const FOLLOW_UP_STATUS_VARIANT: Record<string, "success" | "warning" | "secondary" | "danger"> = {
   pending: "warning",
