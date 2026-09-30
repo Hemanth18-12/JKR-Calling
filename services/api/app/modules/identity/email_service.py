@@ -222,9 +222,7 @@ async def send_otp_email(to_email: str, code: str, purpose: str = "signup") -> t
     if brevo_api_key:
         sender_email = (
             os.getenv("BREVO_SENDER_EMAIL")
-            or os.getenv("SMTP_FROM_EMAIL")
-            or os.getenv("RESEND_SANDBOX_OWNER")
-            or "hemanth.t24@iiits.in"
+            or "gowthamkrishna19123@gmail.com"
         )
         sender_name = os.getenv("BREVO_SENDER_NAME", "JKR AI Calling")
 

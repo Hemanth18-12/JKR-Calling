@@ -53,7 +53,7 @@ services:
       - key: BREVO_API_KEY
         sync: false
       - key: BREVO_SENDER_EMAIL
-        sync: false
+        value: "gowthamkrishna19123@gmail.com"
       - key: BREVO_SENDER_NAME
         value: "JKR AI Calling"
       - key: RESEND_API_KEY
@@ -69,10 +69,3 @@ services:
     plan: free
     maxmemoryPolicy: noeviction
     ipAllowList: []
-
-databases:
-  - name: jkr-postgres
-    databaseName: jkr_ai_calling
-    user: jkr_app
-    region: singapore
-    plan: free
