@@ -209,6 +209,24 @@ async def create_appointment(
     except Exception as exc:
         logger.warning("Google Sheets sync on manual appointment failed: %s", exc)
 
+    try:
+        from jkr_db.calendar_invite import generate_google_calendar_url
+        name = (contact.full_name if contact else customer_name) or "Customer"
+        gcal_1tap = generate_google_calendar_url(
+            summary=f"Appointment: {name}",
+            description=f"Confirmed Appointment\nNotes: {notes or 'Scheduled'}\nPhone: {contact.phone_e164 if contact else phone}",
+            start_time=scheduled_for,
+            duration_minutes=duration_minutes,
+            location=location or "Main Clinic / Office",
+        )
+        if appointment.notes:
+            appointment.notes = f"{appointment.notes}\n[Google Calendar: {gcal_1tap}]"
+        else:
+            appointment.notes = f"[Google Calendar: {gcal_1tap}]"
+        await db.flush()
+    except Exception as exc:
+        logger.warning("Google Calendar 1-tap link generation failed: %s", exc)
+
     contact_name = contact.full_name if contact else (customer_name or "Customer")
     return {
         "id": appointment.id,
@@ -232,3 +250,68 @@ async def cancel_appointment(db: AsyncSession, *, workspace_id: uuid.UUID, appoi
     appointment.status = "cancelled"
     await db.flush()
     return appointment
+
+
+async def export_appointments_csv(db: AsyncSession, *, workspace_id: uuid.UUID) -> str:
+    import csv, io
+    appointments = await list_appointments(db, workspace_id=workspace_id, status_filter=None)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Appointment ID",
+        "Customer / Contact Name",
+        "Scheduled Date (IST)",
+        "Scheduled Time (IST)",
+        "Duration (Minutes)",
+        "Status",
+        "Location",
+        "Notes / Reason",
+        "Created At",
+    ])
+    for a in appointments:
+        dt = a.get("scheduled_for")
+        date_str = dt.strftime("%Y-%m-%d") if dt else ""
+        time_str = dt.strftime("%I:%M %p") if dt else ""
+        created_str = a["created_at"].strftime("%Y-%m-%d %H:%M:%S UTC") if a.get("created_at") else ""
+        clean_notes = (a.get("notes") or "").replace("\n", " ").strip()
+        writer.writerow([
+            str(a["id"]),
+            a.get("contact_name") or "Customer",
+            date_str,
+            time_str,
+            a.get("duration_minutes") or 30,
+            a.get("status") or "scheduled",
+            a.get("location") or "",
+            clean_notes,
+            created_str,
+        ])
+    return output.getvalue()
+
+
+async def get_appointment_ics(db: AsyncSession, *, appointment_id: uuid.UUID) -> tuple[str, str]:
+    from jkr_db.calendar_invite import generate_ics_content
+
+    result = await db.execute(
+        select(Appointment, Contact.full_name, Contact.phone_e164)
+        .outerjoin(Contact, Contact.id == Appointment.contact_id)
+        .where(Appointment.id == appointment_id)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Appointment not found")
+    apt, contact_name, contact_phone = row
+    name = contact_name or "Customer"
+    summary = f"Appointment: {name}"
+    description = f"Appointment with {name}\nLocation: {apt.location or 'Office'}\nNotes: {apt.notes or 'General Appointment'}\nPhone: {contact_phone or ''}"
+
+    ics_content = generate_ics_content(
+        appointment_id=apt.id,
+        summary=summary,
+        description=description,
+        start_time=apt.scheduled_for,
+        duration_minutes=apt.duration_minutes or 30,
+        location=apt.location or "",
+    )
+    filename = f"appointment-{str(apt.id)[:8]}.ics"
+    return ics_content, filename
+

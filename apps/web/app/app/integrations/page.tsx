@@ -1,12 +1,12 @@
 import { integrationsApi } from "@jkr/sdk";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { IntegrationsPage } from "@/components/integrations-page";
 import { getActiveWorkspaceContext } from "@/lib/session";
 
 export default async function IntegrationsRoutePage() {
   const { workspace, cookieHeader } = await getActiveWorkspaceContext();
-  if (!workspace) notFound();
+  if (!workspace) redirect("/app/dashboard");
 
   const [catalog, webhooks] = await Promise.all([
     integrationsApi.catalog(workspace.id, { cookieHeader }),

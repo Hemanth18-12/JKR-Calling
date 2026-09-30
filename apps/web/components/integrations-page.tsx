@@ -380,12 +380,26 @@ export function IntegrationsPage({
                       </div>
                       <div>
                         <h3 className="font-medium text-sm text-foreground flex items-center gap-1.5">
-                          {item.label}
-                          {isConnected && item.external_url ? (
+                          {item.type === "google_calendar"
+                            ? "Calendar Export (.ics)"
+                            : item.type === "google_sheets"
+                            ? "Data Export (CSV)"
+                            : item.label}
+                          {isConnected && item.external_url && item.type !== "google_calendar" && item.type !== "google_sheets" ? (
                             <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-60" />
                           ) : null}
                         </h3>
-                        {isConnected ? (
+                        {item.type === "google_calendar" ? (
+                          <p className="text-xs text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Free · Universal (.ics)
+                          </p>
+                        ) : item.type === "google_sheets" ? (
+                          <p className="text-xs text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Free · On-demand CSV
+                          </p>
+                        ) : isConnected ? (
                           <p className="text-xs text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
                             <CheckCircle2 className="h-3 w-3" />
                             {item.connected_account || "Connected"}
@@ -398,17 +412,45 @@ export function IntegrationsPage({
                       </div>
                     </div>
                     <Badge variant={isConnected ? "success" : "secondary"} className="capitalize">
-                      {isConnected ? "Connected" : "Not Connected"}
+                      {item.type === "google_calendar" || item.type === "google_sheets"
+                        ? "Active (Built-in)"
+                        : isConnected
+                        ? "Connected"
+                        : "Not Connected"}
                     </Badge>
                   </div>
 
                   <p className="text-xs text-muted-foreground line-clamp-2">
-                    {item.description || (isConnected ? "Active external connection." : "Not connected yet.")}
+                    {item.type === "google_calendar"
+                      ? "Every confirmed appointment includes a downloadable .ics calendar invite and 1-tap Google/Apple/Outlook links — zero OAuth, zero billing required."
+                      : item.type === "google_sheets"
+                      ? "Export confirmed appointments, qualified leads, and caller data as CSV anytime — zero OAuth or Google Cloud billing required."
+                      : item.description || (isConnected ? "Active external connection." : "Not connected yet.")}
                   </p>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-border/40">
-                  {isConnected ? (
+                  {item.type === "google_calendar" ? (
+                    <>
+                      <span className="text-xs text-emerald-400/90 font-medium">Built-in with every call</span>
+                      <a
+                        href="/app/appointments"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                      >
+                        View Appointments &rarr;
+                      </a>
+                    </>
+                  ) : item.type === "google_sheets" ? (
+                    <>
+                      <span className="text-xs text-emerald-400/90 font-medium">Export CSV on-demand</span>
+                      <a
+                        href="/app/appointments"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                      >
+                        Export CSV &rarr;
+                      </a>
+                    </>
+                  ) : isConnected ? (
                     <>
                       {item.external_url ? (
                         <a

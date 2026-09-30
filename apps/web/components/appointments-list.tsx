@@ -3,7 +3,7 @@
 import { APPOINTMENT_STATUS_VARIANT, type AppointmentOut } from "@jkr/contracts";
 import { ApiClientError, operationsApi } from "@jkr/sdk";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, EmptyState, Input, Label, useToast } from "@jkr/ui";
-import { Calendar, CalendarCheck2, Clock, ExternalLink, FileSpreadsheet, Grid, List, Plus, ShieldCheck, User, X } from "lucide-react";
+import { Calendar, CalendarCheck2, Clock, Download, ExternalLink, FileSpreadsheet, Grid, List, Plus, ShieldCheck, User, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -40,7 +40,7 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
       });
       toast({
         title: "Appointment Scheduled",
-        description: "Appointment created and synced with Google Calendar and Google Sheets.",
+        description: "Appointment created with calendar invite and Google Calendar link.",
         variant: "success",
       });
       setIsCreateOpen(false);
@@ -90,11 +90,102 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
     }
   }
 
+  // Client-side RFC 5545 .ics generator and downloader
+  const downloadIcs = (apt: AppointmentOut) => {
+    const dt = new Date(apt.scheduled_for);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const formatUtc = (d: Date) =>
+      `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+
+    const dtStart = formatUtc(dt);
+    const endDt = new Date(dt.getTime() + (apt.duration_minutes || 30) * 60000);
+    const dtEnd = formatUtc(endDt);
+    const dtStamp = formatUtc(new Date());
+    const cleanSummary = (apt.contact_name ? `Appointment: ${apt.contact_name}` : "Consultation Appointment").replace(/[,;\\]/g, " ");
+    const cleanDesc = (apt.notes || "Booked via JKR Calling AI Agent").replace(/[,;\\]/g, " ");
+    const cleanLoc = (apt.location || "").replace(/[,;\\]/g, " ");
+
+    const ics = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//JKR Calling//AI Voice Platform//EN",
+      "CALSCALE:GREGORIAN",
+      "METHOD:REQUEST",
+      "BEGIN:VEVENT",
+      `UID:apt-${apt.id}@jkr.ai`,
+      `DTSTAMP:${dtStamp}`,
+      `DTSTART:${dtStart}`,
+      `DTEND:${dtEnd}`,
+      `SUMMARY:${cleanSummary}`,
+      `DESCRIPTION:${cleanDesc}`,
+      ...(cleanLoc ? [`LOCATION:${cleanLoc}`] : []),
+      "ORGANIZER;CN=JKR AI Calling:mailto:appointments@jkr.ai",
+      "STATUS:CONFIRMED",
+      "TRANSP:OPAQUE",
+      "SEQUENCE:0",
+      "BEGIN:VALARM",
+      "ACTION:DISPLAY",
+      "DESCRIPTION:Appointment Reminder",
+      "TRIGGER:-PT30M",
+      "END:VALARM",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n") + "\r\n";
+
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `appointment-${apt.id.slice(0, 8)}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast({ title: "Calendar Invite Downloaded", description: `Saved as appointment-${apt.id.slice(0, 8)}.ics`, variant: "success" });
+  };
+
+  // Client-side CSV export
+  const exportAppointmentsCsv = () => {
+    if (sorted.length === 0) {
+      toast({ title: "No appointments to export", variant: "danger" });
+      return;
+    }
+    const headers = ["Appointment ID", "Customer Name", "Scheduled Date (IST)", "Scheduled Time (IST)", "Duration (Mins)", "Status", "Location", "Notes", "Created At"];
+    const rows = sorted.map((a) => {
+      const d = new Date(a.scheduled_for);
+      const dateStr = d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });
+      const timeStr = d.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" });
+      return [
+        `"${a.id}"`,
+        `"${(a.contact_name || "Customer").replace(/"/g, '""')}"`,
+        `"${dateStr}"`,
+        `"${timeStr}"`,
+        a.duration_minutes || 30,
+        `"${a.status}"`,
+        `"${(a.location || "").replace(/"/g, '""')}"`,
+        `"${(a.notes || "").replace(/[\r\n]+/g, " ").replace(/"/g, '""')}"`,
+        `"${a.created_at}"`,
+      ].join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `appointments_export_${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast({ title: "CSV Exported", description: `Exported ${sorted.length} appointment(s) to CSV.`, variant: "success" });
+  };
+
   return (
     <div className="space-y-4">
-      {/* Top Bar: View Switcher, Create Button & Sync Status */}
+      {/* Top Bar: View Switcher, Create Button, CSV Export & Sync Status */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-surface border border-border p-3 rounded-xl">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant={viewMode === "list" ? "secondary" : "ghost"}
@@ -113,13 +204,21 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
           </Button>
           <Button
             size="sm"
-            className="text-xs h-8 ml-2"
+            className="text-xs h-8 ml-1"
             onClick={() => {
               setCreateError(null);
               setIsCreateOpen(true);
             }}
           >
             <Plus className="h-3.5 w-3.5 mr-1" /> Schedule Appointment
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs h-8"
+            onClick={exportAppointmentsCsv}
+          >
+            <Download className="h-3.5 w-3.5 mr-1" /> Export CSV
           </Button>
         </div>
 
@@ -128,8 +227,8 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
             <ShieldCheck className="h-3.5 w-3.5" /> Conflict Protection
           </span>
           <span>·</span>
-          <span className="flex items-center gap-1 text-blue-400">
-            <Calendar className="h-3.5 w-3.5" /> Google Calendar & Sheets Ready
+          <span className="flex items-center gap-1 text-primary">
+            <Calendar className="h-3.5 w-3.5" /> Universal .ics & CSV Ready
           </span>
         </div>
       </div>
@@ -195,6 +294,15 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs text-primary hover:bg-primary/10 border-primary/30"
+                          onClick={() => downloadIcs(a)}
+                          title="Download standard .ics calendar invite for Google, Apple, and Outlook"
+                        >
+                          <Download className="h-3 w-3 mr-1" /> Calendar invite (.ics)
+                        </Button>
                         <Badge variant={APPOINTMENT_STATUS_VARIANT[a.status] ?? "secondary"}>
                           {a.status.replace(/_/g, " ")}
                         </Badge>
@@ -256,11 +364,22 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
                     {hasConflict && (
                       <p className="text-danger font-medium text-[11px]">⚠️ Overlaps with another booking.</p>
                     )}
-                    {a.status === "scheduled" || a.status === "confirmed" ? (
-                      <Button size="sm" variant="outline" className="w-full text-xs h-7 text-danger" onClick={() => cancel(a.id)}>
-                        Cancel Booking
+                    <div className="flex flex-col gap-1.5 pt-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full text-xs h-7 text-primary hover:bg-primary/10 border-primary/30"
+                        onClick={() => downloadIcs(a)}
+                        title="Download standard .ics calendar invite for Google, Apple, and Outlook"
+                      >
+                        <Download className="h-3 w-3 mr-1" /> Calendar invite (.ics)
                       </Button>
-                    ) : null}
+                      {a.status === "scheduled" || a.status === "confirmed" ? (
+                        <Button size="sm" variant="ghost" className="w-full text-xs h-7 text-danger hover:text-danger" onClick={() => cancel(a.id)}>
+                          Cancel Booking
+                        </Button>
+                      ) : null}
+                    </div>
                   </CardContent>
                 </Card>
               );

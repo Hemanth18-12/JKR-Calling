@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from jkr_db.phone import mask_for_display
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,6 +43,22 @@ async def list_contacts(
 ) -> list[ContactOut]:
     contacts = await service.list_contacts(db, workspace_id=auth.workspace_id)
     return [ContactOut(**service.contact_out(c)) for c in contacts]
+
+
+@router.get("/export/csv")
+async def export_contacts_csv_endpoint(
+    auth: AuthContext = Depends(require_permission("contacts:view")),
+    db: AsyncSession = Depends(workspace_db_for("contacts:view")),
+) -> Response:
+    csv_text = await service.export_contacts_csv(db, workspace_id=auth.workspace_id)
+    return Response(
+        content=csv_text,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="contacts-export.csv"',
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 @router.get("/{contact_id}", response_model=ContactDetail)

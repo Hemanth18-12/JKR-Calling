@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db import platform_db
 from app.deps import AuthContext, require_permission, workspace_db_for
 from app.modules.operations import service
 from app.modules.operations.schemas import AppointmentCreate, AppointmentOut, FollowUpTaskOut, HumanHandoffOut
@@ -99,3 +100,36 @@ async def cancel_appointment(
     await service.cancel_appointment(db, workspace_id=auth.workspace_id, appointment_id=appointment_id)
     rows = await service.list_appointments(db, workspace_id=auth.workspace_id, status_filter=None)
     return next(AppointmentOut(**r) for r in rows if r["id"] == appointment_id)
+
+
+@router.get("/appointments/export/csv")
+async def export_appointments_csv_endpoint(
+    auth: AuthContext = Depends(require_permission("calls:view")),
+    db: AsyncSession = Depends(workspace_db_for("calls:view")),
+) -> Response:
+    csv_text = await service.export_appointments_csv(db, workspace_id=auth.workspace_id)
+    return Response(
+        content=csv_text,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="appointments-export.csv"',
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
+@router.get("/appointments/{appointment_id}/invite.ics")
+async def download_appointment_ics(
+    appointment_id: uuid.UUID,
+    db: AsyncSession = Depends(platform_db),
+) -> Response:
+    ics_text, filename = await service.get_appointment_ics(db, appointment_id=appointment_id)
+    return Response(
+        content=ics_text,
+        media_type="text/calendar; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
+

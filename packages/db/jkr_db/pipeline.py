@@ -97,17 +97,48 @@ async def _dispatch_follow_up(db: AsyncSession, *, workspace_id: uuid.UUID, foll
                 time_str = "confirmed time"
 
             loc_str = apt.location if (apt and apt.location) else "Aaha Dental Care, Road No. 12, Banjara Hills, Hyderabad"
-            body = f"Appointment Confirmed! 📅 Date: {date_str} | ⏰ Time: {time_str} | 📍 Location: {loc_str}. We look forward to seeing you!"
+            api_base = os.getenv("API_BASE_URL") or os.getenv("NEXT_PUBLIC_API_URL") or "https://jkr-api.onrender.com"
+            api_base = api_base.rstrip("/")
+            download_url = f"{api_base}/api/v1/appointments/{apt.id}/invite.ics" if apt else None
+
+            from jkr_db.calendar_invite import generate_google_calendar_url
+            if apt and apt.scheduled_for:
+                gcal_url = generate_google_calendar_url(
+                    summary="Appointment Confirmation",
+                    description=f"Appointment at {loc_str}",
+                    start_time=apt.scheduled_for,
+                    duration_minutes=30,
+                    location=loc_str,
+                )
+            else:
+                gcal_url = None
+
+            body_parts = [
+                f"Appointment Confirmed! 📅 Date: {date_str} | ⏰ Time: {time_str} | 📍 Location: {loc_str}."
+            ]
+            if download_url:
+                body_parts.append(f"📆 Add to Calendar (.ics): {download_url}")
+            if gcal_url:
+                body_parts.append(f"📲 1-Tap Google Calendar: {gcal_url}")
+            body_parts.append("We look forward to seeing you!")
+            body = "\n\n".join(body_parts)
+
+            tool_input = {"body": body}
+            if download_url:
+                tool_input["media_url"] = download_url
         elif category == "qualified":
             body = "Thank you for your interest! Your enquiry has been qualified with our specialist team. 📄 Brochure: https://jkr.ai/info/brochure. A representative will contact you shortly."
+            tool_input = {"body": body}
         elif category == "interested":
             body = "Thank you for speaking with us today! 🌐 More information & services: https://jkr.ai/info/services. Feel free to reply or call us back anytime."
+            tool_input = {"body": body}
         else:
             body = WHATSAPP_TEMPLATE_BY_OUTCOME.get(category, "Thanks for your time — our team will follow up shortly.")
+            tool_input = {"body": body}
 
         try:
             execution = await execute_tool(
-                db, workspace_id=workspace_id, tool_name="send_whatsapp", tool_input={"body": body},
+                db, workspace_id=workspace_id, tool_name="send_whatsapp", tool_input=tool_input,
                 idempotency_key=idempotency_key, call_session_id=follow_up_task.call_session_id, contact_id=follow_up_task.contact_id,
             )
             out = execution.output or {}

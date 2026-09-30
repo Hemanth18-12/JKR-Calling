@@ -46,16 +46,16 @@ INTEGRATION_METADATA: dict[str, dict] = {
         "default_url": None,
     },
     "google_calendar": {
-        "label": "Google Calendar",
-        "description": "Syncs booked appointments directly to your Google Calendar with real calendar event links.",
-        "requires_oauth": True,
-        "default_url": "https://calendar.google.com/calendar/r",
+        "label": "Calendar Export (.ics)",
+        "description": "Every confirmed appointment includes a downloadable .ics calendar invite and 1-tap Google/Apple/Outlook links — zero OAuth, zero billing required.",
+        "requires_oauth": False,
+        "default_url": "/app/appointments",
     },
     "google_sheets": {
-        "label": "Google Sheets",
-        "description": "Appends confirmed appointments and qualified caller leads automatically to your spreadsheet.",
-        "requires_oauth": True,
-        "default_url": "https://docs.google.com/spreadsheets/u/0/",
+        "label": "Data Export (CSV)",
+        "description": "Export confirmed appointments, qualified leads, and caller data as CSV anytime — zero OAuth or Google Cloud billing required.",
+        "requires_oauth": False,
+        "default_url": "/app/appointments",
     },
     "meta_lead_ads": {
         "label": "Meta Lead Ads",
@@ -113,30 +113,19 @@ async def catalog(db: AsyncSession, *, workspace_id: uuid.UUID) -> list[dict]:
                 connected_account = f"{len(active_webhooks)} active endpoint(s)"
                 first_url = active_webhooks[0][1]
                 external_url = first_url if first_url.startswith("http") else None
+        elif itype == "google_calendar":
+            is_conn = True
+            connected_account = "Ready (Built-in .ics)"
+            external_url = "/app/appointments"
+        elif itype == "google_sheets":
+            is_conn = True
+            connected_account = "Ready (Built-in CSV)"
+            external_url = "/app/appointments"
         elif itype in int_by_type:
             integration, cred = int_by_type[itype]
             cfg = integration.config or {}
             last_synced_at = integration.last_synced_at
-
-            if itype in ("google_calendar", "google_sheets"):
-                # Must have status CONNECTED AND a non-empty credential stored
-                if integration.status == IntegrationStatus.CONNECTED and cred and cred.encrypted_secret:
-                    is_conn = True
-                    email = cfg.get("email")
-                    connected_account = email or "Google Account"
-                    if itype == "google_calendar":
-                        external_url = (
-                            f"https://calendar.google.com/calendar/u/0/r?authuser={email}"
-                            if email
-                            else "https://calendar.google.com/calendar/r"
-                        )
-                    else:
-                        external_url = (
-                            f"https://docs.google.com/spreadsheets/u/0/?authuser={email}"
-                            if email
-                            else "https://docs.google.com/spreadsheets/u/0/"
-                        )
-            elif itype == "meta_lead_ads":
+            if itype == "meta_lead_ads":
                 if integration.status == IntegrationStatus.CONNECTED and (cred or cfg.get("page_id")):
                     is_conn = True
                     connected_account = f"Page: {cfg.get('page_id')}"

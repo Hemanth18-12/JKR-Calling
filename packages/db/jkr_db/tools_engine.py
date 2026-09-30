@@ -321,11 +321,58 @@ async def _run_book_appointment(
     except Exception as exc:
         logger.warning("Google Sheets sync failed: %s", exc)
 
+    # --- Universal .ics Calendar Invite & 1-Tap Links ---
+    ics_info = None
+    try:
+        from jkr_db.calendar_invite import generate_ics_content, get_appointment_calendar_links
+        patient_name = contact.full_name or "Customer"
+        summary = f"Appointment: {patient_name}"
+        description = f"Appointment with {patient_name}\nLocation: {location}\nReason: {appointment.notes or 'General Consultation'}\nPhone: {contact.phone_e164}"
+        ics_text = generate_ics_content(
+            appointment_id=appointment.id,
+            summary=summary,
+            description=description,
+            start_time=scheduled_for,
+            duration_minutes=30,
+            location=location,
+        )
+        calendar_links = get_appointment_calendar_links(
+            appointment_id=appointment.id,
+            summary=summary,
+            description=description,
+            start_time=scheduled_for,
+            duration_minutes=30,
+            location=location,
+        )
+        invites_dir = os.path.join(os.getcwd(), "data", "calendar_invites")
+        os.makedirs(invites_dir, exist_ok=True)
+        ics_filepath = os.path.join(invites_dir, f"appointment_{appointment.id}.ics")
+        with open(ics_filepath, "w", encoding="utf-8") as f:
+            f.write(ics_text)
+
+        gcal_1tap = calendar_links["google_calendar_url"]
+        if appointment.notes:
+            appointment.notes = f"{appointment.notes}\n[Google Calendar: {gcal_1tap}]"
+        else:
+            appointment.notes = f"[Google Calendar: {gcal_1tap}]"
+        await db.flush()
+
+        ics_info = {
+            "ics_file": ics_filepath,
+            "ics_download_url": calendar_links["ics_download_url"],
+            "google_calendar_url": calendar_links["google_calendar_url"],
+            "outlook_calendar_url": calendar_links["outlook_calendar_url"],
+        }
+    except Exception as exc:
+        logger.warning("Failed to generate .ics calendar invite: %s", exc)
+
     res = {
         "appointment_id": str(appointment.id),
         "scheduled_for": scheduled_for.isoformat(),
         "location": location,
     }
+    if ics_info:
+        res["calendar_invite"] = ics_info
     if gcal_info:
         res["google_calendar"] = gcal_info
     if gsheet_info:
@@ -373,7 +420,7 @@ async def _run_create_human_callback(db: AsyncSession, *, workspace_id: uuid.UUI
     return {"handoff_id": str(handoff.id)}
 
 
-async def _dispatch_twilio_message(*, channel: str, to_e164: str, body: str) -> tuple[str, str | None, str | None]:
+async def _dispatch_twilio_message(*, channel: str, to_e164: str, body: str, media_url: str | None = None) -> tuple[str, str | None, str | None]:
     """Sends real WhatsApp or SMS message via Twilio REST API.
     Returns (status, provider_message_id, error_detail).
     """
@@ -400,13 +447,17 @@ async def _dispatch_twilio_message(*, channel: str, to_e164: str, body: str) -> 
     url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
     try:
         async with httpx.AsyncClient(timeout=10.0, auth=(account_sid, auth_token)) as client:
+            post_data = {
+                "From": from_param,
+                "To": to_param,
+                "Body": body,
+            }
+            if media_url and channel == "whatsapp":
+                post_data["MediaUrl"] = media_url
+
             response = await client.post(
                 url,
-                data={
-                    "From": from_param,
-                    "To": to_param,
-                    "Body": body,
-                },
+                data=post_data,
             )
             if response.status_code < 400:
                 data = response.json()
@@ -457,10 +508,11 @@ async def _run_send_message(db: AsyncSession, *, channel: str, workspace_id: uui
         raise ToolInputError(f"send_{channel} requires a contact_id")
     contact = await _get_workspace_contact(db, workspace_id=workspace_id, contact_id=contact_id)
     body = tool_input.get("body", "")
+    media_url = tool_input.get("media_url")
     now = datetime.now(UTC)
 
     msg_status, provider_msg_id, error_detail = await _dispatch_twilio_message(
-        channel=channel, to_e164=contact.phone_e164, body=body
+        channel=channel, to_e164=contact.phone_e164, body=body, media_url=media_url
     )
 
     message = Message(

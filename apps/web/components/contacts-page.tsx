@@ -24,7 +24,7 @@ import {
   useToast,
 } from "@jkr/ui";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ShieldOff, UserPlus } from "lucide-react";
+import { Download, ShieldOff, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useForm } from "react-hook-form";
@@ -209,12 +209,64 @@ export function ContactsPage({
   contacts: ContactOut[];
   suppressionEntries: SuppressionOut[];
 }) {
+  const { toast } = useToast();
+
+  const exportContactsCsv = () => {
+    if (contacts.length === 0) {
+      toast({ title: "No contacts to export", variant: "danger" });
+      return;
+    }
+    const headers = [
+      "Contact ID",
+      "Full Name",
+      "Phone (Masked)",
+      "Email",
+      "Lead Source",
+      "Preferred Language",
+      "Location",
+      "Consent Status",
+      "Suppressed",
+      "Created At",
+    ];
+    const rows = contacts.map((c) =>
+      [
+        `"${c.id}"`,
+        `"${(c.full_name || "").replace(/"/g, '""')}"`,
+        `"${c.phone_masked || ""}"`,
+        `"${c.email || ""}"`,
+        `"${(c.lead_source || "").replace(/"/g, '""')}"`,
+        `"${c.preferred_language || ""}"`,
+        `"${(c.location || "").replace(/"/g, '""')}"`,
+        `"${c.consent_status || "unknown"}"`,
+        `"${c.is_suppressed ? "Yes" : "No"}"`,
+        `"${c.created_at}"`,
+      ].join(",")
+    );
+
+    const csvContent = [headers.join(","), ...rows].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `contacts_leads_export_${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast({ title: "CSV Exported", description: `Exported ${contacts.length} contact(s) to CSV.`, variant: "success" });
+  };
+
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="lg:col-span-2">
-        <CardHeader>
-          <CardTitle>Contacts</CardTitle>
-          <CardDescription>{contacts.length} contact{contacts.length === 1 ? "" : "s"}. Consent gates every campaign dispatch.</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Contacts & Leads</CardTitle>
+            <CardDescription>{contacts.length} contact{contacts.length === 1 ? "" : "s"}. Consent gates every campaign dispatch.</CardDescription>
+          </div>
+          <Button size="sm" variant="outline" className="text-xs h-8" onClick={exportContactsCsv}>
+            <Download className="h-3.5 w-3.5 mr-1" /> Export CSV
+          </Button>
         </CardHeader>
         <CardContent>
           {contacts.length === 0 ? (

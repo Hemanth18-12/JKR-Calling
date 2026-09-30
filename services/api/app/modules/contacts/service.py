@@ -166,3 +166,40 @@ async def get_segment_contact_ids(db: AsyncSession, *, workspace_id: uuid.UUID, 
         select(SegmentMember.contact_id).where(SegmentMember.workspace_id == workspace_id, SegmentMember.segment_id == segment_id)
     )
     return [row[0] for row in result.all()]
+
+
+async def export_contacts_csv(db: AsyncSession, *, workspace_id: uuid.UUID) -> str:
+    import csv, io
+    contacts = await list_contacts(db, workspace_id=workspace_id)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Contact ID",
+        "Full Name",
+        "Phone (E.164)",
+        "Email",
+        "Lead Source",
+        "Preferred Language",
+        "Location",
+        "Consent Status",
+        "Suppressed",
+        "Conversion Status",
+        "Created At",
+    ])
+    for c in contacts:
+        created_str = c.created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if c.created_at else ""
+        writer.writerow([
+            str(c.id),
+            c.full_name or "",
+            c.phone_e164 or "",
+            c.email or "",
+            c.lead_source or "",
+            c.preferred_language or "",
+            c.location or "",
+            c.consent_status or "unknown",
+            "Yes" if c.is_suppressed else "No",
+            c.conversion_status or "lead",
+            created_str,
+        ])
+    return output.getvalue()
+
