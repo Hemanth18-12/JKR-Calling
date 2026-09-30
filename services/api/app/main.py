@@ -130,8 +130,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.get("/health")
 async def health() -> dict:
+    has_brevo = bool(os.getenv("BREVO_API_KEY"))
+    has_resend = bool(os.getenv("RESEND_API_KEY"))
+    provider = "brevo" if has_brevo else ("resend" if has_resend else "dev_fallback")
     return {
-        "status": "ok", "env": settings.app_env,
+        "status": "ok",
+        "env": settings.app_env,
+        "email_provider": provider,
+        "brevo_sender": os.getenv("BREVO_SENDER_EMAIL", "default"),
         "event_loop_lag_ms": event_loop_lag_monitor.current_lag_ms,
         "event_loop_max_lag_ms": event_loop_lag_monitor.max_lag_ms,
     }
