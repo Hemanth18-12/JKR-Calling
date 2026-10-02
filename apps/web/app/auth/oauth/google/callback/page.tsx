@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authApi, ApiClientError } from "@jkr/sdk";
 import { Zap, Loader2 } from "lucide-react";
 
-export default function GoogleOAuthCallbackPage() {
+function CallbackHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -66,5 +66,25 @@ export default function GoogleOAuthCallbackPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function GoogleOAuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[#FFA000] shadow-lg shadow-primary/30 mb-6">
+            <Zap className="h-6 w-6 text-black fill-black" />
+          </div>
+          <div className="flex flex-col items-center gap-3 text-center">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="text-sm font-medium text-foreground">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <CallbackHandler />
+    </Suspense>
   );
 }
