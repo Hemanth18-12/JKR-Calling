@@ -1,4 +1,6 @@
 import type {
+  GoogleOAuthCallbackRequest,
+  GoogleOAuthUrlResponse,
   LoginRequest,
   MeResponse,
   OtpRequiredResponse,
@@ -27,5 +29,9 @@ export const authApi = {
       method: "POST",
       body: { workspace_id: workspaceId },
     }),
+  getGoogleOAuthUrl: (opts?: ApiFetchOptions) =>
+    apiFetch<GoogleOAuthUrlResponse>("/auth/oauth/google/url", { ...opts, method: "GET" }),
+  googleOAuthCallback: (data: GoogleOAuthCallbackRequest, opts?: ApiFetchOptions) =>
+    apiFetch<UserOut>("/auth/oauth/google/callback", { ...opts, method: "POST", body: data }),
 };
 

@@ -26,29 +26,34 @@ _VALID_CONFIRMATION_RESPONSES = {"confirm", "reject", "correction"}
 
 
 def _mock_extract(*, customer_utterance: str, state: dict) -> ExtractionResult:
+    from jkr_conversation import objections
+    detected_objs = objections.detect_objections(customer_utterance)
+    is_objection = bool(detected_objs)
+
     awaiting_field = state.get("awaiting_field")
     extracted_fields: dict[str, str] = {}
     field_confidence: dict[str, float] = {}
-    if awaiting_field:
+    if awaiting_field and not is_objection:
         extracted_fields[awaiting_field] = customer_utterance
-        # Matches MockSTT's own "deliberately imperfect-looking" confidence
-        # philosophy (providers/mock.py) — not always 1.0, so downstream
-        # confidence-threshold logic has something real to react to.
         field_confidence[awaiting_field] = 0.6 if len(customer_utterance.strip()) > 2 else 0.4
 
-    detected_question = rag.looks_like_a_question(customer_utterance)
+    detected_question = rag.looks_like_a_question(customer_utterance) or (
+        is_objection and any(cat in (objections.CAT_PRICE, objections.CAT_NEED_VALUE, objections.CAT_HOW_IT_WORKS, objections.CAT_APPOINTMENT_DOUBTS) for cat in detected_objs)
+    )
     is_general_q = any(k in customer_utterance.lower() for k in ["hackathon", "what is mean", "who are you", "what are you", "weather", "meaning"])
     question_type = "general_knowledge" if is_general_q else "business_knowledge"
 
+    intent = "question" if detected_question else ("objection" if is_objection else "answer")
+
     return ExtractionResult(
-        turn_intent="question" if detected_question else "answer",
+        turn_intent=intent,
         extracted_fields=extracted_fields,
         field_confidence=field_confidence,
         uncertain_fields={},
         detected_question=detected_question,
         rewritten_query=customer_utterance if detected_question else None,
         question_type=question_type,
-        objection=None,
+        objection=", ".join(detected_objs) if detected_objs else None,
         wants_human=policy.detect_human_handoff(customer_utterance),
         wrong_number=policy.detect_wrong_number(customer_utterance),
         do_not_call=policy.detect_do_not_call(customer_utterance),

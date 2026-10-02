@@ -90,6 +90,18 @@ export const OtpRequiredResponse = z.object({
 });
 export type OtpRequiredResponse = z.infer<typeof OtpRequiredResponse>;
 
+export const GoogleOAuthUrlResponse = z.object({
+  url: z.string(),
+  enabled: z.boolean(),
+});
+export type GoogleOAuthUrlResponse = z.infer<typeof GoogleOAuthUrlResponse>;
+
+export const GoogleOAuthCallbackRequest = z.object({
+  code: z.string().min(1, "Authorization code is required"),
+  redirect_uri: z.string().optional(),
+});
+export type GoogleOAuthCallbackRequest = z.infer<typeof GoogleOAuthCallbackRequest>;
+
 export const ApiError = z.object({
   error: z.object({
     code: z.number(),

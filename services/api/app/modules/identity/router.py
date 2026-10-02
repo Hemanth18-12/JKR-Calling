@@ -14,6 +14,8 @@ from app.db import platform_db
 from app.deps import AuthContext, get_auth_context, user_db
 from app.modules.identity import service
 from app.modules.identity.schemas import (
+    GoogleOAuthCallbackRequest,
+    GoogleOAuthUrlResponse,
     LoginRequest,
     MeResponse,
     OtpRequiredResponse,
@@ -279,12 +281,86 @@ async def set_active_workspace(
     )
 
 
-@router.post("/oauth/google", status_code=501)
-async def oauth_google_stub(settings: Settings = Depends(get_settings)) -> dict:
-    # Inert until GOOGLE_CLIENT_ID/SECRET are configured — see
-    # docs/DECISIONS/0006-auth.md. Deliberately returns 501, not a redirect,
-    # so the frontend can distinguish "not configured" from a real OAuth error.
-    return {
-        "error": "google_oauth_not_configured",
-        "message": "Google login is not configured on this deployment.",
-    }
+@router.get("/oauth/google/url", response_model=GoogleOAuthUrlResponse)
+async def get_google_oauth_url_endpoint(
+    state: str | None = None,
+    settings: Settings = Depends(get_settings),
+) -> GoogleOAuthUrlResponse:
+    url, enabled = await service.get_google_oauth_url(settings=settings, state=state)
+    return GoogleOAuthUrlResponse(url=url, enabled=enabled)
+
+
+@router.post("/oauth/google/callback", response_model=UserOut)
+async def google_oauth_callback(
+    payload: GoogleOAuthCallbackRequest,
+    response: Response,
+    request: Request,
+    db: AsyncSession = Depends(platform_db),
+    settings: Settings = Depends(get_settings),
+) -> UserOut:
+    user = await service.authenticate_with_google(
+        db,
+        code=payload.code,
+        redirect_uri=payload.redirect_uri,
+        settings=settings,
+    )
+    _session, raw_token = await service.create_session(
+        db,
+        user=user,
+        settings=settings,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
+    _set_session_cookie(response, raw_token=raw_token, settings=settings)
+    return UserOut.model_validate(user)
+
+
+@router.get("/oauth/google/callback")
+async def google_oauth_browser_redirect(
+    request: Request,
+    response: Response,
+    code: str | None = None,
+    error: str | None = None,
+    db: AsyncSession = Depends(platform_db),
+    settings: Settings = Depends(get_settings),
+):
+    from fastapi.responses import RedirectResponse
+    base_app = settings.app_base_url.rstrip("/")
+    if error or not code:
+        logger.warning("[GOOGLE OAUTH] Browser callback reported error or cancelled: %s", error)
+        return RedirectResponse(url=f"{base_app}/login?error=google_oauth_cancelled", status_code=302)
+
+    try:
+        user = await service.authenticate_with_google(
+            db,
+            code=code,
+            redirect_uri=None,
+            settings=settings,
+        )
+        _session, raw_token = await service.create_session(
+            db,
+            user=user,
+            settings=settings,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host if request.client else None,
+        )
+        redirect_resp = RedirectResponse(url=f"{base_app}/app/dashboard", status_code=302)
+        _set_session_cookie(redirect_resp, raw_token=raw_token, settings=settings)
+        return redirect_resp
+    except Exception as exc:
+        logger.error("[GOOGLE OAUTH] Error processing redirect callback: %s", exc, exc_info=True)
+        return RedirectResponse(url=f"{base_app}/login?error=google_auth_failed", status_code=302)
+
+
+@router.post("/oauth/google", response_model=UserOut)
+async def oauth_google_legacy_endpoint(
+    payload: GoogleOAuthCallbackRequest,
+    response: Response,
+    request: Request,
+    db: AsyncSession = Depends(platform_db),
+    settings: Settings = Depends(get_settings),
+) -> UserOut:
+    return await google_oauth_callback(
+        payload=payload, response=response, request=request, db=db, settings=settings
+    )
+

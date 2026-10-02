@@ -18,6 +18,16 @@ from jkr_conversation import objectives
 
 TERMINAL_OBJECTIVE_STATUSES = {"completed", "needs_human", "do_not_call", "wrong_number", "declined"}
 
+READINESS_DISCOVERY = "DISCOVERY"
+READINESS_QUESTIONING = "QUESTIONING"
+READINESS_OBJECTION = "OBJECTION"
+READINESS_VALUE_ESTABLISHED = "VALUE_ESTABLISHED"
+READINESS_APPOINTMENT_OFFERED = "APPOINTMENT_OFFERED"
+READINESS_APPOINTMENT_PENDING = "APPOINTMENT_PENDING"
+READINESS_APPOINTMENT_CONFIRMED = "APPOINTMENT_CONFIRMED"
+READINESS_NOT_INTERESTED = "NOT_INTERESTED"
+READINESS_HANDOFF_REQUESTED = "HANDOFF_REQUESTED"
+
 
 def new_conversation_state(*, objective: str, language: str) -> dict:
     """Used by BOTH services/voice-worker's start_session and services/api's
@@ -53,6 +63,13 @@ def new_conversation_state(*, objective: str, language: str) -> dict:
         # at most one field pending confirmation at a time, mirroring the
         # existing single-target-field pattern already used by CLARIFY/ASK_FIELD.
         "pending_confirmation": None,
+        # Conversational representative state & objection tracking
+        "appointment_readiness": READINESS_DISCOVERY,
+        "active_objections": [],
+        "objections_handled": [],
+        "questions_asked": [],
+        "questions_answered": [],
+        "product_interest": "neutral",
     }
 
 

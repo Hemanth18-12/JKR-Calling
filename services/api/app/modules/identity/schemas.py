@@ -109,3 +109,13 @@ class MeResponse(BaseModel):
     memberships: list[WorkspaceMembershipOut]
     active_workspace_id: uuid.UUID | None
     google_oauth_enabled: bool
+
+
+class GoogleOAuthUrlResponse(BaseModel):
+    url: str
+    enabled: bool
+
+
+class GoogleOAuthCallbackRequest(BaseModel):
+    code: str
+    redirect_uri: str | None = None

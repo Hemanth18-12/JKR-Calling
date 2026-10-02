@@ -107,6 +107,17 @@ def decide(
             answer_question_first=answer_question_first, rag_query=rag_query, objection=extraction.objection,
         )
 
+    # 3c. Handle objections & concerns dynamically — before pushing appointment booking,
+    # the representative must understand, acknowledge, build trust, and demonstrate value.
+    if extraction.objection:
+        return PlannerDecision(
+            action="HANDLE_OBJECTION",
+            reason=f"objection_{extraction.objection}",
+            answer_question_first=answer_question_first,
+            rag_query=rag_query,
+            objection=extraction.objection,
+        )
+
     # 4. Ask the highest-priority still-missing required field, skipping any
     # that have already been asked past the cap without ever filling.
     askable_required = [f for f in compute_missing_required_fields(state) if field_ask_counts.get(f, 0) < MAX_ASKS_PER_FIELD]

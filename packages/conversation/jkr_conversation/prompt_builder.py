@@ -73,6 +73,12 @@ def _fallback_text(
         # fallback (no new template needed) rather than closing prematurely.
         return prefix.strip() or policy.fallback_text(kind="no_knowledge_match", language=language)
 
+    if decision.action == "HANDLE_OBJECTION":
+        from jkr_conversation import objections
+        primary_cat = (decision.objection or "").split(",")[0].strip()
+        spoken = objections.get_spoken_objection_fallback(primary_cat, language=language)
+        return (prefix + (" " if prefix and spoken else "") + spoken).strip()
+
     # COMPLETE_OBJECTIVE never reaches here — generate() always returns its
     # canned closing.build_closing_text(...) before _fallback_text is called.
     return prefix.strip() or policy.fallback_text(kind="no_knowledge_match", language=language)
@@ -174,6 +180,16 @@ def _build_prompt(
                 "Acknowledge that honestly and politely — say you don't have those specific details on hand and our team will confirm. "
                 "Do NOT say anything that signals the call is ending; keep the conversation flowing smoothly."
             )
+    elif decision.action == "HANDLE_OBJECTION":
+        from jkr_conversation import objections
+        detected_cats = [c.strip() for c in (decision.objection or "").split(",") if c.strip()]
+        guidance = objections.build_objection_guidance(detected_cats, language=language)
+        action_guidance = (
+            f"The customer raised this concern/objection: \"{decision.objection}\".\n"
+            f"OBJECTION GUIDANCE: {guidance}\n"
+            "Be empathetic, respectful, and helpful. Acknowledge their point naturally, answer using approved knowledge, "
+            "explain genuine value, and do NOT pressure them into an appointment prematurely."
+        )
 
     question_section = ""
     if extraction.turn_intent == "small_talk":
@@ -221,10 +237,13 @@ def _build_prompt(
         + (f"ACTION GUIDANCE\n{action_guidance}\n\n" if action_guidance else "")
         + "CONVERSATIONAL RULES & KNOWLEDGE GROUNDING\n"
         "1. Real understanding: Listen carefully to what the caller says. Respond intelligently, naturally, and contextually to their actual words.\n"
-        "2. General Knowledge & Chit-chat: If the caller asks a general knowledge question (e.g., 'what is a hackathon', 'what does this mean', definitions, technology, general facts), greets you, or makes small talk, answer directly, smartly, and warmly using your general knowledge. NEVER give a canned 'not sure / team will confirm' fallback for general knowledge questions or small talk.\n"
-        "3. Factual Grounding for Business: For business-specific claims (prices, operating hours, cancellation policies, doctor schedules, specific treatments), rely strictly on APPROVED KNOWLEDGE above. Never invent business facts not present in APPROVED KNOWLEDGE.\n"
-        "4. Business Knowledge Gaps: ONLY for specific company/clinic questions where no matching info exists in APPROVED KNOWLEDGE, politely say you don't have those specific details on hand and offer to have the team confirm with them.\n"
-        "5. Never claim a booking/order/payment is confirmed unless explicitly told it succeeded. Never re-ask for information already given in CUSTOMER STATE above.\n\n"
+        "2. Empathetic Representative: Be a polite, helpful, persuasive product/service representative — NEVER an aggressive appointment confirmation robot. First understand the customer, answer concerns, explain value, build trust, and handle objections. Only offer an appointment when value is established or the customer is ready.\n"
+        "3. Structured Objection Handling: If the customer asks about price, trust, doubts, competitor, timing, or needs time to discuss with family/team, address their exact concern with empathy and factual points from APPROVED KNOWLEDGE. Never push an appointment while they have unanswered concerns.\n"
+        "4. General Knowledge & Chit-chat: If the caller asks a general knowledge question (e.g., 'what is a hackathon', 'what does this mean', definitions, technology, general facts), greets you, or makes small talk, answer directly, smartly, and warmly using your general knowledge. NEVER give a canned 'not sure / team will confirm' fallback for general knowledge questions or small talk.\n"
+        "5. Factual Grounding for Business: For business-specific claims (prices, operating hours, cancellation policies, doctor schedules, specific treatments), rely strictly on APPROVED KNOWLEDGE above. Never invent business facts, discounts, or guarantees not present in APPROVED KNOWLEDGE.\n"
+        "6. Business Knowledge Gaps: ONLY for specific company/clinic questions where no matching info exists in APPROVED KNOWLEDGE, politely say you don't have those specific details on hand and offer to have the team confirm with them.\n"
+        "7. Spoken Natural Sentences: Use short spoken sentences suitable for a live phone call. Avoid robotic repetition. Never repeat 'Can I book your appointment?' after objections.\n"
+        "8. Never claim a booking/order/payment is confirmed unless explicitly told it succeeded. Never re-ask for information already given in CUSTOMER STATE above.\n\n"
         "SPEECH STYLE\n"
         f"Spoken dialogue ({response_length}): one or two short sentences, like a real phone conversation — not a written essay. "
         "No markdown, no bullets, no lists, no headers, no emojis. "
@@ -262,7 +281,7 @@ def _build_prompt(
 # actually responding to; reusing the already-correct canned templates for
 # the decision the real planner made avoids a second, competing source of
 # "what should happen next" truth. See docs/CONVERSATION_ENGINE_LATENCY_AUDIT.md §4.
-_FAST_RESPONSE_ELIGIBLE_ACTIONS = {"ASK_FIELD", "CLARIFY", "CONFIRM_FIELD", "DEFER_QUESTION"}
+_FAST_RESPONSE_ELIGIBLE_ACTIONS = {"ASK_FIELD", "CLARIFY", "CONFIRM_FIELD", "DEFER_QUESTION", "HANDLE_OBJECTION"}
 
 
 async def generate(

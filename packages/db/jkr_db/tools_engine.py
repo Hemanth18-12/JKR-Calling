@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jkr_db.models.agents import AgentTool, ToolDefinition
 from jkr_db.models.contacts import Contact, ContactTag
 from jkr_db.models.knowledge import KnowledgeChunk, RetrievalEvent
+from jkr_db.models.tenancy import Workspace
 from jkr_db.models.tools import Appointment, FollowUpTask, HumanHandoff, Message, ToolExecution
 
 REAL_SIDE_EFFECT_TOOLS = {
@@ -246,6 +247,37 @@ async def _run_book_appointment(
     contact = await _get_workspace_contact(db, workspace_id=workspace_id, contact_id=contact_id)
     scheduled_for = parse_fuzzy_datetime(tool_input.get("preferred_date"), tool_input.get("preferred_time"))
     location = tool_input.get("location") or "Aaha Dental Care, Road No. 12, Banjara Hills, Hyderabad"
+
+    # Idempotency check: if an appointment for this call session is already booked, return it
+    if call_session_id is not None:
+        existing_res = await db.execute(
+            select(Appointment).where(
+                Appointment.workspace_id == workspace_id,
+                Appointment.call_session_id == call_session_id,
+                Appointment.status == "scheduled",
+            ).limit(1)
+        )
+        existing_appt = existing_res.scalar_one_or_none()
+        if existing_appt is not None:
+            return {
+                "appointment_id": str(existing_appt.id),
+                "scheduled_for": existing_appt.scheduled_for.isoformat(),
+                "location": existing_appt.location,
+                "status": "already_scheduled",
+                "idempotent": True,
+            }
+
+    # Slot conflict protection: avoid direct collision
+    conflict_check = await db.execute(
+        select(Appointment).where(
+            Appointment.workspace_id == workspace_id,
+            Appointment.scheduled_for == scheduled_for,
+            Appointment.status == "scheduled",
+        ).limit(1)
+    )
+    if conflict_check.scalar_one_or_none() is not None:
+        scheduled_for = scheduled_for + timedelta(minutes=30)
+
     appointment = Appointment(
         workspace_id=workspace_id, contact_id=contact_id, call_session_id=call_session_id,
         scheduled_for=scheduled_for, duration_minutes=30, status="scheduled",
@@ -254,6 +286,12 @@ async def _run_book_appointment(
     )
     db.add(appointment)
     await db.flush()
+
+    # Workspace configuration for branding and timezone
+    ws_res = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+    workspace = ws_res.scalar_one_or_none()
+    company_name = workspace.name if workspace else "Our Team"
+    tz_str = workspace.timezone if workspace else "Asia/Kolkata"
 
     # --- Sync to Google Calendar if connected ---
     gcal_info = None
@@ -366,6 +404,41 @@ async def _run_book_appointment(
     except Exception as exc:
         logger.warning("Failed to generate .ics calendar invite: %s", exc)
 
+    # --- Trigger WhatsApp Confirmation Notification ---
+    whatsapp_info = None
+    try:
+        formatted_date = scheduled_for.strftime("%B %d, %Y")
+        formatted_time = scheduled_for.strftime("%I:%M %p")
+        whatsapp_body = (
+            f"Your appointment has been confirmed.\n"
+            f"Date: {formatted_date}\n"
+            f"Time: {formatted_time}\n"
+            f"Timezone: {tz_str}\n"
+            f"We look forward to speaking with you.\n"
+            f"{company_name}"
+        )
+        # Idempotency check: prevent duplicate WhatsApp confirmations
+        existing_msg = await db.execute(
+            select(Message).where(
+                Message.workspace_id == workspace_id,
+                Message.contact_id == contact_id,
+                Message.channel == "whatsapp",
+                Message.body == whatsapp_body,
+            ).limit(1)
+        )
+        if existing_msg.scalar_one_or_none() is None:
+            whatsapp_info = await _run_send_message(
+                db,
+                channel="whatsapp",
+                workspace_id=workspace_id,
+                contact_id=contact_id,
+                tool_input={"body": whatsapp_body},
+            )
+        else:
+            whatsapp_info = {"status": "already_sent", "idempotent": True}
+    except Exception as exc:
+        logger.warning("WhatsApp appointment confirmation dispatch failed: %s", exc)
+
     res = {
         "appointment_id": str(appointment.id),
         "scheduled_for": scheduled_for.isoformat(),
@@ -377,6 +450,8 @@ async def _run_book_appointment(
         res["google_calendar"] = gcal_info
     if gsheet_info:
         res["google_sheets"] = gsheet_info
+    if whatsapp_info:
+        res["whatsapp"] = whatsapp_info
     return res
 
 

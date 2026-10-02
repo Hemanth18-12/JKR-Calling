@@ -227,6 +227,44 @@ async def create_appointment(
     except Exception as exc:
         logger.warning("Google Calendar 1-tap link generation failed: %s", exc)
 
+    # --- Trigger WhatsApp Confirmation Notification ---
+    try:
+        from jkr_db.models.tenancy import Workspace
+        from jkr_db.models.tools import Message
+        from jkr_db.tools_engine import _run_send_message
+        ws_res = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
+        workspace = ws_res.scalar_one_or_none()
+        company_name = workspace.name if workspace else "Our Team"
+        tz_str = workspace.timezone if workspace else "Asia/Kolkata"
+        formatted_date = scheduled_for.strftime("%B %d, %Y")
+        formatted_time = scheduled_for.strftime("%I:%M %p")
+        whatsapp_body = (
+            f"Your appointment has been confirmed.\n"
+            f"Date: {formatted_date}\n"
+            f"Time: {formatted_time}\n"
+            f"Timezone: {tz_str}\n"
+            f"We look forward to speaking with you.\n"
+            f"{company_name}"
+        )
+        existing_msg = await db.execute(
+            select(Message).where(
+                Message.workspace_id == workspace_id,
+                Message.contact_id == contact_id,
+                Message.channel == "whatsapp",
+                Message.body == whatsapp_body,
+            ).limit(1)
+        )
+        if existing_msg.scalar_one_or_none() is None:
+            await _run_send_message(
+                db,
+                channel="whatsapp",
+                workspace_id=workspace_id,
+                contact_id=contact_id,
+                tool_input={"body": whatsapp_body},
+            )
+    except Exception as exc:
+        logger.warning("WhatsApp appointment confirmation dispatch failed: %s", exc)
+
     contact_name = contact.full_name if contact else (customer_name or "Customer")
     return {
         "id": appointment.id,

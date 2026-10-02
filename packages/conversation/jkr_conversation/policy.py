@@ -131,6 +131,10 @@ def is_acknowledgement_only(text: str, *, phrases: list[str]) -> bool:
 
 def detect_appointment_confirmation(text: str) -> bool:
     lowered = text.strip().lower()
+    # Guard against false positives: if the caller is asking a question or raising doubts about the appointment, don't confirm
+    question_markers = ["?", "why", "what", "how", "when", "cost", "price", "doubt", "nammavacha", "jaruguthundi", "kya hoga", "not sure"]
+    if any(q in lowered for q in question_markers):
+        return False
     return any(trigger in lowered for trigger in APPOINTMENT_CONFIRMATION_TRIGGERS)
 
 

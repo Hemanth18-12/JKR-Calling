@@ -346,6 +346,17 @@ async def process_turn(
         new_state["awaiting_field"] = None
         new_state["objective_status"] = "needs_human"
         new_state["next_best_action"] = "human_handoff"
+    elif decision.action == "HANDLE_OBJECTION":
+        new_state["awaiting_field"] = None
+        new_state["appointment_readiness"] = "OBJECTION"
+        new_state["next_best_action"] = "handle_objection"
+        if extraction.objection:
+            active_objs = list(new_state.get("active_objections", []))
+            for obj in extraction.objection.split(","):
+                o = obj.strip()
+                if o and o not in active_objs:
+                    active_objs.append(o)
+            new_state["active_objections"] = active_objs
     elif decision.action == "CLARIFY":
         new_state["awaiting_field"] = decision.target_field
         new_state["next_best_action"] = "clarify"
@@ -356,12 +367,15 @@ async def process_turn(
         new_state["awaiting_field"] = decision.target_field
         new_state["asked_count"] = new_state.get("asked_count", 0) + 1
         new_state["next_best_action"] = "ask_question"
+        if new_state.get("appointment_readiness") in ("DISCOVERY", "VALUE_ESTABLISHED"):
+            new_state["appointment_readiness"] = "APPOINTMENT_PENDING"
     elif decision.action == "DEFER_QUESTION":
         new_state["awaiting_field"] = None
         new_state["next_best_action"] = "defer_question"
     elif decision.action == "COMPLETE_OBJECTIVE":
         new_state["awaiting_field"] = None
         new_state["objective_status"] = "completed"
+        new_state["appointment_readiness"] = "APPOINTMENT_CONFIRMED"
         new_state["next_best_action"] = "close_conversation"
 
     # Ask-cap exhaustion safety net: a pending confirmation still unresolved
