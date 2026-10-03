@@ -17,8 +17,10 @@ from jkr_conversation.schemas import ExtractionResult
 
 DO_NOT_CALL_TRIGGERS = [
     "do not call", "don't call", "do not call again", "stop calling", "never call",
-    "నాకు వద్దు", "call చేయకండి", "మళ్ళీ కాల్ చేయకండి", "malli call cheyyakandi",
-    "मत करो कॉल", "दोबारा कॉल मत करना", "कॉल मत करना",
+    "remove my number", "delete my number", "remove number", "take me off", "take off your list",
+    "remove me from", "unsubscribe", "dnc", "do not contact",
+    "నాకు వద్దు", "call చేయకండి", "మళ్ళీ కాల్ చేయకండి", "malli call cheyyakandi", "నంబర్ తీసేయండి", "నెంబర్ తీసేయండి",
+    "मत करो कॉल", "दोबारा कॉल मत करना", "कॉल मत करना", "नंबर हटा दो", "लिस्ट से हटाओ", "नंबर डिलीट करो",
 ]
 
 WRONG_NUMBER_TRIGGERS = [

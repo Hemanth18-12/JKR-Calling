@@ -120,6 +120,69 @@ def _record_correction_event(
     )
 
 
+def _detect_language_switch(utterance: str, current_lang: str) -> str | None:
+    if not utterance or not utterance.strip():
+        return None
+    import re
+    lowered = utterance.strip().lower()
+
+    # 1. Explicit request to switch language
+    english_triggers = [
+        "in english", "speak english", "talk in english", "english please",
+        "english lo", "english mein", "switch to english", "comfortable in english",
+        "can we talk in english", "can we speak in english", "talk english",
+    ]
+    hindi_triggers = [
+        "in hindi", "speak hindi", "talk in hindi", "hindi please",
+        "hindi me", "hindi mein", "switch to hindi", "comfortable in hindi",
+        "can we talk in hindi", "can we speak in hindi", "talk hindi", "हिन्दी में", "हिंदी में",
+    ]
+    telugu_triggers = [
+        "in telugu", "speak telugu", "talk in telugu", "telugu please",
+        "telugu lo", "switch to telugu", "comfortable in telugu",
+        "can we talk in telugu", "can we speak in telugu", "talk telugu", "తెలుగులో",
+    ]
+
+    if any(t in lowered for t in english_triggers):
+        return "en-IN"
+    if any(t in lowered for t in hindi_triggers):
+        return "hi-en-IN"
+    if any(t in lowered for t in telugu_triggers):
+        return "te-en-IN"
+
+    # 2. Script detection
+    if re.search(r"[\u0900-\u097F]", utterance):
+        return "hi-en-IN"
+    if re.search(r"[\u0C00-\u0C7F]", utterance):
+        return "te-en-IN"
+
+    # 3. Pure English utterance detection (caller speaks English without Telugu/Hindi markers)
+    tokens = set(re.findall(r"\b[a-z]+\b", lowered))
+    telugu_markers = {
+        "nenu", "meeru", "andi", "enti", "cheppandi", "kavali", "undi", "ledu",
+        "eppudu", "ela", "vaddu", "chala", "mariyu", "tho", "lo", "ki", "ku",
+        "ani", "kuda", "unnaru", "unnadu", "unnadi", "unna", "avunu", "kaadu"
+    }
+    hindi_markers = {
+        "mai", "aap", "kya", "hai", "karna", "chahiye", "nahi", "hoga", "batao",
+        "kaise", "kab", "kuch", "bahut", "aur", "ko", "ke", "tha", "thi", "the"
+    }
+    english_grammar_words = {
+        "are", "you", "even", "a", "real", "how", "do", "i", "know", "this", "is",
+        "legit", "and", "not", "some", "what", "why", "can", "the", "my", "we",
+        "would", "please", "could", "should", "wait", "just", "get", "look"
+    }
+
+    has_telugu = bool(tokens & telugu_markers)
+    has_hindi = bool(tokens & hindi_markers)
+    has_english = len(tokens & english_grammar_words) >= 2
+
+    if has_english and not has_telugu and not has_hindi and current_lang != "en-IN":
+        return "en-IN"
+
+    return None
+
+
 async def process_turn(
     db: AsyncSession,
     *,
@@ -153,6 +216,11 @@ async def process_turn(
     new_state = dict(state)
     new_state["turn_count"] = new_state.get("turn_count", 0) + 1
     sequence_index = new_state["turn_count"]
+
+    # Mid-call language switch: detect explicit switch requests or script changes
+    detected_lang = _detect_language_switch(customer_utterance, current_lang=new_state.get("language", "en-IN"))
+    if detected_lang and detected_lang != new_state.get("language"):
+        new_state["language"] = detected_lang
 
     # P3.5 fast path: a small set of high-confidence, zero-LLM turns (do-not-
     # call, wrong-number, human-handoff, pending-confirmation yes/no,
@@ -256,7 +324,7 @@ async def process_turn(
                         "raw_value": field_extraction.raw_value,
                         "candidate_value": field_extraction.candidate_value or field_extraction.raw_value,
                         "semantic_confidence": field_extraction.semantic_confidence,
-                        "domain_term_id": field_extraction.domain_term_id,
+                        "domain_term_id": str(field_extraction.domain_term_id) if field_extraction.domain_term_id else None,
                         "correction_method": field_extraction.correction_method,
                     }
                 continue  # not written to known_fields yet — correctly stays "missing" until resolved

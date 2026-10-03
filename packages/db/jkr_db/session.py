@@ -103,13 +103,14 @@ def get_engine() -> AsyncEngine:
 
         engine_kwargs: dict[str, Any] = {
             "pool_pre_ping": True,
+            "pool_recycle": 60,
             "pool_size": 10,
             "max_overflow": 10,
             "echo": bool(os.environ.get("SQL_ECHO")),
         }
         if "asyncpg" in database_url:
-            connect_timeout = float(os.environ.get("DB_CONNECT_TIMEOUT", "30.0"))
-            command_timeout = float(os.environ.get("DB_COMMAND_TIMEOUT", "30.0"))
+            connect_timeout = float(os.environ.get("DB_CONNECT_TIMEOUT", "15.0"))
+            command_timeout = float(os.environ.get("DB_COMMAND_TIMEOUT", "15.0"))
             engine_kwargs["connect_args"] = {
                 "timeout": connect_timeout,
                 "command_timeout": command_timeout,

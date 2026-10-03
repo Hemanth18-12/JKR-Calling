@@ -51,6 +51,16 @@ _stt = MockSTT()
 _tts = MockTTS()
 
 
+def _make_json_safe(obj: Any) -> Any:
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_make_json_safe(v) for v in obj]
+    return obj
+
+
 def _policy_snapshot(policy: ConversationPolicy | None) -> ConversationPolicySnapshot:
     if policy is None:
         return ConversationPolicySnapshot()
@@ -443,7 +453,7 @@ async def submit_user_turn(
         estimated_duration_ms=estimate_speaking_duration_ms(result.reply_text),
     )
 
-    call_session.state = state
+    call_session.state = _make_json_safe(state)
     await db.flush()
 
     return UserTurnOut(
@@ -529,12 +539,15 @@ async def end_session(db: AsyncSession, *, workspace_id: uuid.UUID, call_id: uui
     except Exception:
         pass
 
-    # Off the request path — a slow/failed pipeline run must never delay
-    # "call ended" from reaching the caller. Enqueued here (not by whichever
-    # service asked us to end the call) so it fires identically whether a
-    # human ended it via services/api's Test Lab proxy or campaign-worker's
-    # dialer ended it directly — see services/intelligence-worker/app/pipeline.py.
-    enqueue("run_post_call_pipeline", args=(str(call_id), str(workspace_id)), queue_name="intelligence")
+    try:
+        import asyncio
+        loop = asyncio.get_running_loop()
+        loop.run_in_executor(
+            None,
+            lambda: enqueue("run_post_call_pipeline", args=(str(call_id), str(workspace_id)), queue_name="intelligence")
+        )
+    except Exception:
+        pass
 
     return {"call_id": call_id, "status": call_session.status, "outcome_category": category, "lead_score": lead_score}
 

@@ -1,0 +1,390 @@
+[
+  {
+    "id": 1,
+    "name": "Price question",
+    "description": "Caller asks how much a treatment costs ('How much does teeth cleaning cost?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "Hi, how much does teeth cleaning cost at your clinic?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "Hello! Teeth cleaning and scaling costs 800 rupees at our clinic. Do you need to book an appointment for this service?"
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Trust/skepticism",
+    "description": "Caller is skeptical ('Are you even a real AI? How do I know this is legit?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "Wait, are you even a real AI? How do I know this is legit and not some scam?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "I understand your concern! I assure you, I’m a real AI assistant here to help you with Aaha Dental Care. How can I assist you today?"
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "name": "Comparison",
+    "description": "Caller compares with competitors ('Why should I choose you over Apollo Dental?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "Why should I choose Aaha Dental Care over other clinics like Apollo Dental?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "Aaha Dental Care stands out because we focus on personalized care and a warm, welcoming environment. Our experienced team is dedicated to providing you with the best dental solutions tailored to your needs. Now, may I ask what specific treatment or service you’re looking for?"
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "name": "Scheduling conflict",
+    "description": "Caller has a conflict ('I'm busy that day, can we do a different time?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "I'm really busy on that day, can we do a different time or later this weekend?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "I completely understand! We can definitely reschedule for a different time later this weekend. Could you please let me know what the appointment is for?"
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "name": "Request for a human",
+    "description": "Caller asks to speak to a real person ('Can I just talk to a real person?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "Can I just talk to a real person please? Connect me to a human."
+      },
+      {
+        "speaker": "Agent",
+        "text": "Sure, let me connect you with a member of our team — one moment."
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "name": "Confusion / repeat request",
+    "description": "Caller asks to repeat ('Sorry, what did you say? Can you repeat that?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "Sorry, what did you say? The line broke up a bit, can you repeat that?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "Oh, no problem! I was just saying that I'm here to help you book an appointment. Can you please let me know what the appointment is for?"
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "name": "Off-topic tangent",
+    "description": "Caller makes small talk / off-topic tangent ('It is so hot today, do you think it will rain?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "It is so hot outside today in Hyderabad, do you think it is going to rain?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "I can imagine! The heat can be quite intense. Hopefully, a cool breeze or some rain will come soon."
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "name": "Mid-call language switch",
+    "description": "Caller starts in Telugu, switches to English or Hindi partway through",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "నమస్కారం అండి, డాక్టర్ గారు ఎప్పుడు ఉంటారు?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం! డాక్టర్ గారు ప్రస్తుతానికి అందుబాటులో ఉన్నారు, కానీ ముందుగా అపాయింట్మెంట్ తీసుకోవడం మంచిది. మీ సందర్శనకు ఏం కావాలనే చెప్పగలరా?"
+      },
+      {
+        "speaker": "Caller",
+        "text": "Actually, can we talk in English please? I am more comfortable in English."
+      },
+      {
+        "speaker": "Agent",
+        "text": "Of course! We can continue in English. How can I assist you today?"
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "name": "Impatience",
+    "description": "Caller is impatient ('Just get to the point, what do you want?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "Look, just get to the point, what do you want from me?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "Naku mīru Aaha Dental Care lo appointment book cheyyālaṇṭe cēsāṇi. Mīku dental care gurinchi inka emaina samasya unte, nēnu mīku sahāyam cheyālāṇṭe ikada unnānu."
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "name": "Hesitation/indecision",
+    "description": "Caller is hesitant ('Let me think about it, I'm not sure')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "Let me think about it, I'm really not sure right now."
+      },
+      {
+        "speaker": "Agent",
+        "text": "I completely understand your hesitation. It's important to feel comfortable before making a decision. If you have any questions or need more information, I'm here to help!"
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "name": "Annoyance",
+    "description": "Caller is irritated about being called ('Why are you calling me? I didn't ask for this')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "Why are you calling me? Who gave you my number? I'm busy and this is annoying."
+      },
+      {
+        "speaker": "Agent",
+        "text": "I understand this call might be unexpected, and I'm really sorry for the inconvenience. We often reach out to people who have shown interest in dental care services. If you’d like, I can provide more information or help with any questions you might have."
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "name": "Opt-out request",
+    "description": "Caller wants to opt out ('Stop calling me, remove my number')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "Stop calling me, remove my number from your database immediately."
+      },
+      {
+        "speaker": "Agent",
+        "text": "సరే అండి, మిమ్మల్ని మళ్ళీ కాల్ చేయము. ఇబ్బంది కలిగించినందుకు క్షమించండి."
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "name": "Business-specific question",
+    "description": "Caller asks concrete business question ('What are your clinic working hours and are you open on Sundays?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "What are your clinic working hours, and are you open on Sundays?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "We are open Monday to Saturday from 9 AM to 8 PM, and we are closed on Sundays. May I know what the appointment is for?"
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "name": "Personal question to the AI",
+    "description": "Caller asks personal question ('What's your name? Are you human? Do you have feelings?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "What is your name? Are you a human or a robot? Do you have feelings?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "I'm Aaha Dental Care's AI assistant, and I'm here to help you! I’m not human, so I don’t have feelings, but I’m designed to provide you with friendly and helpful support. What can I assist you with today?"
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "name": "Negotiation/discount request",
+    "description": "Caller asks for lower price or special deal ('Can you give me a discount or special deal?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "That sounds a bit steep, can you give me a discount or a special deal on root canal?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "I understand that the cost might seem high. Currently, we don’t have specific discounts on root canal treatments. The price varies from 3000 to 8000 rupees depending on the tooth affected."
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "name": "Barge-in",
+    "description": "Caller interrupts agent mid-flow with new question ('Wait wait, hold on, what is your emergency number?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "Wait wait, hold on! Quick question, what is your emergency contact number?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "Our emergency contact number is typically the same as the clinic's main number, which you can find on our website. How can I assist you further today? What would you like to book an appointment for?"
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "name": "Reschedule request",
+    "description": "Caller wants to reschedule an existing appointment",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "I have an appointment booked with Dr. Sneha tomorrow, but something came up and I need to reschedule it to next week."
+      },
+      {
+        "speaker": "Agent",
+        "text": "No problem at all! I can help you reschedule your appointment with Doctor Sneha to next week. Could you please let me know your preferred date and time?"
+      }
+    ]
+  },
+  {
+    "id": 18,
+    "name": "Cancellation request",
+    "description": "Caller wants to cancel an appointment",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "I want to cancel my dental consultation appointment. I won't be able to make it."
+      },
+      {
+        "speaker": "Agent",
+        "text": "I understand, and I’ll make sure to note your cancellation. Is there anything else I can assist you with today, or would you like to reschedule for a different date?"
+      }
+    ]
+  },
+  {
+    "id": 19,
+    "name": "Out-of-knowledge-base question",
+    "description": "Caller asks question outside knowledge base ('Do you perform robotic laser heart surgery?')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "Do you perform robotic laser cardiac bypass surgery at your clinic?"
+      },
+      {
+        "speaker": "Agent",
+        "text": "I'm sorry, but we don't perform robotic laser cardiac bypass surgery at our clinic. We specialize in dental care. May I know what type of dental treatment or service you're looking for?"
+      }
+    ]
+  },
+  {
+    "id": 20,
+    "name": "Genuine disinterest",
+    "description": "Caller politely declines ('No thank you, I am really not interested. Have a good day.')",
+    "transcript": [
+      {
+        "speaker": "Agent",
+        "text": "నమస్కారం, నేను Aaha Dental Care తరఫున మాట్లాడుతున్న AI assistant ని. దయచేసి appointment confirmed అని చెప్పండి."
+      },
+      {
+        "speaker": "Caller",
+        "text": "No thank you, I am really not interested in dental services right now. Have a nice day."
+      },
+      {
+        "speaker": "Agent",
+        "text": "Thank you for your time! If you ever need dental services in the future, feel free to reach out. Have a wonderful day!"
+      }
+    ]
+  }
+]
