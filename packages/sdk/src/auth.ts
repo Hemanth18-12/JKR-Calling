@@ -29,8 +29,13 @@ export const authApi = {
       method: "POST",
       body: { workspace_id: workspaceId },
     }),
-  getGoogleOAuthUrl: (opts?: ApiFetchOptions) =>
-    apiFetch<GoogleOAuthUrlResponse>("/auth/oauth/google/url", { ...opts, method: "GET" }),
+  getGoogleOAuthUrl: (params?: { redirect_uri?: string; state?: string }, opts?: ApiFetchOptions) => {
+    const query = new URLSearchParams();
+    if (params?.redirect_uri) query.set("redirect_uri", params.redirect_uri);
+    if (params?.state) query.set("state", params.state);
+    const qs = query.toString() ? `?${query.toString()}` : "";
+    return apiFetch<GoogleOAuthUrlResponse>(`/auth/oauth/google/url${qs}`, { ...opts, method: "GET" });
+  },
   googleOAuthCallback: (data: GoogleOAuthCallbackRequest, opts?: ApiFetchOptions) =>
     apiFetch<UserOut>("/auth/oauth/google/callback", { ...opts, method: "POST", body: data }),
 };

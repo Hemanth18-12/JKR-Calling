@@ -22,7 +22,8 @@ function CallbackHandler() {
     let isMounted = true;
     const processOAuth = async () => {
       try {
-        await authApi.googleOAuthCallback({ code });
+        const redirectUri = window.location.origin + "/auth/oauth/google/callback";
+        await authApi.googleOAuthCallback({ code, redirect_uri: redirectUri });
         if (isMounted) {
           window.location.href = "/app/dashboard";
         }

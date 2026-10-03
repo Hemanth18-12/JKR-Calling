@@ -325,13 +325,21 @@ async def list_memberships(db: AsyncSession, *, user_id: uuid.UUID) -> list[dict
     ]
 
 
-async def get_google_oauth_url(settings: Settings, state: str | None = None) -> tuple[str, bool]:
+async def get_google_oauth_url(
+    settings: Settings,
+    state: str | None = None,
+    redirect_uri: str | None = None,
+) -> tuple[str, bool]:
     import urllib.parse
     enabled = bool(settings.google_client_id and settings.google_client_secret)
-    redirect_uri = settings.google_oauth_redirect_uri or f"{settings.app_base_url}/auth/oauth/google/callback"
+    effective_redirect = (
+        redirect_uri
+        or settings.google_oauth_redirect_uri
+        or f"{settings.app_base_url}/auth/oauth/google/callback"
+    )
     params = {
         "client_id": settings.google_client_id or "demo-google-client-id",
-        "redirect_uri": redirect_uri,
+        "redirect_uri": effective_redirect,
         "response_type": "code",
         "scope": "openid email profile",
         "access_type": "offline",
@@ -367,8 +375,8 @@ async def authenticate_with_google(
     full_name: str | None = None
 
     if is_demo_code or not has_live_creds:
-        if is_demo_code and "@" in clean_code:
-            email = clean_code.replace("demo_", "").lower()
+        if "@" in clean_code:
+            email = clean_code.replace("demo_", "").strip().lower()
             full_name = email.split("@")[0].replace(".", " ").title()
         else:
             email = "demo.google.user@jkr.ai"
@@ -409,7 +417,11 @@ async def authenticate_with_google(
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Failed to retrieve Google profile information.")
             userinfo = userinfo_resp.json()
             email = userinfo.get("email")
-            full_name = userinfo.get("name") or userinfo.get("given_name") or "Google User"
+            full_name = (
+                userinfo.get("name")
+                or userinfo.get("given_name")
+                or (email.split("@")[0].replace(".", " ").title() if email else "User")
+            )
 
     if not email:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No email address returned from Google.")

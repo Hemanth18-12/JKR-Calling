@@ -284,9 +284,12 @@ async def set_active_workspace(
 @router.get("/oauth/google/url", response_model=GoogleOAuthUrlResponse)
 async def get_google_oauth_url_endpoint(
     state: str | None = None,
+    redirect_uri: str | None = None,
     settings: Settings = Depends(get_settings),
 ) -> GoogleOAuthUrlResponse:
-    url, enabled = await service.get_google_oauth_url(settings=settings, state=state)
+    url, enabled = await service.get_google_oauth_url(
+        settings=settings, state=state, redirect_uri=redirect_uri
+    )
     return GoogleOAuthUrlResponse(url=url, enabled=enabled)
 
 
