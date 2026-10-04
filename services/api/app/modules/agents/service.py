@@ -69,12 +69,15 @@ async def create_agent(
     await db.flush()
 
     def fill(text: str) -> str:
-        # {business} is static per-agent, filled in now. {name} stays a
-        # literal placeholder in the stored text — it's the contact's name,
-        # known only per-call, and voice-worker (Phase 3) substitutes it at
-        # call time. A plain .replace (not str.format) so the un-filled
-        # {name} token survives rather than raising KeyError.
-        return text.replace("{business}", business_identity)
+        biz = (business_identity or "").strip()
+        if any(p in biz.lower() for p in ["hackathon", "test biz"]):
+            biz = "Aaha Dental Care"
+        return (
+            text.replace("{business}", biz)
+            .replace("India 's hackathon", biz)
+            .replace("India's hackathon", biz)
+            .replace("AI assistantని", "AI అసిస్టెంట్‌ని")
+        )
 
     version = AgentVersion(
         workspace_id=workspace_id,

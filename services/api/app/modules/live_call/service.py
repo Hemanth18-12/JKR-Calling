@@ -337,14 +337,17 @@ async def start_live_test_call(
     # lives for one transaction, so manually committing the request-scoped
     # session mid-request would silently drop RLS on whatever runs after —
     # every fresh workspace_scoped_session sets it up correctly on its own.
+    biz_name = (agent.business_identity or "").strip()
+    if not biz_name or any(p in biz_name.lower() for p in ["hackathon", "test biz", "original name"]):
+        biz_name = "Aaha Dental Care"
+
     conversation_state = new_conversation_state(objective=version.primary_objective, language=language_code)
     conversation_state["live_real_call"] = True
-    conversation_state["business_identity"] = agent.business_identity
+    conversation_state["business_identity"] = biz_name
     conversation_state["customer_name"] = "Customer"
     conversation_state["service_name"] = "appointment and consultation"
     conversation_state["calling_reason"] = (
-        f"following up regarding your inquiry with {agent.business_identity} to confirm your appointment"
-        if agent.business_identity else "following up regarding your appointment request"
+        f"following up regarding your inquiry with {biz_name} to confirm your appointment"
     )
 
     async with workspace_scoped_session(workspace_id) as write_db:
@@ -383,7 +386,9 @@ async def start_live_test_call(
         )
         write_db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session_id, event_type="call_started", payload={"live_real_call": True}))
 
-    biz_name = (agent.business_identity or "").strip() or "Aaha Dental Care"
+    biz_name = (agent.business_identity or "").strip()
+    if not biz_name or any(p in biz_name.lower() for p in ["hackathon", "test biz", "original name"]):
+        biz_name = "Aaha Dental Care"
     service_name = "అపాయింట్‌మెంట్"
     greeting_body = (
         version.greeting_text.replace("{name} ", "").replace("{name}", "")
@@ -450,7 +455,7 @@ async def start_live_test_call(
         "call_session_id": str(call_session_id),
         "closing_text": version.closing_text,
         "language_code": language_code,
-        "business_identity": agent.business_identity,
+        "business_identity": biz_name,
         "customer_name": conversation_state["customer_name"],
         "customer_phone": to_e164,
         "service_name": conversation_state["service_name"],

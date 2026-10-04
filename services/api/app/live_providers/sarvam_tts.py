@@ -47,7 +47,7 @@ async def _fallback_synthesize_openai(*, text: str) -> bytes | None:
 
 
 class SarvamTTS:
-    def __init__(self, *, api_key: str, speaker: str = "kavitha", model: str = "bulbul:v3", pace: float = 0.9):
+    def __init__(self, *, api_key: str, speaker: str = "kavitha", model: str = "bulbul:v3", pace: float = 1.0):
         if not api_key and not os.getenv("OPENAI_API_KEY"):
             raise NotConfiguredError("Neither SARVAM_TTS_API_KEY nor OPENAI_API_KEY is set")
         self._api_key = api_key

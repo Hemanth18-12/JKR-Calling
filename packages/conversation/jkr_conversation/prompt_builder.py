@@ -220,19 +220,23 @@ def _build_prompt(
                 "GUIDANCE FOR THIS QUESTION: Since this is a specific business question not found in APPROVED KNOWLEDGE, politely let the caller know you don't have those exact details on hand and the team will confirm them, then smoothly continue with the planned next action.\n\n"
             )
 
+    clean_biz = (business_identity or "").strip()
+    if not clean_biz or any(p in clean_biz.lower() for p in ["hackathon", "test biz"]):
+        clean_biz = "Aaha Dental Care"
+
     customer_name = state.get("customer_name") or "there"
-    calling_reason = state.get("calling_reason") or f"following up with you on behalf of {business_identity}"
+    calling_reason = state.get("calling_reason") or f"following up with you on behalf of {clean_biz} regarding your appointment"
     service_name = state.get("service_name") or "our consultation and services"
 
     call_context_section = (
         "CALL CONTEXT & PURPOSE\n"
-        f"- Calling on behalf of: {business_identity}\n"
+        f"- Calling on behalf of: {clean_biz}\n"
         f"- Customer name: {customer_name}\n"
         f"- Reason for this call: {calling_reason}\n"
         f"- Target service/appointment: {service_name}\n\n"
         "CALL SCRIPT FLOW (Natural spoken execution — do not recite mechanically):\n"
-        f"1. Open: Greet {customer_name} warmly, state your name and that you are calling from {business_identity}.\n"
-        f"2. Reference reason: Clearly state why you are calling (e.g. 'I see you enquired / checked out our {service_name}').\n"
+        f"1. Open: Greet {customer_name} warmly, state your name and that you are calling from {clean_biz}.\n"
+        f"2. Reference reason: Clearly state why you are calling: {calling_reason} (e.g. 'I see you enquired / checked out our {service_name}').\n"
         "3. Ask availability: Ask when they are free so you can schedule or confirm their appointment.\n"
         "4. Handle questions: If they ask anything about the business, services, pricing, or event, answer genuinely using APPROVED KNOWLEDGE or general context — never claim you don't know the call purpose or appointment details.\n"
         "5. Ask confirmation: Once their availability is mentioned or when they want to book, explicitly confirm the appointment with them.\n"
@@ -242,7 +246,7 @@ def _build_prompt(
 
     system = (
         f"IDENTITY & PERSONA\n"
-        f"You are {business_identity}'s AI voice assistant speaking live on a telephone call. "
+        f"You are {clean_biz}'s AI voice assistant speaking live on a telephone call. "
         f"Persona: {personality}. Tone: {formality}, warm, and energetic ({energy}). "
         f"You already clearly identified yourself as an AI at the start of this call.\n\n"
         + call_context_section

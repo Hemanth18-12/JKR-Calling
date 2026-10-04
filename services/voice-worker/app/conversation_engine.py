@@ -109,7 +109,9 @@ def _fill_greeting(
     business_identity: str | None = None,
     service_name: str | None = None,
 ) -> str:
-    biz = (business_identity or "").strip() or "Aaha Dental Care"
+    biz = (business_identity or "").strip()
+    if not biz or any(p in biz.lower() for p in ["hackathon", "test biz", "original name"]):
+        biz = "Aaha Dental Care"
     service = (service_name or "").strip() or "అపాయింట్‌మెంట్"
 
     res = text
@@ -260,14 +262,15 @@ async def start_session(
     conversation_state["formality"] = version.formality
     conversation_state["energy"] = version.energy
     conversation_state["response_length"] = version.response_length
-    conversation_state["business_identity"] = agent.business_identity
+    clean_biz = (agent.business_identity or "").strip()
+    if not clean_biz or any(p in clean_biz.lower() for p in ["hackathon", "test biz", "original name"]):
+        clean_biz = "Aaha Dental Care"
     conversation_state["customer_name"] = resolved_name
     conversation_state["customer_phone"] = resolved_phone
-    conversation_state["business_identity"] = agent.business_identity or "Aaha Dental Care"
+    conversation_state["business_identity"] = clean_biz
     conversation_state["service_name"] = "appointment and consultation"
     conversation_state["calling_reason"] = (
-        f"following up regarding your inquiry with {agent.business_identity} to confirm your appointment"
-        if agent.business_identity else "following up regarding your appointment request"
+        f"following up regarding your inquiry with {clean_biz} to confirm your appointment"
     )
     conversation_state["recent_turns"] = []
 
