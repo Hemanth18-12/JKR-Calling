@@ -41,6 +41,7 @@ export function AdminCoinsReview({ initialRequests }: AdminCoinsReviewProps) {
   const [searchQuery, setSearchQuery] = React.useState("");
 
   const [activeScreenshotUrl, setActiveScreenshotUrl] = React.useState<string | null>(null);
+  const [activeScreenshotReq, setActiveScreenshotReq] = React.useState<CoinTopupRequestOut | null>(null);
 
   // Approve dialog state
   const [approvingId, setApprovingId] = React.useState<string | null>(null);
@@ -267,15 +268,29 @@ export function AdminCoinsReview({ initialRequests }: AdminCoinsReviewProps) {
                     <td className="py-3.5 px-4">
                       <button
                         type="button"
-                        onClick={() => setActiveScreenshotUrl(req.screenshot_url)}
-                        className="group flex items-center gap-2 rounded-lg border border-border/80 bg-surface-raised p-1.5 hover:border-primary/50 transition-all text-left"
+                        onClick={() => {
+                          setActiveScreenshotUrl(req.screenshot_url);
+                          setActiveScreenshotReq(req);
+                        }}
+                        className="group flex items-center gap-2.5 rounded-xl border border-border/80 bg-surface-raised/90 p-1.5 hover:border-primary/60 hover:bg-surface-raised transition-all text-left shadow-sm"
                       >
-                        <div className="h-9 w-9 rounded overflow-hidden bg-black relative flex items-center justify-center border border-border/60">
-                          <Eye className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                        <div className="h-11 w-11 rounded-lg overflow-hidden bg-black/60 relative flex items-center justify-center border border-border shrink-0 shadow-inner group-hover:ring-2 group-hover:ring-primary/40 transition-all">
+                          <img
+                            src={req.screenshot_url}
+                            alt="Payment Proof"
+                            className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = "none";
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/30 group-hover:bg-transparent transition-colors flex items-center justify-center pointer-events-none">
+                            <Eye className="h-4 w-4 text-white drop-shadow opacity-75 group-hover:opacity-100 transition-opacity" />
+                          </div>
                         </div>
                         <div className="text-[11px]">
-                          <span className="font-medium text-foreground block group-hover:text-primary">
-                            View Screenshot
+                          <span className="font-bold text-foreground block group-hover:text-primary transition-colors flex items-center gap-1">
+                            Inspect Proof
+                            <ExternalLink className="h-2.5 w-2.5 opacity-60" />
                           </span>
                           <span className="text-[10px] text-muted-foreground">Click to inspect</span>
                         </div>
@@ -370,149 +385,293 @@ export function AdminCoinsReview({ initialRequests }: AdminCoinsReviewProps) {
       {/* Screenshot Zoom Modal */}
       {activeScreenshotUrl && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
-          onClick={() => setActiveScreenshotUrl(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-md"
+          onClick={() => {
+            setActiveScreenshotUrl(null);
+            setActiveScreenshotReq(null);
+          }}
         >
           <div
-            className="relative max-h-[90vh] max-w-[90vw] overflow-hidden rounded-2xl bg-card p-4 border border-border shadow-2xl"
+            className="relative max-h-[92vh] max-w-2xl w-full overflow-hidden rounded-2xl bg-card border border-border shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-border mb-3">
-              <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <Eye className="h-4 w-4 text-primary" />
-                Payment Proof Inspection
-              </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-7 p-0"
-                onClick={() => setActiveScreenshotUrl(null)}
-              >
-                ✕
-              </Button>
+            <div className="flex items-center justify-between p-4 border-b border-border bg-surface-raised shrink-0">
+              <div>
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-primary" />
+                  Payment Proof Inspection
+                </h3>
+                {activeScreenshotReq && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {activeScreenshotReq.user_email} • ₹{activeScreenshotReq.price_inr} • {activeScreenshotReq.total_coins} coins
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={activeScreenshotUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary hover:underline flex items-center gap-1 font-semibold px-2.5 py-1 rounded bg-primary/10 border border-primary/20"
+                >
+                  Open in New Tab <ExternalLink className="h-3 w-3" />
+                </a>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => {
+                    setActiveScreenshotUrl(null);
+                    setActiveScreenshotReq(null);
+                  }}
+                >
+                  ✕
+                </Button>
+              </div>
             </div>
-            <div className="relative max-h-[75vh] overflow-auto flex items-center justify-center">
+
+            <div className="relative flex-1 overflow-auto bg-black/95 p-4 flex items-center justify-center min-h-[350px]">
               <img
                 src={activeScreenshotUrl}
                 alt="Payment Proof"
-                className="max-h-[70vh] w-auto rounded-lg object-contain shadow-md"
+                className="max-h-[65vh] w-auto max-w-full rounded-lg object-contain shadow-2xl border border-white/10"
               />
             </div>
-            <div className="mt-3 text-right">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setActiveScreenshotUrl(null)}
-                className="text-xs"
-              >
-                Close
-              </Button>
+
+            <div className="p-3 border-t border-border bg-surface-raised flex items-center justify-between shrink-0">
+              <span className="text-[11px] text-muted-foreground font-medium">
+                {activeScreenshotReq ? `Status: ${activeScreenshotReq.status.toUpperCase()}` : ""}
+              </span>
+              <div className="flex items-center gap-2">
+                {activeScreenshotReq && activeScreenshotReq.status === "pending" && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setRejectingId(activeScreenshotReq.id);
+                        setActiveScreenshotUrl(null);
+                        setActiveScreenshotReq(null);
+                      }}
+                      className="text-xs text-rose-400 border-rose-500/40 hover:bg-rose-500/10"
+                    >
+                      <XCircle className="h-3.5 w-3.5 mr-1" />
+                      Reject
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => {
+                        setApprovingId(activeScreenshotReq.id);
+                        setActiveScreenshotUrl(null);
+                        setActiveScreenshotReq(null);
+                      }}
+                      className="text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                      Approve Payment
+                    </Button>
+                  </>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setActiveScreenshotUrl(null);
+                    setActiveScreenshotReq(null);
+                  }}
+                  className="text-xs"
+                >
+                  Close
+                </Button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Approve Confirmation Modal */}
-      {approvingId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <Card className="w-full max-w-md border-emerald-500/40 bg-card shadow-2xl">
-            <CardHeader>
-              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                Approve Payment &amp; Credit Coins
-              </CardTitle>
-              <CardDescription className="text-xs">
-                This will immediately credit the tier&apos;s coins to the customer&apos;s workspace wallet and log a successful transaction.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="approve-notes" className="text-xs font-medium">
-                  Admin Note (optional)
-                </Label>
-                <Input
-                  id="approve-notes"
-                  placeholder="e.g. Verified via PhonePe statement"
-                  value={approveNotes}
-                  onChange={(e) => setApproveNotes(e.target.value)}
-                  className="mt-1 text-xs"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setApprovingId(null)}
-                  disabled={actionBusy}
-                  className="text-xs"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="gradient"
-                  size="sm"
-                  onClick={handleApprove}
-                  loading={actionBusy}
-                  className="text-xs font-bold"
-                >
-                  Confirm &amp; Credit Coins
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {/* Approve Confirmation Modal with Embedded Screenshot */}
+      {approvingId && (() => {
+        const reqToApprove = requests.find((r) => r.id === approvingId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+            <Card className="w-full max-w-lg border-emerald-500/40 bg-card shadow-2xl overflow-hidden">
+              <CardHeader className="pb-3 border-b border-border/60">
+                <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                  Approve Payment &amp; Credit Coins
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Verify the customer&apos;s UPI screenshot proof below before crediting coins.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-4">
+                {reqToApprove && (
+                  <div className="rounded-xl border border-border bg-surface-raised p-3 space-y-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <div>
+                        <span className="text-muted-foreground">User: </span>
+                        <span className="font-bold text-foreground">{reqToApprove.user_email}</span>
+                        <div className="text-[10px] text-muted-foreground">
+                          Workspace: {reqToApprove.workspace_name}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-extrabold text-emerald-400 text-sm">
+                          ₹{reqToApprove.price_inr}
+                        </span>
+                        <div className="text-[11px] font-semibold text-primary">
+                          +{reqToApprove.total_coins} coins
+                        </div>
+                      </div>
+                    </div>
 
-      {/* Reject Confirmation Modal */}
-      {rejectingId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <Card className="w-full max-w-md border-rose-500/40 bg-card shadow-2xl">
-            <CardHeader>
-              <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
-                <XCircle className="h-5 w-5 text-rose-400" />
-                Reject Top-up Request
-              </CardTitle>
-              <CardDescription className="text-xs">
-                The payment could not be verified. No coins will be credited.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="reject-reason" className="text-xs font-medium">
-                  Rejection Reason (will be shown to user)
-                </Label>
-                <Input
-                  id="reject-reason"
-                  placeholder="e.g. Transaction reference not found in bank statement"
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  className="mt-1 text-xs"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setRejectingId(null)}
-                  disabled={actionBusy}
-                  className="text-xs"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleReject}
-                  loading={actionBusy}
-                  className="text-xs font-bold"
-                >
-                  Reject Request
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+                    {/* Screenshot Proof Preview */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+                        <span>Customer Payment Screenshot:</span>
+                        <a
+                          href={reqToApprove.screenshot_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline flex items-center gap-1 text-[11px]"
+                        >
+                          Open Original <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </div>
+                      <div
+                        className="relative max-h-56 w-full overflow-hidden rounded-lg border border-border bg-black/70 flex items-center justify-center cursor-pointer group"
+                        onClick={() => {
+                          setActiveScreenshotUrl(reqToApprove.screenshot_url);
+                          setActiveScreenshotReq(reqToApprove);
+                        }}
+                      >
+                        <img
+                          src={reqToApprove.screenshot_url}
+                          alt="Payment Proof"
+                          className="max-h-56 w-auto object-contain transition-transform group-hover:scale-102"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-semibold gap-1.5">
+                          <Eye className="h-4 w-4" /> Click to enlarge
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <Label htmlFor="approve-notes" className="text-xs font-medium">
+                    Admin Verification Note (optional)
+                  </Label>
+                  <Input
+                    id="approve-notes"
+                    placeholder="e.g. Verified transaction reference in bank statement"
+                    value={approveNotes}
+                    onChange={(e) => setApproveNotes(e.target.value)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setApprovingId(null)}
+                    disabled={actionBusy}
+                    className="text-xs"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleApprove}
+                    loading={actionBusy}
+                    className="text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white"
+                  >
+                    Confirm &amp; Credit Coins
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
+
+      {/* Reject Confirmation Modal with Embedded Screenshot */}
+      {rejectingId && (() => {
+        const reqToReject = requests.find((r) => r.id === rejectingId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+            <Card className="w-full max-w-md border-rose-500/40 bg-card shadow-2xl overflow-hidden">
+              <CardHeader className="pb-3 border-b border-border/60">
+                <CardTitle className="text-base font-bold text-foreground flex items-center gap-2">
+                  <XCircle className="h-5 w-5 text-rose-400" />
+                  Reject Top-up Request
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  The payment could not be verified. No coins will be credited.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-4">
+                {reqToReject && (
+                  <div className="rounded-xl border border-border bg-surface-raised p-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-foreground">{reqToReject.user_email}</span>
+                      <span className="font-bold text-rose-400">₹{reqToReject.price_inr}</span>
+                    </div>
+                    <div
+                      className="relative max-h-36 w-full overflow-hidden rounded-lg border border-border bg-black/70 flex items-center justify-center cursor-pointer"
+                      onClick={() => {
+                        setActiveScreenshotUrl(reqToReject.screenshot_url);
+                        setActiveScreenshotReq(reqToReject);
+                      }}
+                    >
+                      <img
+                        src={reqToReject.screenshot_url}
+                        alt="Payment Proof"
+                        className="max-h-36 w-auto object-contain"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <Label htmlFor="reject-reason" className="text-xs font-medium">
+                    Rejection Reason (will be shown to user)
+                  </Label>
+                  <Input
+                    id="reject-reason"
+                    placeholder="e.g. Transaction reference not found in bank statement"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRejectingId(null)}
+                    disabled={actionBusy}
+                    className="text-xs"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleReject}
+                    loading={actionBusy}
+                    className="text-xs font-bold"
+                  >
+                    Reject Request
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+      })()}
     </div>
   );
 }
