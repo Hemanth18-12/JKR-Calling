@@ -1,8 +1,8 @@
 "use client";
 
 import { callsApi, ApiClientError } from "@jkr/sdk";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, useToast } from "@jkr/ui";
-import { PhoneOff, Send, Zap } from "lucide-react";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, useToast } from "@jkr/ui";
+import { AlertCircle, CheckCircle2, MessageSquare, PhoneOff, Send, Smartphone, Zap } from "lucide-react";
 import * as React from "react";
 
 interface ChatMessage {
@@ -16,6 +16,8 @@ interface ChatMessage {
 export function TestLabChat({ workspaceId, agentId }: { workspaceId: string; agentId: string }) {
   const { toast } = useToast();
   const [callId, setCallId] = React.useState<string | null>(null);
+  const [customerName, setCustomerName] = React.useState("Hemanth");
+  const [phoneNumber, setPhoneNumber] = React.useState("+916301567773");
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [state, setState] = React.useState<Record<string, unknown> | null>(null);
   const [input, setInput] = React.useState("");
@@ -28,12 +30,20 @@ export function TestLabChat({ workspaceId, agentId }: { workspaceId: string; age
     setMessages([]);
     setEnded(null);
     try {
-      const result = await callsApi.startTest(workspaceId, { agent_id: agentId, contact_name: "Test Customer" });
+      const result = await callsApi.startTest(workspaceId, {
+        agent_id: agentId,
+        contact_name: customerName.trim() || "Test Customer",
+        phone_e164: phoneNumber.trim() || "+916301567773",
+      });
       setCallId(result.call_id);
       setMessages([{ id: "greeting", speaker: "agent", text: result.greeting }]);
       setState(result.conversation_state);
     } catch (err) {
-      toast({ title: "Could not start call", description: err instanceof ApiClientError ? err.message : undefined, variant: "danger" });
+      toast({
+        title: "Could not start call",
+        description: err instanceof ApiClientError ? err.message : undefined,
+        variant: "danger",
+      });
     } finally {
       setStarting(false);
     }
@@ -71,7 +81,11 @@ export function TestLabChat({ workspaceId, agentId }: { workspaceId: string; age
       });
       setState(result.conversation_state);
     } catch (err) {
-      toast({ title: "Could not send", description: err instanceof ApiClientError ? err.message : undefined, variant: "danger" });
+      toast({
+        title: "Could not send",
+        description: err instanceof ApiClientError ? err.message : undefined,
+        variant: "danger",
+      });
     } finally {
       setSending(false);
     }
@@ -84,36 +98,69 @@ export function TestLabChat({ workspaceId, agentId }: { workspaceId: string; age
       setEnded(result);
       toast({ title: "Call ended", description: `Outcome: ${result.outcome_category}`, variant: "success" });
     } catch (err) {
-      toast({ title: "Could not end call", description: err instanceof ApiClientError ? err.message : undefined, variant: "danger" });
+      toast({
+        title: "Could not end call",
+        description: err instanceof ApiClientError ? err.message : undefined,
+        variant: "danger",
+      });
     }
   };
 
   const knownFields = (state?.known_fields as Record<string, string>) ?? {};
+  const toolResults = (state?.tool_results as Record<string, any>) ?? {};
+  const apptResult = toolResults.book_appointment;
+  const whatsappResult = apptResult?.whatsapp;
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="lg:col-span-2">
         <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Text simulation</CardTitle>
-          {!callId ? (
-            <Button onClick={startCall} loading={starting} variant="gradient" size="sm">
-              <Zap className="h-4 w-4" /> Start mock call
-            </Button>
-          ) : (
+          <CardTitle>Text Simulation & Call Test</CardTitle>
+          {callId ? (
             <Button onClick={endCall} variant="destructive" size="sm" disabled={!!ended}>
               <PhoneOff className="h-4 w-4" /> End call
             </Button>
-          )}
+          ) : null}
         </CardHeader>
         <CardContent>
           {!callId ? (
-            <p className="text-sm text-muted-foreground">
-              Starts a real conversation-engine call against this agent&apos;s latest version — no real
-              phone, no cost. Reply quickly (within a couple seconds) to see barge-in / interruption
-              handling kick in.
-            </p>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Simulate a real conversation call with your agent. Enter your real mobile number below to receive
+                live appointment confirmation notifications.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2 rounded-lg border border-border/60 bg-surface p-4">
+                <div>
+                  <Label htmlFor="lab-name" className="text-xs font-medium">Customer Name</Label>
+                  <Input
+                    id="lab-name"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="e.g. Hemanth"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="lab-phone" className="text-xs font-medium">Recipient Phone (E.164)</Label>
+                  <Input
+                    id="lab-phone"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="+916301567773"
+                    className="mt-1 font-mono text-sm"
+                  />
+                </div>
+              </div>
+              <Button onClick={startCall} loading={starting} variant="gradient" className="w-full sm:w-auto">
+                <Zap className="h-4 w-4" /> Start Mock Call
+              </Button>
+            </div>
           ) : (
             <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-border/40 pb-2 text-xs text-muted-foreground">
+                <span>Customer: <strong className="text-foreground">{customerName}</strong></span>
+                <span>Phone: <code className="font-mono text-foreground">{phoneNumber}</code></span>
+              </div>
               <div className="max-h-96 space-y-3 overflow-y-auto rounded-md border border-border bg-background p-4">
                 {messages.map((m) => (
                   <div key={m.id} className={`flex ${m.speaker === "agent" ? "justify-start" : "justify-end"}`}>
@@ -141,7 +188,7 @@ export function TestLabChat({ workspaceId, agentId }: { workspaceId: string; age
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && send()}
-                    placeholder="Type the customer's reply…"
+                    placeholder="Type the customer's reply (e.g. రేపు ఉదయం 11 గంటలకు కంఫర్మ్ చేయండి)…"
                     disabled={sending}
                   />
                   <Button onClick={send} loading={sending} disabled={!input.trim()}>
@@ -158,41 +205,97 @@ export function TestLabChat({ workspaceId, agentId }: { workspaceId: string; age
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Conversation state</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          {state ? (
-            <>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Conversation state</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {state ? (
+              <>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Objective</p>
+                  <p>{String(state.objective)} — <Badge variant="outline">{String(state.objective_status)}</Badge></p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Extracted fields</p>
+                  {Object.keys(knownFields).length === 0 ? (
+                    <p className="text-muted-foreground">None yet</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {Object.entries(knownFields).map(([k, v]) => (
+                        <li key={k}>
+                          <span className="font-mono text-xs text-muted-foreground">{k}:</span> {v}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">Missing fields</p>
+                  <p>{(state.missing_fields as string[])?.join(", ") || "None"}</p>
+                </div>
+              </>
+            ) : (
+              <p className="text-muted-foreground">Start a call to see live state here.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {apptResult ? (
+          <Card className="border-success/40 bg-success/5">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold text-success">
+                <CheckCircle2 className="h-4 w-4" /> Appointment Confirmed
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-xs">
               <div>
-                <p className="text-xs uppercase text-muted-foreground">Objective</p>
-                <p>{String(state.objective)} — <Badge variant="outline">{String(state.objective_status)}</Badge></p>
+                <span className="text-muted-foreground">Scheduled For:</span>
+                <p className="font-medium text-foreground">
+                  {new Date(apptResult.scheduled_for).toLocaleString(undefined, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </p>
               </div>
+
               <div>
-                <p className="text-xs uppercase text-muted-foreground">Extracted fields</p>
-                {Object.keys(knownFields).length === 0 ? (
-                  <p className="text-muted-foreground">None yet</p>
-                ) : (
-                  <ul className="space-y-1">
-                    {Object.entries(knownFields).map(([k, v]) => (
-                      <li key={k}>
-                        <span className="font-mono text-xs text-muted-foreground">{k}:</span> {v}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <span className="text-muted-foreground">Recipient Number:</span>
+                <p className="font-mono text-foreground font-medium">
+                  {apptResult.contact_phone || phoneNumber}
+                </p>
               </div>
-              <div>
-                <p className="text-xs uppercase text-muted-foreground">Missing fields</p>
-                <p>{(state.missing_fields as string[])?.join(", ") || "None"}</p>
-              </div>
-            </>
-          ) : (
-            <p className="text-muted-foreground">Start a call to see live state here.</p>
-          )}
-        </CardContent>
-      </Card>
+
+              {whatsappResult ? (
+                <div className="rounded border border-border/80 bg-background/80 p-2.5 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold flex items-center gap-1.5">
+                      <MessageSquare className="h-3.5 w-3.5 text-primary" /> Confirmation Dispatch
+                    </span>
+                    <Badge variant={whatsappResult.status === "sent" ? "success" : "warning"}>
+                      {whatsappResult.channel === "sms_fallback" ? "SMS Delivered" : (whatsappResult.status || "Dispatched")}
+                    </Badge>
+                  </div>
+                  {whatsappResult.provider_message_id ? (
+                    <div className="font-mono text-[11px] text-muted-foreground">
+                      Twilio SID: <span className="text-foreground">{whatsappResult.provider_message_id}</span>
+                    </div>
+                  ) : null}
+                  {whatsappResult.error ? (
+                    <div className="text-[11px] text-amber-500 mt-1 flex items-start gap-1">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <span>{whatsappResult.error}</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">Notification status pending...</p>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
+      </div>
     </div>
   );
 }

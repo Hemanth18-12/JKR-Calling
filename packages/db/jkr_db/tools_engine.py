@@ -405,6 +405,12 @@ async def _run_book_appointment(
         logger.warning("Failed to generate .ics calendar invite: %s", exc)
 
     # --- Trigger WhatsApp Confirmation Notification ---
+    logger.info(
+        "[APPOINTMENT_TRIGGER] book_appointment invoked! contact_id=%s, phone=%s, scheduled_for=%s",
+        contact_id,
+        contact.phone_e164,
+        scheduled_for,
+    )
     whatsapp_info = None
     try:
         formatted_date = scheduled_for.strftime("%B %d, %Y")
@@ -435,7 +441,7 @@ async def _run_book_appointment(
                 tool_input={"body": whatsapp_body},
             )
         else:
-            whatsapp_info = {"status": "already_sent", "idempotent": True}
+            whatsapp_info = {"status": "already_sent", "idempotent": True, "recipient_phone": contact.phone_e164}
     except Exception as exc:
         logger.warning("WhatsApp appointment confirmation dispatch failed: %s", exc)
 
@@ -443,6 +449,7 @@ async def _run_book_appointment(
         "appointment_id": str(appointment.id),
         "scheduled_for": scheduled_for.isoformat(),
         "location": location,
+        "contact_phone": contact.phone_e164,
     }
     if ics_info:
         res["calendar_invite"] = ics_info
@@ -530,9 +537,22 @@ async def _dispatch_twilio_message(*, channel: str, to_e164: str, body: str, med
             if media_url and channel == "whatsapp":
                 post_data["MediaUrl"] = media_url
 
+            logger.info(
+                "[PROVIDER_REQUEST] Twilio %s attempt: From=%s, To=%s, AccountSid=%s",
+                channel,
+                from_param,
+                to_param,
+                account_sid,
+            )
             response = await client.post(
                 url,
                 data=post_data,
+            )
+            logger.info(
+                "[PROVIDER_RESPONSE] Twilio %s HTTP %s: Body=%s",
+                channel,
+                response.status_code,
+                response.text,
             )
             if response.status_code < 400:
                 data = response.json()
@@ -565,6 +585,11 @@ async def _dispatch_twilio_message(*, channel: str, to_e164: str, body: str, med
                             url,
                             data={"From": from_number, "To": clean_to, "Body": body},
                         )
+                        logger.info(
+                            "[SMS_FALLBACK_RESPONSE] Twilio SMS HTTP %s: Body=%s",
+                            sms_res.status_code,
+                            sms_res.text,
+                        )
                         if sms_res.status_code < 400:
                             sms_sid = sms_res.json().get("sid")
                             logger.info("SMS fallback dispatched successfully: SID %s to %s", sms_sid, clean_to)
@@ -590,10 +615,11 @@ async def _run_send_message(db: AsyncSession, *, channel: str, workspace_id: uui
         channel=channel, to_e164=contact.phone_e164, body=body, media_url=media_url
     )
 
+    delivered_channel = "sms_fallback" if (error_detail and "Delivered via SMS fallback" in error_detail) else channel
     message = Message(
         workspace_id=workspace_id,
         contact_id=contact_id,
-        channel=channel,
+        channel=delivered_channel,
         direction="outbound",
         body=body,
         status=msg_status,
@@ -605,6 +631,8 @@ async def _run_send_message(db: AsyncSession, *, channel: str, workspace_id: uui
     return {
         "message_id": str(message.id),
         "status": msg_status,
+        "channel": delivered_channel,
+        "recipient_phone": contact.phone_e164,
         "provider_message_id": provider_msg_id,
         "error": error_detail,
     }

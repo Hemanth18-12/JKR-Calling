@@ -62,9 +62,10 @@ async def start_test_call(
         "agent_id": str(agent_id),
         "contact_name": contact_name,
         "contact_id": str(resolved_contact_id) if resolved_contact_id else None,
+        "phone_e164": phone_e164,
     }
 
-    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
+    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=30.0) as client:
         try:
             response = await client.post(
                 "/sessions",
@@ -89,7 +90,7 @@ async def submit_user_turn(
     if session_result.scalar_one_or_none() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
 
-    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
+    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=30.0) as client:
         try:
             response = await client.post(
                 f"/sessions/{call_id}/user-turn",
@@ -112,7 +113,7 @@ async def end_call(db: AsyncSession, *, settings: Settings, workspace_id: uuid.U
     if session_result.scalar_one_or_none() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
 
-    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
+    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=30.0) as client:
         try:
             response = await client.post(
                 f"/sessions/{call_id}/end",

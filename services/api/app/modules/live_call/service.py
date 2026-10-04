@@ -351,6 +351,7 @@ async def start_live_test_call(
         contact = await _get_or_create_contact(write_db, workspace_id=workspace_id, phone_e164=to_e164)
         if contact and contact.full_name and contact.full_name != "Live test call":
             conversation_state["customer_name"] = contact.full_name
+        conversation_state["customer_phone"] = contact.phone_e164
         call_session = CallSession(
             workspace_id=workspace_id,
             direction="outbound",
@@ -382,8 +383,32 @@ async def start_live_test_call(
         )
         write_db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session_id, event_type="call_started", payload={"live_real_call": True}))
 
-    greeting_body = version.greeting_text.replace("{name} ", "").replace("{name}", "").strip()
-    disclosure = version.ai_disclosure_text.strip()
+    biz_name = (agent.business_identity or "").strip() or "Aaha Dental Care"
+    service_name = "అపాయింట్‌మెంట్"
+    greeting_body = (
+        version.greeting_text.replace("{name} ", "").replace("{name}", "")
+        .replace("{business}", biz_name)
+        .replace("{business_identity}", biz_name)
+        .replace("{company}", biz_name)
+        .replace("{service}", service_name)
+        .replace("{service_name}", service_name)
+        .replace("India 's hackathon", biz_name)
+        .replace("India's hackathon", biz_name)
+        .replace("AI assistantని", "AI అసిస్టెంట్‌ని")
+        .strip()
+    )
+    disclosure = (
+        version.ai_disclosure_text
+        .replace("{business}", biz_name)
+        .replace("{business_identity}", biz_name)
+        .replace("{company}", biz_name)
+        .replace("{service}", service_name)
+        .replace("{service_name}", service_name)
+        .replace("India 's hackathon", biz_name)
+        .replace("India's hackathon", biz_name)
+        .replace("AI assistantని", "AI అసిస్టెంట్‌ని")
+        .strip()
+    )
     # Seed/authored greeting text for several personas already opens with the
     # disclosure sentence verbatim — blindly prepending it again said the same
     # sentence twice back to back. Only prepend when it isn't already there.
@@ -427,6 +452,7 @@ async def start_live_test_call(
         "language_code": language_code,
         "business_identity": agent.business_identity,
         "customer_name": conversation_state["customer_name"],
+        "customer_phone": to_e164,
         "service_name": conversation_state["service_name"],
         "calling_reason": conversation_state["calling_reason"],
         "policy": asdict(policy_snapshot),

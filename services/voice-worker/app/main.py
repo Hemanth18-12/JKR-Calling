@@ -33,6 +33,7 @@ class CreateSessionRequest(BaseModel):
     contact_name: str | None = None
     campaign_id: uuid.UUID | None = None
     contact_id: uuid.UUID | None = None
+    phone_e164: str | None = None
 
 
 @app.post("/sessions", dependencies=[Depends(require_internal_token)])
@@ -56,6 +57,7 @@ async def create_session(payload: CreateSessionRequest) -> dict:
                 contact_name=payload.contact_name,
                 campaign_id=payload.campaign_id,
                 contact_id=payload.contact_id,
+                phone_e164=payload.phone_e164,
             )
     except ValueError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc

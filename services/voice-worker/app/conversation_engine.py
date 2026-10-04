@@ -103,10 +103,32 @@ class UserTurnOut:
     call_status: str
 
 
-def _fill_greeting(text: str, contact_name: str | None) -> str:
+def _fill_greeting(
+    text: str,
+    contact_name: str | None,
+    business_identity: str | None = None,
+    service_name: str | None = None,
+) -> str:
+    biz = (business_identity or "").strip() or "Aaha Dental Care"
+    service = (service_name or "").strip() or "అపాయింట్‌మెంట్"
+
+    res = text
     if contact_name:
-        return text.replace("{name}", contact_name)
-    return text.replace("{name} ", "").replace("{name}", "")
+        res = res.replace("{name}", contact_name)
+    else:
+        res = res.replace("{name} ", "").replace("{name}", "")
+
+    res = (
+        res.replace("{business}", biz)
+        .replace("{business_identity}", biz)
+        .replace("{company}", biz)
+        .replace("{service}", service)
+        .replace("{service_name}", service)
+        .replace("India 's hackathon", biz)
+        .replace("India's hackathon", biz)
+        .replace("AI assistantని", "AI అసిస్టెంట్‌ని")
+    )
+    return res.strip()
 
 
 async def _record_latency(db: AsyncSession, *, workspace_id: uuid.UUID, call_id: uuid.UUID, stage: str, duration_ms: int, provider: str = "mock") -> None:
@@ -172,6 +194,7 @@ async def start_session(
     contact_name: str | None = None,
     campaign_id: uuid.UUID | None = None,
     contact_id: uuid.UUID | None = None,
+    phone_e164: str | None = None,
 ) -> dict:
     agent_result = await db.execute(select(Agent).where(Agent.id == agent_id, Agent.workspace_id == workspace_id))
     agent = agent_result.scalar_one_or_none()
@@ -197,6 +220,21 @@ async def start_session(
     if contact_id:
         contact_res = await db.execute(select(Contact).where(Contact.id == contact_id, Contact.workspace_id == workspace_id))
         contact = contact_res.scalar_one_or_none()
+    elif phone_e164:
+        clean_phone = phone_e164.strip()
+        contact_res = await db.execute(
+            select(Contact).where(Contact.phone_e164 == clean_phone, Contact.workspace_id == workspace_id)
+        )
+        contact = contact_res.scalar_one_or_none()
+        if contact is None:
+            contact = Contact(
+                workspace_id=workspace_id,
+                phone_e164=clean_phone,
+                full_name=contact_name or "Test Customer",
+                lead_source="test_lab",
+            )
+            db.add(contact)
+            await db.flush()
     if contact is None:
         contact_res = await db.execute(
             select(Contact).where(Contact.workspace_id == workspace_id).order_by(Contact.created_at.desc()).limit(1)
@@ -205,7 +243,7 @@ async def start_session(
         if contact is None:
             contact = Contact(
                 workspace_id=workspace_id,
-                phone_e164="+918019101606",
+                phone_e164=phone_e164 or "+916301567773",
                 full_name=contact_name or "Test Customer",
                 lead_source="test_lab",
             )
@@ -214,6 +252,7 @@ async def start_session(
 
     resolved_contact_id = contact.id if contact else contact_id
     resolved_name = contact_name or (contact.full_name if contact else "Test Customer")
+    resolved_phone = contact.phone_e164 if contact else (phone_e164 or "+916301567773")
 
     language = voice.language if voice else agent.primary_language
     conversation_state = new_conversation_state(objective=version.primary_objective, language=language)
@@ -223,6 +262,8 @@ async def start_session(
     conversation_state["response_length"] = version.response_length
     conversation_state["business_identity"] = agent.business_identity
     conversation_state["customer_name"] = resolved_name
+    conversation_state["customer_phone"] = resolved_phone
+    conversation_state["business_identity"] = agent.business_identity or "Aaha Dental Care"
     conversation_state["service_name"] = "appointment and consultation"
     conversation_state["calling_reason"] = (
         f"following up regarding your inquiry with {agent.business_identity} to confirm your appointment"
@@ -278,7 +319,12 @@ async def start_session(
         ),
     )
 
-    greeting = _fill_greeting(version.greeting_text, contact_name)
+    greeting = _fill_greeting(
+        version.greeting_text,
+        contact_name=resolved_name,
+        business_identity=agent.business_identity,
+        service_name=conversation_state.get("service_name"),
+    )
     formatter = SpokenResponseFormatter(language=language, max_sentences=policy.max_response_sentences if policy else 3)
     formatted = formatter.format(greeting, prepend_acknowledgement=False)
     conversation_state["recent_turns"].append({"speaker": "agent", "text": formatted.text})

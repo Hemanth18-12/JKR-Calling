@@ -16,20 +16,30 @@ class NotConfiguredError(RuntimeError):
     """Raised when SARVAM_TTS_API_KEY is absent and no fallback TTS is available."""
 
 
+def _clean_text_for_tts(text: str) -> str:
+    cleaned = text.replace(" 's", "'s").replace(" '", "'")
+    cleaned = cleaned.replace("AI assistantని", "AI అసిస్టెంట్‌ని")
+    cleaned = cleaned.replace("AI assistant", "AI అసిస్టెంట్")
+    import re
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
 async def _fallback_synthesize_openai(*, text: str) -> bytes | None:
     openai_api_key = os.getenv("OPENAI_API_KEY")
     if not openai_api_key:
         return None
+    cleaned_text = _clean_text_for_tts(text)
     client = get_shared_http_client()
     try:
         response = await client.post(
             "https://api.openai.com/v1/audio/speech",
             headers={"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"},
-            json={"model": "tts-1", "input": text, "voice": "nova", "response_format": "wav"},
-            timeout=15.0,
+            json={"model": "tts-1-hd", "input": cleaned_text, "voice": "nova", "speed": 0.92, "response_format": "wav"},
+            timeout=25.0,
         )
         response.raise_for_status()
-        logger.info("OpenAI TTS fallback successfully synthesized audio (%d bytes)", len(response.content))
+        logger.info("OpenAI TTS-HD fallback successfully synthesized audio (%d bytes)", len(response.content))
         return response.content
     except Exception as exc:
         logger.exception("OpenAI TTS fallback synthesis failed: %s", exc)
@@ -37,7 +47,7 @@ async def _fallback_synthesize_openai(*, text: str) -> bytes | None:
 
 
 class SarvamTTS:
-    def __init__(self, *, api_key: str, speaker: str = "kavitha", model: str = "bulbul:v3", pace: float = 1.0):
+    def __init__(self, *, api_key: str, speaker: str = "kavitha", model: str = "bulbul:v3", pace: float = 0.9):
         if not api_key and not os.getenv("OPENAI_API_KEY"):
             raise NotConfiguredError("Neither SARVAM_TTS_API_KEY nor OPENAI_API_KEY is set")
         self._api_key = api_key
@@ -46,15 +56,16 @@ class SarvamTTS:
         self._pace = pace
 
     async def synthesize(self, *, text: str, language_code: str) -> bytes:
-        """Returns raw WAV bytes for the given text. Falls back to OpenAI TTS
+        """Returns raw WAV bytes for the given text. Falls back to OpenAI TTS-HD
         if Sarvam is unavailable or out of credits."""
+        cleaned_text = _clean_text_for_tts(text)
         if self._api_key:
             client = get_shared_http_client()
             try:
                 response = await client.post(
                     "https://api.sarvam.ai/text-to-speech",
                     headers={"api-subscription-key": self._api_key, "Content-Type": "application/json"},
-                    json={"text": text, "language_code": language_code, "speaker": self._speaker, "model": self._model, "pace": self._pace},
+                    json={"text": cleaned_text, "language_code": language_code, "speaker": self._speaker, "model": self._model, "pace": self._pace},
                     timeout=15.0,
                 )
                 response.raise_for_status()

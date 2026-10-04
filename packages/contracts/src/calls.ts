@@ -3,6 +3,7 @@ import { z } from "zod";
 export const TestCallCreate = z.object({
   agent_id: z.string().uuid(),
   contact_name: z.string().nullable().optional(),
+  phone_e164: z.string().nullable().optional(),
 });
 export type TestCallCreate = z.infer<typeof TestCallCreate>;
 
