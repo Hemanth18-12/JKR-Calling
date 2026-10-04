@@ -349,10 +349,10 @@ async def process_turn(
     for key in extraction.uncertain_fields:
         uncertain.add(key)
 
-    if getattr(extraction, "appointment_confirmed", False) and new_state.get("objective") == "book_appointment":
-        known_fields.setdefault("reason_for_visit", "General Consultation")
+    if getattr(extraction, "appointment_confirmed", False):
+        known_fields.setdefault("reason_for_visit", new_state.get("service_name") or "General Consultation")
         known_fields.setdefault("preferred_date", "Tomorrow")
-        known_fields.setdefault("preferred_time", "10:00 AM")
+        known_fields.setdefault("preferred_time", "11:00 AM")
         field_confidence.setdefault("reason_for_visit", 0.95)
         field_confidence.setdefault("preferred_date", 0.95)
         field_confidence.setdefault("preferred_time", 0.95)
@@ -391,12 +391,14 @@ async def process_turn(
     # An objective that would otherwise be done, but the customer asked
     # something this turn that couldn't be answered from real knowledge —
     # defer instead of closing, rather than ending the call mid-question.
-    # Deliberately gated on rag_above_threshold, not just `rag_chunks` being
-    # non-empty: search_knowledge always returns its top-k nearest chunks
-    # regardless of match quality (a workspace with any knowledge at all
-    # would otherwise make this check never fire) — above_threshold is the
-    # real "was this actually a good answer" signal.
-    if decision.action == "COMPLETE_OBJECTIVE" and decision.rag_query and not rag_above_threshold:
+    # Never downgrade if the customer explicitly confirmed the appointment or if already completed.
+    if (
+        decision.action == "COMPLETE_OBJECTIVE"
+        and decision.rag_query
+        and not rag_above_threshold
+        and not getattr(extraction, "appointment_confirmed", False)
+        and decision.reason not in ("all_fields_collected", "already_completed")
+    ):
         decision = replace(decision, action="DEFER_QUESTION", reason="unanswered_question_before_close")
 
     # --- translate the decision into state transitions --------------------
@@ -510,9 +512,23 @@ async def process_turn(
         )
     elif decision.action == "COMPLETE_OBJECTIVE":
         objective = objectives.get_objective(new_state.get("objective", objectives.DEFAULT_OBJECTIVE_ID))
-        if objective.tool_on_completion and known_fields:
+        tool_name = objective.tool_on_completion
+        if not tool_name and (
+            new_state.get("appointment_readiness") == "APPOINTMENT_CONFIRMED"
+            or "preferred_date" in known_fields
+            or "preferred_time" in known_fields
+        ):
+            tool_name = "book_appointment"
+        if tool_name == "book_appointment":
+            if "reason_for_visit" not in known_fields:
+                known_fields["reason_for_visit"] = "Confirmed Consultation"
+            if "preferred_date" not in known_fields:
+                known_fields["preferred_date"] = "tomorrow"
+            if "preferred_time" not in known_fields:
+                known_fields["preferred_time"] = "11:00 AM"
+        if tool_name and known_fields:
             tool_calls.append(
-                ToolCallRequest(tool_name=objective.tool_on_completion, tool_input=known_fields, idempotency_suffix=objective.tool_on_completion)
+                ToolCallRequest(tool_name=tool_name, tool_input=known_fields, idempotency_suffix=tool_name)
             )
 
     call_should_end = decision.action in _TERMINAL_ACTIONS

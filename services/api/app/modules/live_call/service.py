@@ -339,9 +339,18 @@ async def start_live_test_call(
     # every fresh workspace_scoped_session sets it up correctly on its own.
     conversation_state = new_conversation_state(objective=version.primary_objective, language=language_code)
     conversation_state["live_real_call"] = True
+    conversation_state["business_identity"] = agent.business_identity
+    conversation_state["customer_name"] = "Customer"
+    conversation_state["service_name"] = "appointment and consultation"
+    conversation_state["calling_reason"] = (
+        f"following up regarding your inquiry with {agent.business_identity} to confirm your appointment"
+        if agent.business_identity else "following up regarding your appointment request"
+    )
 
     async with workspace_scoped_session(workspace_id) as write_db:
         contact = await _get_or_create_contact(write_db, workspace_id=workspace_id, phone_e164=to_e164)
+        if contact and contact.full_name and contact.full_name != "Live test call":
+            conversation_state["customer_name"] = contact.full_name
         call_session = CallSession(
             workspace_id=workspace_id,
             direction="outbound",
@@ -417,6 +426,9 @@ async def start_live_test_call(
         "closing_text": version.closing_text,
         "language_code": language_code,
         "business_identity": agent.business_identity,
+        "customer_name": conversation_state["customer_name"],
+        "service_name": conversation_state["service_name"],
+        "calling_reason": conversation_state["calling_reason"],
         "policy": asdict(policy_snapshot),
         # None for every agent still on the mock/default voice persona —
         # SarvamTTS's own "priya" default covers that case, see _speak().
@@ -900,6 +912,9 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
         conversation_state = dict(call_session.state) if call_session is not None and call_session.state else {}
         if not conversation_state.get("objective") and state.get("objective"):
             conversation_state["objective"] = state["objective"]
+        for ctx_key in ("customer_name", "business_identity", "calling_reason", "service_name"):
+            if not conversation_state.get(ctx_key) and state.get(ctx_key):
+                conversation_state[ctx_key] = state[ctx_key]
         policy_snapshot = ConversationPolicySnapshot(**state.get("policy", {}))
 
         result = await process_turn(

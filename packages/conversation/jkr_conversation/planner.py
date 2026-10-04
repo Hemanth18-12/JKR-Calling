@@ -65,14 +65,23 @@ def decide(
     if extraction.wants_human and conversation_policy.human_transfer_enabled:
         return PlannerDecision(action="HUMAN_HANDOFF", reason="customer_requested_human")
 
-    # 2b. Explicit appointment confirmation — customer said "appointment confirmed"
-    if getattr(extraction, "appointment_confirmed", False) and state.get("objective") == "book_appointment":
+    # 2b. Explicit appointment confirmation — customer confirmed or requested confirmation across any objective
+    if getattr(extraction, "appointment_confirmed", False):
         return PlannerDecision(
             action="COMPLETE_OBJECTIVE",
             reason="all_fields_collected",
             answer_question_first=False,
             rag_query=None,
             objection=extraction.objection,
+        )
+
+    # 2c. Session already reached completed objective or confirmed appointment — exit gracefully on thank-you / closing
+    if state.get("objective_status") == "completed" or state.get("appointment_readiness") == "APPOINTMENT_CONFIRMED":
+        return PlannerDecision(
+            action="COMPLETE_OBJECTIVE",
+            reason="already_completed",
+            answer_question_first=False,
+            rag_query=None,
         )
 
     answer_question_first = bool(extraction.detected_question) and extraction.turn_intent != "small_talk"

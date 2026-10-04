@@ -21,6 +21,7 @@ from jkr_conversation.formatter import SpokenResponseFormatter
 from jkr_conversation.schemas import ConversationPolicySnapshot
 from jkr_conversation.state import classify_provisional_outcome, new_conversation_state
 from jkr_db.models.agents import Agent, AgentVersion, ConversationPolicy, VoicePersona
+from jkr_db.models.contacts import Contact
 from jkr_db.models.billing import UsageEvent
 from jkr_db.models.calls import (
     CallEvent,
@@ -192,6 +193,28 @@ async def start_session(
     voice_result = await db.execute(select(VoicePersona).where(VoicePersona.agent_version_id == version.id))
     voice = voice_result.scalar_one_or_none()
 
+    contact = None
+    if contact_id:
+        contact_res = await db.execute(select(Contact).where(Contact.id == contact_id, Contact.workspace_id == workspace_id))
+        contact = contact_res.scalar_one_or_none()
+    if contact is None:
+        contact_res = await db.execute(
+            select(Contact).where(Contact.workspace_id == workspace_id).order_by(Contact.created_at.desc()).limit(1)
+        )
+        contact = contact_res.scalar_one_or_none()
+        if contact is None:
+            contact = Contact(
+                workspace_id=workspace_id,
+                phone_e164="+918019101606",
+                full_name=contact_name or "Test Customer",
+                lead_source="test_lab",
+            )
+            db.add(contact)
+            await db.flush()
+
+    resolved_contact_id = contact.id if contact else contact_id
+    resolved_name = contact_name or (contact.full_name if contact else "Test Customer")
+
     language = voice.language if voice else agent.primary_language
     conversation_state = new_conversation_state(objective=version.primary_objective, language=language)
     conversation_state["personality"] = version.personality
@@ -199,6 +222,12 @@ async def start_session(
     conversation_state["energy"] = version.energy
     conversation_state["response_length"] = version.response_length
     conversation_state["business_identity"] = agent.business_identity
+    conversation_state["customer_name"] = resolved_name
+    conversation_state["service_name"] = "appointment and consultation"
+    conversation_state["calling_reason"] = (
+        f"following up regarding your inquiry with {agent.business_identity} to confirm your appointment"
+        if agent.business_identity else "following up regarding your appointment request"
+    )
     conversation_state["recent_turns"] = []
 
     call_session = CallSession(
@@ -207,7 +236,7 @@ async def start_session(
         status="in_progress",
         agent_id=agent.id,
         agent_version_id=version.id,
-        contact_id=contact_id,
+        contact_id=resolved_contact_id,
         campaign_id=campaign_id,
         idempotency_key=f"test-{uuid.uuid4()}",
         language=language,
@@ -296,7 +325,14 @@ async def submit_user_turn(
     if call_session is None:
         raise ValueError("Call session not found")
     if call_session.status not in ("in_progress", "human_takeover"):
-        raise ValueError("Call is not in progress")
+        return UserTurnOut(
+            user_turn=TurnOut(turn_ref="customer-ended", speaker="customer", text=text),
+            interruption_classification="none",
+            stop_latency_ms=None,
+            agent_turn=None,
+            conversation_state=call_session.state or {},
+            call_status=call_session.status,
+        )
 
     runtime = registry_get(call_id)
     if runtime is None:
@@ -452,6 +488,13 @@ async def submit_user_turn(
         turn_ref=turn_record.turn_ref, speaker="agent", text=result.reply_text,
         estimated_duration_ms=estimate_speaking_duration_ms(result.reply_text),
     )
+
+    if result.call_should_end:
+        call_session.status = "completed"
+        call_session.end_reason = result.end_reason or "completed"
+        call_session.ended_at = now
+        if call_session.started_at:
+            call_session.duration_seconds = int((now - call_session.started_at).total_seconds())
 
     call_session.state = _make_json_safe(state)
     await db.flush()

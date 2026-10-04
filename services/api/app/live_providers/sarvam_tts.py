@@ -25,7 +25,7 @@ async def _fallback_synthesize_openai(*, text: str) -> bytes | None:
         response = await client.post(
             "https://api.openai.com/v1/audio/speech",
             headers={"Authorization": f"Bearer {openai_api_key}", "Content-Type": "application/json"},
-            json={"model": "tts-1", "input": text, "voice": "alloy", "response_format": "wav"},
+            json={"model": "tts-1", "input": text, "voice": "nova", "response_format": "wav"},
             timeout=15.0,
         )
         response.raise_for_status()
@@ -37,7 +37,7 @@ async def _fallback_synthesize_openai(*, text: str) -> bytes | None:
 
 
 class SarvamTTS:
-    def __init__(self, *, api_key: str, speaker: str = "priya", model: str = "bulbul:v3", pace: float = 1.0):
+    def __init__(self, *, api_key: str, speaker: str = "kavitha", model: str = "bulbul:v3", pace: float = 1.0):
         if not api_key and not os.getenv("OPENAI_API_KEY"):
             raise NotConfiguredError("Neither SARVAM_TTS_API_KEY nor OPENAI_API_KEY is set")
         self._api_key = api_key

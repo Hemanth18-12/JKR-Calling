@@ -235,8 +235,12 @@ async def run_post_call_pipeline(db: AsyncSession, *, workspace_id: uuid.UUID, c
         has_confirmed_appointment = (
             category == "appointment_booked"
             or (objective == "book_appointment" and objective_status in ("completed", "in_progress"))
+            or (call_session.state and call_session.state.get("appointment_readiness") == "APPOINTMENT_CONFIRMED")
             or any(k in known_fields for k in ("preferred_date", "preferred_time", "appointment_date", "date", "slot"))
-            or ("appointment" in full_transcript_text and any(w in full_transcript_text for w in ("confirm", "schedule", "book", "done", "fixed", "okay", "yes", "సరే", "కుదిరింది")))
+            or (
+                any(a in full_transcript_text for a in ("appointment", "అపాయింట్మెంట్", "అపాయింట్‌మెంట్"))
+                and any(w in full_transcript_text for w in ("confirm", "schedule", "book", "done", "fixed", "okay", "yes", "కంఫర్మ్", "కన్ఫర్మ్", "సరే", "కుదిరింది"))
+            )
         )
         if has_confirmed_appointment and call_session.contact_id is not None:
             try:
