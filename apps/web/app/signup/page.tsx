@@ -124,7 +124,7 @@ export default function SignupPage() {
         purpose: "signup",
         code: otpCode.trim(),
       });
-      if (user?.email?.trim().toLowerCase() === "jkrcalling4@gmail.com") {
+      if (user?.is_platform_super_admin) {
         window.location.href = "/admin";
       } else {
         window.location.href = "/app/dashboard";

@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { getActiveWorkspaceContext } from "@/lib/session";
 import { CoinPaymentClient } from "@/components/coin-payment-client";
 
+export const dynamic = "force-dynamic";
+
 interface PayPageProps {
   searchParams: {
     tier?: string;

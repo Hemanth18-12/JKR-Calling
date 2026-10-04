@@ -19,20 +19,20 @@ import {
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
+  User,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
+import { Suspense } from "react";
 
-const REQUIRED_ADMIN_EMAIL = "jkrcalling4@gmail.com";
-
-export default function AdminLoginPage() {
+function AdminLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const [step, setStep] = React.useState<"login" | "otp">("login");
-  const [email, setEmail] = React.useState(REQUIRED_ADMIN_EMAIL);
+  const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [otpCode, setOtpCode] = React.useState("");
 
@@ -42,26 +42,28 @@ export default function AdminLoginPage() {
   const [resending, setResending] = React.useState(false);
 
   React.useEffect(() => {
-    authApi
-      .me()
-      .then((res) => {
-        if (res?.user?.email?.trim().toLowerCase() === REQUIRED_ADMIN_EMAIL) {
-          window.location.href = "/admin";
-        }
-      })
-      .catch(() => {
-        // Not logged in, stay on login page
-      });
-  }, []);
+    if (!searchParams.get("error")) {
+      authApi
+        .me()
+        .then((res) => {
+          if (res?.user) {
+            window.location.href = "/admin";
+          }
+        })
+        .catch(() => {
+          // Not logged in, stay on login page
+        });
+    }
+  }, [searchParams]);
 
   React.useEffect(() => {
     const errParam = searchParams.get("error");
     if (errParam === "forbidden") {
       setError(
-        `Access Denied: Only ${REQUIRED_ADMIN_EMAIL} is authorized to access the Admin Console. Please log in with the admin account.`
+        "Access Denied: Your account is not authorized to access the Admin Console. Please log in with an administrator account."
       );
     } else if (errParam === "unauthorized") {
-      setError("Please log in with the administrator account to continue.");
+      setError("Please log in with your administrator credentials to continue.");
     }
   }, [searchParams]);
 
@@ -79,11 +81,8 @@ export default function AdminLoginPage() {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    // STRICT EMAIL GATE: genuinely reject any email other than jkrcalling4@gmail.com
-    if (cleanEmail !== REQUIRED_ADMIN_EMAIL) {
-      setError(
-        `Access Denied: Only ${REQUIRED_ADMIN_EMAIL} is authorized to access the Admin Console. (${cleanEmail} is rejected).`
-      );
+    if (!cleanEmail) {
+      setError("Please enter your administrator account email.");
       return;
     }
 
@@ -109,7 +108,7 @@ export default function AdminLoginPage() {
       }
     } catch (err: any) {
       if (err instanceof ApiClientError && err.status === 403) {
-        setError(`Access Denied: Only ${REQUIRED_ADMIN_EMAIL} is authorized to access this page.`);
+        setError("Access Denied: You are not authorized to access this administration portal.");
       } else if (err instanceof ApiClientError && err.status === 401) {
         setError("Invalid email or password. Please verify your credentials.");
       } else {
@@ -131,7 +130,7 @@ export default function AdminLoginPage() {
     setSubmitting(true);
     try {
       await authApi.verifyOtp({
-        email: REQUIRED_ADMIN_EMAIL,
+        email: email.trim().toLowerCase(),
         purpose: "login",
         code: otpCode.trim(),
       });
@@ -153,7 +152,7 @@ export default function AdminLoginPage() {
     setError(null);
     try {
       await authApi.resendOtp({
-        email: REQUIRED_ADMIN_EMAIL,
+        email: email.trim().toLowerCase(),
         purpose: "login",
       });
       setResendCooldown(60);
@@ -186,24 +185,44 @@ export default function AdminLoginPage() {
               JKR Admin Console
             </h1>
             <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto">
-              Gated administration portal. Only authorized email{" "}
-              <strong className="text-foreground">{REQUIRED_ADMIN_EMAIL}</strong> may log in.
+              Gated administration portal. Authorized platform operators only.
             </p>
           </div>
         </div>
 
-        <Card className="border-border/80 shadow-2xl bg-surface">
+        <Card className="border-border/80 shadow-2xl bg-surface overflow-hidden">
+          {/* Two-Option Toggle: User Login vs Admin Login */}
+          <div className="p-3 pb-0">
+            <div className="grid grid-cols-2 p-1 bg-surface-raised border border-border/80 rounded-xl text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => router.push("/login")}
+                className="py-2 rounded-lg text-muted-foreground hover:text-foreground transition-all flex items-center justify-center gap-1.5"
+              >
+                <User className="h-3.5 w-3.5" />
+                User Login
+              </button>
+              <button
+                type="button"
+                className="py-2 rounded-lg bg-primary text-black font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Admin Login
+              </button>
+            </div>
+          </div>
+
           {step === "login" ? (
             <>
-              <CardHeader className="pb-4">
+              <CardHeader className="pb-4 pt-3">
                 <CardTitle className="text-base font-bold flex items-center justify-between">
-                  <span>Administrator Login</span>
-                  <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 text-[10px]">
+                  <span>Administrator Authentication</span>
+                  <Badge variant="outline" className="border-amber-500/30 text-amber-400 text-[10px]">
                     Super Admin
                   </Badge>
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Enter your credentials to manage payments, revenue, and platform operations.
+                  Enter your administrator credentials to access platform controls.
                 </CardDescription>
               </CardHeader>
 
@@ -211,19 +230,20 @@ export default function AdminLoginPage() {
                 <form onSubmit={handleLoginSubmit} className="space-y-4">
                   <div>
                     <Label htmlFor="admin-email" className="text-xs font-medium">
-                      Admin Email (Restricted)
+                      Admin Email
                     </Label>
                     <Input
                       id="admin-email"
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="jkrcalling4@gmail.com"
-                      className="mt-1.5 font-mono text-xs"
+                      placeholder="admin@domain.com"
+                      className="mt-1.5 text-xs font-medium"
                       required
+                      autoFocus
                     />
                     <p className="text-[10px] text-muted-foreground mt-1">
-                      Must match <span className="text-primary font-mono">{REQUIRED_ADMIN_EMAIL}</span> exactly.
+                      Enter your authorized administrator email address.
                     </p>
                   </div>
 
@@ -239,7 +259,6 @@ export default function AdminLoginPage() {
                       placeholder="••••••••••••"
                       className="mt-1.5"
                       required
-                      autoFocus
                     />
                   </div>
 
@@ -273,14 +292,13 @@ export default function AdminLoginPage() {
           ) : (
             /* OTP step */
             <>
-              <CardHeader className="pb-4">
+              <CardHeader className="pb-4 pt-3">
                 <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
                   <KeyRound className="h-5 w-5" />
                 </div>
-                <CardTitle className="text-base font-bold">Admin Two-Factor Security</CardTitle>
+                <CardTitle className="text-base font-bold">Admin Two-Factor Verification</CardTitle>
                 <CardDescription className="text-xs leading-relaxed">
-                  A 6-digit verification code has been sent to{" "}
-                  <strong className="text-foreground">{REQUIRED_ADMIN_EMAIL}</strong>.
+                  A 6-digit security code has been sent to your administrator email address.
                 </CardDescription>
               </CardHeader>
 
@@ -358,5 +376,19 @@ export default function AdminLoginPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      }
+    >
+      <AdminLoginForm />
+    </Suspense>
   );
 }

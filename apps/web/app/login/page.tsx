@@ -4,7 +4,7 @@ import { LoginRequest } from "@jkr/contracts";
 import { ApiClientError, authApi } from "@jkr/sdk";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, FieldError, Input, Label } from "@jkr/ui";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, KeyRound, RefreshCw, Zap } from "lucide-react";
+import { ArrowLeft, KeyRound, RefreshCw, ShieldCheck, User, Zap } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -102,12 +102,7 @@ export default function LoginPage() {
         setOtpCode("");
         setOtpError(null);
       } else {
-        // Direct login (e.g. demo account)
-        if (data.email.trim().toLowerCase() === "jkrcalling4@gmail.com") {
-          window.location.href = "/admin";
-        } else {
-          window.location.href = "/app/dashboard";
-        }
+        window.location.href = "/app/dashboard";
       }
     } catch (err) {
       setFormError(err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.");
@@ -123,16 +118,12 @@ export default function LoginPage() {
     setOtpError(null);
     setOtpVerifying(true);
     try {
-      const user = await authApi.verifyOtp({
+      await authApi.verifyOtp({
         email: pendingEmail,
         purpose: "login",
         code: otpCode.trim(),
       });
-      if (user?.email?.trim().toLowerCase() === "jkrcalling4@gmail.com") {
-        window.location.href = "/admin";
-      } else {
-        window.location.href = "/app/dashboard";
-      }
+      window.location.href = "/app/dashboard";
     } catch (err) {
       setOtpError(err instanceof ApiClientError ? err.message : "Invalid code. Please check your email and try again.");
     } finally {
@@ -174,11 +165,32 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <Card className="border-border/60 shadow-card-raised">
+        <Card className="border-border/60 shadow-card-raised overflow-hidden">
+          {/* Two-Option Toggle: User Login vs Admin Login */}
+          <div className="p-3 pb-0">
+            <div className="grid grid-cols-2 p-1 bg-surface-raised border border-border/80 rounded-xl text-xs font-semibold">
+              <button
+                type="button"
+                className="py-2 rounded-lg bg-primary text-black font-bold shadow-sm flex items-center justify-center gap-1.5 transition-all"
+              >
+                <User className="h-3.5 w-3.5" />
+                User Login
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/admin/login")}
+                className="py-2 rounded-lg text-muted-foreground hover:text-foreground transition-all flex items-center justify-center gap-1.5"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Admin Login
+              </button>
+            </div>
+          </div>
+
           {step === "form" ? (
             <>
-              <CardHeader className="pb-4">
-                <CardTitle className="font-display text-lg font-semibold">Log in</CardTitle>
+              <CardHeader className="pb-4 pt-3">
+                <CardTitle className="font-display text-lg font-semibold">User Login</CardTitle>
                 <CardDescription>Welcome back to your workspace.</CardDescription>
               </CardHeader>
               <CardContent>

@@ -213,7 +213,7 @@ export function AdminDashboard({
                 </span>
               </div>
               <p className="text-xs text-muted-foreground font-mono">
-                Operator: <span className="text-primary font-bold">{currentUser.email}</span>
+                Operator: <span className="text-primary font-bold">Platform Super Admin</span>
               </p>
             </div>
           </div>

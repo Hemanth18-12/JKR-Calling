@@ -216,7 +216,7 @@ export function AppShell({
           </nav>
 
           {/* Admin link for super admin */}
-          {me?.user?.email?.trim().toLowerCase() === "jkrcalling4@gmail.com" && (
+          {me?.user?.is_platform_super_admin && (
             <div className="p-2 border-t border-border/80">
               <Link
                 href="/admin"
