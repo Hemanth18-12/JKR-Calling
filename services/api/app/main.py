@@ -17,6 +17,7 @@ from app.modules.agents.router import router as agents_router
 from app.modules.analytics.router import router as analytics_router
 from app.modules.billing.router import router as billing_router
 from app.modules.calls.router import router as calls_router
+from app.modules.coins.router import admin_router as admin_coins_router, router as coins_router
 from app.modules.campaigns.router import router as campaigns_router
 from app.modules.compliance.router import router as compliance_router
 from app.modules.contacts.router import router as contacts_router
@@ -148,5 +149,6 @@ for r in (
     identity_router, tenancy_router, providers_router, agents_router, calls_router, knowledge_router,
     contacts_router, campaigns_router, tools_router, operations_router, analytics_router, experiments_router,
     compliance_router, billing_router, integrations_router, live_call_router, twilio_media_stream_router,
+    coins_router, admin_coins_router,
 ):
     app.include_router(r, prefix="/api/v1")

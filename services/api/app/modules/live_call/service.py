@@ -756,6 +756,27 @@ async def _finalize_call(
                 quantity=call_session.duration_seconds, unit="seconds", occurred_at=now,
             )
         )
+        try:
+            from jkr_db.models.coins import CoinWallet, CoinTransaction
+            w_res = await db.execute(select(CoinWallet).where(CoinWallet.workspace_id == workspace_id))
+            wallet = w_res.scalar_one_or_none()
+            if wallet is not None:
+                duration = int(call_session.duration_seconds)
+                wallet.balance_coins = max(0, wallet.balance_coins - duration)
+                wallet.total_spent_coins += duration
+                db.add(
+                    CoinTransaction(
+                        workspace_id=workspace_id,
+                        user_id=None,
+                        amount_coins=-duration,
+                        transaction_type="call_deduction",
+                        reference_id=str(call_session_id),
+                        description=f"Live Call usage: {duration}s AI conversation ({duration} coins)",
+                        balance_after=wallet.balance_coins,
+                    )
+                )
+        except Exception as exc:
+            logger.warning("Could not deduct coins for live call %s: %s", call_session_id, exc)
 
     await db.flush()
     try:

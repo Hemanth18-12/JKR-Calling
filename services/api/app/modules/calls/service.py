@@ -33,6 +33,11 @@ async def start_test_call(
     contact_id: uuid.UUID | None = None,
     phone_e164: str | None = None,
 ) -> dict:
+    from app.modules.coins.service import check_call_allowed
+    allowed, balance, reason = await check_call_allowed(db, workspace_id=workspace_id)
+    if not allowed:
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, reason)
+
     agent_result = await db.execute(select(Agent).where(Agent.id == agent_id, Agent.workspace_id == workspace_id))
     if agent_result.scalar_one_or_none() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found")

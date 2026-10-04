@@ -1,8 +1,8 @@
 "use client";
 
-import { callsApi, ApiClientError } from "@jkr/sdk";
+import { callsApi, coinsApi, ApiClientError } from "@jkr/sdk";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, useToast } from "@jkr/ui";
-import { AlertCircle, CheckCircle2, MessageSquare, PhoneOff, Send, Smartphone, Zap } from "lucide-react";
+import { AlertCircle, CheckCircle2, Coins, MessageSquare, PhoneOff, Send, Smartphone, Zap } from "lucide-react";
 import * as React from "react";
 
 interface ChatMessage {
@@ -24,8 +24,25 @@ export function TestLabChat({ workspaceId, agentId }: { workspaceId: string; age
   const [starting, setStarting] = React.useState(false);
   const [sending, setSending] = React.useState(false);
   const [ended, setEnded] = React.useState<{ outcome_category: string; lead_score: string } | null>(null);
+  const [coinBalance, setCoinBalance] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    coinsApi
+      .getWallet(workspaceId)
+      .then((w) => setCoinBalance(w.balance_coins))
+      .catch(() => {});
+  }, [workspaceId]);
 
   const startCall = async () => {
+    if (coinBalance !== null && coinBalance <= 0) {
+      toast({
+        title: "Insufficient Coin Balance (0 Coins) 🪙",
+        description: "Please top up your wallet in Billing & Coins to start calls (1 coin = 1 second of AI talk time).",
+        variant: "danger",
+      });
+      return;
+    }
+
     setStarting(true);
     setMessages([]);
     setEnded(null);
@@ -39,11 +56,19 @@ export function TestLabChat({ workspaceId, agentId }: { workspaceId: string; age
       setMessages([{ id: "greeting", speaker: "agent", text: result.greeting }]);
       setState(result.conversation_state);
     } catch (err) {
-      toast({
-        title: "Could not start call",
-        description: err instanceof ApiClientError ? err.message : undefined,
-        variant: "danger",
-      });
+      if (err instanceof ApiClientError && (err.status === 402 || err.message?.toLowerCase().includes("coin"))) {
+        toast({
+          title: "Insufficient Coin Balance 🪙",
+          description: err.message,
+          variant: "danger",
+        });
+      } else {
+        toast({
+          title: "Could not start call",
+          description: err instanceof ApiClientError ? err.message : undefined,
+          variant: "danger",
+        });
+      }
     } finally {
       setStarting(false);
     }
@@ -151,7 +176,31 @@ export function TestLabChat({ workspaceId, agentId }: { workspaceId: string; age
                   />
                 </div>
               </div>
-              <Button onClick={startCall} loading={starting} variant="gradient" className="w-full sm:w-auto">
+              {coinBalance !== null && coinBalance <= 0 ? (
+                <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3.5 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-rose-300">
+                    <AlertCircle className="h-4 w-4" />
+                    <span>Insufficient Coin Balance: 0 Coins</span>
+                  </div>
+                  <p className="text-muted-foreground leading-relaxed">
+                    Calls are metered at <strong>1 coin per second</strong>. To test calls and receive live delivery, please top up your coin wallet.
+                  </p>
+                  <a
+                    href="/app/billing"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 font-bold text-black hover:bg-primary/90 transition-all text-xs"
+                  >
+                    <Coins className="h-3.5 w-3.5" /> Top Up Coins Now
+                  </a>
+                </div>
+              ) : null}
+
+              <Button
+                onClick={startCall}
+                loading={starting}
+                variant="gradient"
+                className="w-full sm:w-auto font-bold"
+                disabled={coinBalance !== null && coinBalance <= 0}
+              >
                 <Zap className="h-4 w-4" /> Start Mock Call
               </Button>
             </div>

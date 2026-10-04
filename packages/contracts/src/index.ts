@@ -12,3 +12,4 @@ export * from "./operations";
 export * from "./providers";
 export * from "./tenancy";
 export * from "./tools";
+export * from "./coins";

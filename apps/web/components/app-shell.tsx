@@ -1,13 +1,14 @@
 "use client";
 
 import type { MeResponse, WorkspaceListItem } from "@jkr/contracts";
-import { authApi } from "@jkr/sdk";
+import { authApi, coinsApi } from "@jkr/sdk";
 import { Badge, Button, useToast } from "@jkr/ui";
 import {
   BarChart3,
   Bot,
   Calendar,
   ChevronRight,
+  Coins,
   CreditCard,
   Gauge,
   Handshake,
@@ -78,7 +79,7 @@ const NAV: NavGroup[] = [
     items: [
       { label: "Compliance", href: "/app/compliance", icon: ShieldCheck },
       { label: "Integrations", href: "/app/integrations", icon: Plug },
-      { label: "Billing", href: "/app/billing", icon: CreditCard },
+      { label: "Billing & Coins", href: "/app/billing", icon: Coins },
       { label: "Usage", href: "/app/usage", icon: Gauge },
       { label: "Team", href: "/app/team", icon: Users },
       { label: "Settings", href: "/app/settings", icon: Settings },
@@ -117,6 +118,27 @@ export function AppShell({
   const isNotDashboard = pathname !== "/app/dashboard" && pathname !== "/app";
   const breadcrumbs = getBreadcrumbs(pathname);
 
+  const [coinBalance, setCoinBalance] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    if (!activeWorkspace?.id) return;
+    coinsApi
+      .getWallet(activeWorkspace.id)
+      .then((w) => setCoinBalance(w.balance_coins))
+      .catch(() => {});
+  }, [activeWorkspace?.id, pathname]);
+
+  const navGroups = React.useMemo(() => {
+    const groups = [...NAV];
+    if (me?.user?.is_platform_super_admin) {
+      groups.push({
+        label: "Super Admin",
+        items: [{ label: "Verify Coins", href: "/app/admin/coins", icon: ShieldCheck }],
+      });
+    }
+    return groups;
+  }, [me?.user?.is_platform_super_admin]);
+
   return (
     <GuidedTourProvider>
       <div className="flex min-h-screen bg-background">
@@ -152,7 +174,7 @@ export function AppShell({
 
           {/* Navigation */}
           <nav className="flex-1 space-y-5 overflow-y-auto px-2 py-4">
-            {NAV.map((group) => (
+            {navGroups.map((group) => (
               <div key={group.label || "root"}>
                 {group.label && !collapsed ? (
                   <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
@@ -263,6 +285,31 @@ export function AppShell({
               </Badge>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
+              {/* Coin Wallet Balance Pill */}
+              <Link
+                href="/app/billing"
+                className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-primary/20 transition-all shadow-sm"
+                title="Your AI Calling Coin Balance (1 coin = 1 second)"
+              >
+                <span>🪙</span>
+                <span className="font-mono text-primary font-bold">
+                  {coinBalance !== null ? coinBalance.toLocaleString() : "..."}
+                </span>
+                <span className="text-[10px] text-muted-foreground hidden sm:inline">Coins</span>
+              </Link>
+
+              {/* Platform Super-Admin Verification Link */}
+              {me?.user?.is_platform_super_admin && (
+                <Link
+                  href="/app/admin/coins"
+                  className="flex items-center gap-1 text-xs rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 font-medium text-emerald-400 hover:bg-emerald-500/20 transition-all"
+                  title="Verify incoming UPI payment proofs"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Admin Review</span>
+                </Link>
+              )}
+
               <StartTourButton
                 pageId={getTourPageId(pathname)}
                 size="sm"
