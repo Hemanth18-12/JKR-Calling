@@ -12,6 +12,7 @@ from app.deps import AuthContext, get_auth_context, require_permission, with_wor
 from app.modules.coins import service
 from app.modules.coins.schemas import (
     COIN_TIERS,
+    AdminDashboardOverview,
     AdminReviewRequest,
     CoinTier,
     CoinTopupRequestCreate,
@@ -23,11 +24,15 @@ from app.modules.coins.schemas import (
 router = APIRouter(prefix="/coins", tags=["coins"])
 admin_router = APIRouter(prefix="/admin/coins", tags=["admin-coins"])
 
+ADMIN_EMAIL = "jkrcalling4@gmail.com"
+
 
 def require_super_admin(auth: AuthContext = Depends(get_auth_context)) -> AuthContext:
-    if not auth.user.is_platform_super_admin:
+    clean_email = auth.user.email.strip().lower()
+    if not auth.user.is_platform_super_admin or clean_email != ADMIN_EMAIL:
         raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "Platform super-admin access required."
+            status.HTTP_403_FORBIDDEN,
+            f"Access restricted: Only {ADMIN_EMAIL} is authorized to access platform administration.",
         )
     return auth
 
@@ -126,3 +131,12 @@ async def admin_reject_topup(
         reviewer_id=auth.user.id,
         notes=payload.notes,
     )
+
+
+@admin_router.get("/overview", response_model=AdminDashboardOverview)
+async def admin_get_overview(
+    auth: AuthContext = Depends(require_super_admin),
+    db: AsyncSession = Depends(platform_db),
+) -> AdminDashboardOverview:
+    return await service.get_admin_dashboard_overview(db)
+

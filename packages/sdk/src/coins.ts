@@ -1,5 +1,6 @@
 import type {
   AdminApproveReject,
+  AdminDashboardOverview,
   CoinTier,
   CoinTopupRequestCreate,
   CoinTopupRequestOut,
@@ -52,5 +53,11 @@ export const adminCoinsApi = {
       ...opts,
       method: "POST",
       body: payload ?? {},
+    }),
+
+  getOverview: (opts?: ApiFetchOptions) =>
+    apiFetch<AdminDashboardOverview>("/admin/coins/overview", {
+      ...opts,
+      method: "GET",
     }),
 };

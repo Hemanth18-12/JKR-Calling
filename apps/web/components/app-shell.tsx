@@ -215,6 +215,26 @@ export function AppShell({
             ))}
           </nav>
 
+          {/* Admin link for super admin */}
+          {me?.user?.email?.trim().toLowerCase() === "jkrcalling4@gmail.com" && (
+            <div className="p-2 border-t border-border/80">
+              <Link
+                href="/admin"
+                className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 text-xs font-bold transition-colors"
+              >
+                <ShieldCheck className="h-4 w-4 text-amber-400 shrink-0" />
+                {!collapsed && (
+                  <div className="flex items-center justify-between flex-1">
+                    <span>Admin Console</span>
+                    <span className="text-[10px] bg-amber-500 text-black px-1.5 py-0.5 rounded font-black">
+                      Super
+                    </span>
+                  </div>
+                )}
+              </Link>
+            </div>
+          )}
+
           {/* User foot */}
           {!collapsed && (
             <div className="border-t border-border p-3">

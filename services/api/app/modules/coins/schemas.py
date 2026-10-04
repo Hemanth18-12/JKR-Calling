@@ -68,3 +68,48 @@ class CoinTransactionOut(BaseModel):
 
 class AdminReviewRequest(BaseModel):
     notes: str | None = None
+
+
+class AdminUserSummary(BaseModel):
+    user_id: uuid.UUID
+    email: str
+    full_name: str | None = None
+    signup_date: datetime
+    last_login_at: datetime | None = None
+    workspace_id: uuid.UUID | None = None
+    workspace_name: str | None = None
+    coin_balance: int = 0
+    total_recharged_coins: int = 0
+    total_spent_coins: int = 0
+
+
+class AdminTierRevenue(BaseModel):
+    tier_id: str
+    price_inr: int
+    total_coins: int
+    approved_count: int
+    total_revenue_inr: int
+
+
+class AdminDashboardOverview(BaseModel):
+    # Revenue / Income Metrics
+    total_revenue_inr: int
+    revenue_this_month_inr: int
+    revenue_this_week_inr: int
+    revenue_by_tier: list[AdminTierRevenue]
+
+    # Topup counts
+    pending_requests_count: int
+    approved_requests_count: int
+    rejected_requests_count: int
+    total_coins_recharged: int
+
+    # Usage Metrics (Platform-wide call seconds)
+    total_coins_spent: int
+    total_call_seconds: int
+    total_calls_count: int
+
+    # Users & Workspaces
+    total_users_count: int
+    total_workspaces_count: int
+    users: list[AdminUserSummary]

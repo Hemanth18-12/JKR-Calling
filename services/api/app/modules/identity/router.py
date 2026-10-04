@@ -138,6 +138,53 @@ async def login(
         ) from exc
 
 
+ADMIN_EMAIL = "jkrcalling4@gmail.com"
+
+
+@router.post("/admin-login", response_model=OtpRequiredResponse | UserOut, dependencies=[Depends(_auth_rate_limit)])
+async def admin_login(
+    payload: LoginRequest,
+    response: Response,
+    request: Request,
+    db: AsyncSession = Depends(platform_db),
+    settings: Settings = Depends(get_settings),
+) -> OtpRequiredResponse | UserOut:
+    clean_email = payload.email.strip().lower()
+    if clean_email != ADMIN_EMAIL:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Access restricted: Only {ADMIN_EMAIL} is authorized to access the Admin Console.",
+        )
+
+    try:
+        user = await service.authenticate_user(db, email=clean_email, password=payload.password)
+        if not user.is_platform_super_admin:
+            user.is_platform_super_admin = True
+            await db.flush()
+
+        await service.issue_verification_otp(
+            db,
+            email=clean_email,
+            purpose="login",
+            settings=settings,
+            metadata={"user_id": str(user.id)},
+        )
+        return OtpRequiredResponse(
+            status="otp_required",
+            email=clean_email,
+            purpose="login",
+            message="A 6-digit verification code has been sent to your admin email.",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("[AUTH ADMIN LOGIN ERROR] %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Admin login error.",
+        ) from exc
+
+
 @router.post("/verify-otp", response_model=UserOut, dependencies=[Depends(_auth_rate_limit)])
 async def verify_otp(
     payload: VerifyOtpRequest,
@@ -175,6 +222,10 @@ async def verify_otp(
             user = result.scalar_one_or_none()
             if user is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "User account not found")
+
+        if user.email.lower() == ADMIN_EMAIL and not user.is_platform_super_admin:
+            user.is_platform_super_admin = True
+            await db.flush()
 
         _session, raw_token = await service.create_session(
             db,

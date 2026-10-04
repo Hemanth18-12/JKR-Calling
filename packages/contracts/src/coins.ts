@@ -75,3 +75,48 @@ export const AdminApproveRejectSchema = z.object({
 });
 
 export type AdminApproveReject = z.infer<typeof AdminApproveRejectSchema>;
+
+export const AdminUserSummarySchema = z.object({
+  user_id: z.string().uuid(),
+  email: z.string(),
+  full_name: z.string().nullable().optional(),
+  signup_date: z.string(),
+  last_login_at: z.string().nullable().optional(),
+  workspace_id: z.string().uuid().nullable().optional(),
+  workspace_name: z.string().nullable().optional(),
+  coin_balance: z.number().int(),
+  total_recharged_coins: z.number().int(),
+  total_spent_coins: z.number().int(),
+});
+
+export type AdminUserSummary = z.infer<typeof AdminUserSummarySchema>;
+
+export const AdminTierRevenueSchema = z.object({
+  tier_id: z.string(),
+  price_inr: z.number().int(),
+  total_coins: z.number().int(),
+  approved_count: z.number().int(),
+  total_revenue_inr: z.number().int(),
+});
+
+export type AdminTierRevenue = z.infer<typeof AdminTierRevenueSchema>;
+
+export const AdminDashboardOverviewSchema = z.object({
+  total_revenue_inr: z.number().int(),
+  revenue_this_month_inr: z.number().int(),
+  revenue_this_week_inr: z.number().int(),
+  revenue_by_tier: z.array(AdminTierRevenueSchema),
+  pending_requests_count: z.number().int(),
+  approved_requests_count: z.number().int(),
+  rejected_requests_count: z.number().int(),
+  total_coins_recharged: z.number().int(),
+  total_coins_spent: z.number().int(),
+  total_call_seconds: z.number().int(),
+  total_calls_count: z.number().int(),
+  total_users_count: z.number().int(),
+  total_workspaces_count: z.number().int(),
+  users: z.array(AdminUserSummarySchema),
+});
+
+export type AdminDashboardOverview = z.infer<typeof AdminDashboardOverviewSchema>;
+

@@ -17,6 +17,8 @@ export const authApi = {
     apiFetch<OtpRequiredResponse | UserOut>("/auth/signup", { ...opts, method: "POST", body: data }),
   login: (data: LoginRequest, opts?: ApiFetchOptions) =>
     apiFetch<OtpRequiredResponse | UserOut>("/auth/login", { ...opts, method: "POST", body: data }),
+  adminLogin: (data: LoginRequest, opts?: ApiFetchOptions) =>
+    apiFetch<OtpRequiredResponse | UserOut>("/auth/admin-login", { ...opts, method: "POST", body: data }),
   verifyOtp: (data: VerifyOtpRequest, opts?: ApiFetchOptions) =>
     apiFetch<UserOut>("/auth/verify-otp", { ...opts, method: "POST", body: data }),
   resendOtp: (data: ResendOtpRequest, opts?: ApiFetchOptions) =>

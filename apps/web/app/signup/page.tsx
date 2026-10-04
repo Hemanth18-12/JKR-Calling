@@ -119,12 +119,16 @@ export default function SignupPage() {
     setOtpError(null);
     setOtpVerifying(true);
     try {
-      await authApi.verifyOtp({
+      const user = await authApi.verifyOtp({
         email: pendingEmail,
         purpose: "signup",
         code: otpCode.trim(),
       });
-      window.location.href = "/app/dashboard";
+      if (user?.email?.trim().toLowerCase() === "jkrcalling4@gmail.com") {
+        window.location.href = "/admin";
+      } else {
+        window.location.href = "/app/dashboard";
+      }
     } catch (err) {
       setOtpError(err instanceof ApiClientError ? err.message : "Verification failed. Please check the code and try again.");
     } finally {

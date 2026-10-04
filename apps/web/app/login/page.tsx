@@ -103,7 +103,11 @@ export default function LoginPage() {
         setOtpError(null);
       } else {
         // Direct login (e.g. demo account)
-        window.location.href = "/app/dashboard";
+        if (data.email.trim().toLowerCase() === "jkrcalling4@gmail.com") {
+          window.location.href = "/admin";
+        } else {
+          window.location.href = "/app/dashboard";
+        }
       }
     } catch (err) {
       setFormError(err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.");
@@ -119,12 +123,16 @@ export default function LoginPage() {
     setOtpError(null);
     setOtpVerifying(true);
     try {
-      await authApi.verifyOtp({
+      const user = await authApi.verifyOtp({
         email: pendingEmail,
         purpose: "login",
         code: otpCode.trim(),
       });
-      window.location.href = "/app/dashboard";
+      if (user?.email?.trim().toLowerCase() === "jkrcalling4@gmail.com") {
+        window.location.href = "/admin";
+      } else {
+        window.location.href = "/app/dashboard";
+      }
     } catch (err) {
       setOtpError(err instanceof ApiClientError ? err.message : "Invalid code. Please check your email and try again.");
     } finally {

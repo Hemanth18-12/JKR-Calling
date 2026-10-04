@@ -37,6 +37,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import * as React from "react";
 
 interface CoinsWalletProps {
@@ -52,19 +53,13 @@ export function CoinsWallet({
   initialRequests,
   initialTransactions,
 }: CoinsWalletProps) {
+  const router = useRouter();
   const { toast } = useToast();
   const [wallet, setWallet] = React.useState<CoinWalletOut>(initialWallet);
   const [requests, setRequests] = React.useState<CoinTopupRequestOut[]>(initialRequests);
   const [transactions, setTransactions] = React.useState<CoinTransactionOut[]>(initialTransactions);
 
-  const [selectedTier, setSelectedTier] = React.useState<CoinTier>(COIN_TIERS[1] ?? COIN_TIERS[0]!);
-  const [screenshotBase64, setScreenshotBase64] = React.useState<string | null>(null);
-  const [screenshotPreview, setScreenshotPreview] = React.useState<string | null>(null);
-  const [uploading, setUploading] = React.useState(false);
-  const [submittedRequest, setSubmittedRequest] = React.useState<CoinTopupRequestOut | null>(null);
   const [previewModalUrl, setPreviewModalUrl] = React.useState<string | null>(null);
-
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const refreshData = async () => {
     try {
@@ -78,67 +73,6 @@ export function CoinsWallet({
       setTransactions(t);
     } catch {
       // ignore in background
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      toast({
-        title: "Invalid file",
-        description: "Please upload an image file (PNG, JPG, or screenshot).",
-        variant: "danger",
-      });
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setScreenshotBase64(result);
-      setScreenshotPreview(result);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleSubmitProof = async () => {
-    if (!screenshotBase64) {
-      toast({
-        title: "Proof Required",
-        description: "Please select or take a screenshot of your successful UPI payment.",
-        variant: "danger",
-      });
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const req = await coinsApi.createTopupRequest(workspaceId, {
-        tier_id: selectedTier.id,
-        screenshot_base64: screenshotBase64,
-      });
-
-      setSubmittedRequest(req);
-      setScreenshotBase64(null);
-      setScreenshotPreview(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-
-      toast({
-        title: "Payment Proof Submitted! 🎉",
-        description: "Your top-up request is under review. Coins will be added once confirmed.",
-        variant: "success",
-      });
-      await refreshData();
-    } catch (err: any) {
-      toast({
-        title: "Submission Failed",
-        description: err?.message || "Could not submit payment proof. Please try again.",
-        variant: "danger",
-      });
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -226,17 +160,17 @@ export function CoinsWallet({
         </div>
       )}
 
-      {/* Part 1 & Part 2: Add Coins / Top Up Section */}
+      {/* Add Coins Section — Redirects to Dedicated Payment Page */}
       <Card className="border-border/80 shadow-lg bg-surface">
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <CardTitle className="text-lg font-bold flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
-                Add Coins — Instant UPI QR Payment
+                Add Coins — Top-up Tiers
               </CardTitle>
               <CardDescription>
-                Select your top-up tier, scan the QR code using any UPI app (PhonePe / GPay / Paytm), and upload your payment screenshot.
+                Select your preferred top-up package to proceed to our secure UPI QR payment checkout. 1 coin = 1 second of AI call time.
               </CardDescription>
             </div>
             <Badge variant="outline" className="self-start sm:self-auto border-primary/30 text-primary">
@@ -245,157 +179,61 @@ export function CoinsWallet({
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-6">
-          {/* Tier Selection Cards */}
-          <div>
-            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 block">
-              1. Choose Top-up Tier
-            </Label>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {COIN_TIERS.map((tier) => {
-                const isSelected = selectedTier.id === tier.id;
-                return (
-                  <div
-                    key={tier.id}
-                    onClick={() => setSelectedTier(tier)}
-                    className={`relative cursor-pointer rounded-xl border p-4 transition-all duration-200 ${
-                      isSelected
-                        ? "border-primary bg-primary/10 shadow-md ring-1 ring-primary"
-                        : "border-border/70 bg-surface-raised hover:border-border hover:bg-surface-raised/80"
-                    }`}
-                  >
-                    {tier.tag && (
-                      <span className="absolute -top-2.5 right-3 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
-                        {tier.tag}
-                      </span>
-                    )}
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-semibold text-muted-foreground">
-                        {tier.label ?? "Standard"}
-                      </span>
-                      <span className="text-base font-extrabold text-foreground">
-                        ₹{tier.price_inr}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="text-2xl font-black text-foreground flex items-center gap-1.5">
-                        <Coins className="h-5 w-5 text-primary" />
-                        {tier.total_coins}
-                        <span className="text-xs font-normal text-muted-foreground">coins</span>
-                      </div>
-                      <p className="text-[11px] text-muted-foreground">
-                        {tier.bonus_coins > 0 ? (
-                          <>
-                            {tier.base_coins} base +{" "}
-                            <strong className="text-emerald-400">+{tier.bonus_coins} bonus</strong>
-                          </>
-                        ) : (
-                          `${Math.floor(tier.total_coins / 60)} minutes talk time`
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* QR Payment Box & File Upload */}
-          <div className="rounded-2xl border border-border/80 bg-surface-raised/50 p-5 space-y-6">
-            <Label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-              2. Scan &amp; Pay via UPI
-            </Label>
-
-            <div className="grid gap-6 md:grid-cols-12 items-center">
-              {/* QR Code Container */}
-              <div className="md:col-span-5 flex flex-col items-center justify-center p-4 bg-black/40 rounded-xl border border-border/60">
-                <div className="relative w-56 h-72 sm:w-60 sm:h-80 overflow-hidden rounded-lg shadow-xl border border-border/50">
-                  <Image
-                    src="/payment_qr.png"
-                    alt="PhonePe UPI Payment QR"
-                    fill
-                    className="object-contain"
-                    priority
-                  />
-                </div>
-                <div className="mt-3 text-center space-y-0.5">
-                  <p className="text-xs font-semibold text-foreground">tejavath Hemanth</p>
-                  <p className="text-[11px] text-muted-foreground font-mono">+91 8019101606</p>
-                  <span className="inline-block mt-1 text-[10px] text-emerald-400 font-medium bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                    ✓ Verified PhonePe Merchant
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {COIN_TIERS.map((tier) => (
+              <div
+                key={tier.id}
+                onClick={() => router.push(`/app/billing/pay?tier=${tier.id}`)}
+                className="group relative cursor-pointer rounded-xl border border-border/70 bg-surface-raised p-5 transition-all duration-200 hover:border-primary hover:bg-surface-raised/90 hover:shadow-lg flex flex-col justify-between"
+              >
+                {tier.tag && (
+                  <span className="absolute -top-2.5 right-4 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                    {tier.tag}
                   </span>
+                )}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      {tier.label ?? "Standard"}
+                    </span>
+                    <span className="text-lg font-extrabold text-foreground">
+                      ₹{tier.price_inr}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 mb-4">
+                    <div className="text-3xl font-black text-foreground flex items-center gap-2">
+                      <Coins className="h-6 w-6 text-primary" />
+                      {tier.total_coins}
+                      <span className="text-xs font-normal text-muted-foreground">coins</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {tier.bonus_coins > 0 ? (
+                        <>
+                          {tier.base_coins} base +{" "}
+                          <strong className="text-emerald-400">+{tier.bonus_coins} bonus</strong>
+                        </>
+                      ) : (
+                        `${Math.floor(tier.total_coins / 60)} minutes talk time`
+                      )}
+                    </p>
+                  </div>
                 </div>
+
+                <Button
+                  variant="gradient"
+                  size="sm"
+                  className="w-full font-bold mt-2 group-hover:scale-[1.02] transition-transform"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/app/billing/pay?tier=${tier.id}`);
+                  }}
+                >
+                  Select &amp; Pay ₹{tier.price_inr} →
+                </Button>
               </div>
-
-              {/* Instructions and Upload */}
-              <div className="md:col-span-7 space-y-5">
-                <div className="rounded-xl bg-surface border border-border/70 p-4 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Selected Plan:</span>
-                    <strong className="text-foreground">{selectedTier.label}</strong>
-                  </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Coins Credited:</span>
-                    <strong className="text-primary font-bold">{selectedTier.total_coins} Coins</strong>
-                  </div>
-                  <div className="border-t border-border/60 pt-2 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-foreground">Exact Amount to Pay:</span>
-                    <span className="text-2xl font-black text-emerald-400">₹{selectedTier.price_inr}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <Label htmlFor="payment-screenshot" className="text-xs font-medium text-foreground block">
-                    3. Upload Payment Screenshot (Proof)
-                  </Label>
-
-                  <div className="flex flex-col gap-3">
-                    <input
-                      ref={fileInputRef}
-                      id="payment-screenshot"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileChange}
-                      className="block w-full text-xs text-muted-foreground file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-black hover:file:bg-primary/90 cursor-pointer"
-                    />
-
-                    {screenshotPreview && (
-                      <div className="relative inline-block mt-2">
-                        <p className="text-[11px] text-muted-foreground mb-1">Selected screenshot preview:</p>
-                        <div
-                          className="relative h-32 w-32 rounded-lg border border-border overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => setPreviewModalUrl(screenshotPreview)}
-                        >
-                          <img
-                            src={screenshotPreview}
-                            alt="Screenshot preview"
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    <Button
-                      variant="gradient"
-                      className="w-full mt-2 font-bold"
-                      onClick={handleSubmitProof}
-                      disabled={!screenshotBase64 || uploading}
-                      loading={uploading}
-                    >
-                      <Upload className="h-4 w-4 mr-2" />
-                      {uploading
-                        ? "Uploading Proof..."
-                        : `I've Paid ₹${selectedTier.price_inr} — Submit for Review`}
-                    </Button>
-                  </div>
-
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
-                    💡 After transfer, upload your payment receipt or success screen. Our admin reviews incoming payments promptly and credits the coins directly to your wallet.
-                  </p>
-                </div>
-              </div>
-            </div>
+            ))}
           </div>
         </CardContent>
       </Card>
