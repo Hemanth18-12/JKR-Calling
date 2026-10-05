@@ -15,3 +15,4 @@ export * from "./providers";
 export * from "./tools";
 export * from "./workspaces";
 export * from "./coins";
+export * from "./widget";

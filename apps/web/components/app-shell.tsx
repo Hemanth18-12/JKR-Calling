@@ -21,6 +21,7 @@ import {
   Plug,
   Settings,
   ShieldCheck,
+  Sparkles,
   Users,
   Zap,
 } from "lucide-react";
@@ -50,6 +51,7 @@ const NAV: NavGroup[] = [
     label: "Build",
     items: [
       { label: "Agents", href: "/app/agents", icon: Bot },
+      { label: "Website Widget", href: "/app/widget", icon: Sparkles },
       { label: "Knowledge", href: "/app/knowledge/documents", icon: MessageSquareText },
     ],
   },

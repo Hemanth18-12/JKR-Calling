@@ -33,6 +33,7 @@ from app.modules.providers.router import router as providers_router
 from app.modules.tenancy.router import router as tenancy_router
 from app.modules.tools.internal_router import router as internal_tools_router
 from app.modules.tools.router import router as tools_router
+from app.modules.widget.router import router as widget_router
 
 logger = logging.getLogger("jkr_api.main")
 settings = get_settings()
@@ -156,7 +157,7 @@ for r in (
     identity_router, tenancy_router, providers_router, agents_router, calls_router, knowledge_router,
     contacts_router, campaigns_router, tools_router, operations_router, analytics_router, experiments_router,
     compliance_router, billing_router, integrations_router, live_call_router, twilio_media_stream_router,
-    coins_router, admin_coins_router, internal_tools_router,
+    coins_router, admin_coins_router, internal_tools_router, widget_router,
 ):
     app.include_router(r, prefix="/api/v1")
 

@@ -13,3 +13,4 @@ export * from "./providers";
 export * from "./tenancy";
 export * from "./tools";
 export * from "./coins";
+export * from "./widget";
