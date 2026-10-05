@@ -1,0 +1,38 @@
+{
+  "name": "n8n-nodes-jkr-calling",
+  "version": "1.0.0",
+  "description": "n8n community nodes for JKR Calling voice AI platform",
+  "keywords": [
+    "n8n-community-node-package",
+    "jkr-calling",
+    "voice-ai",
+    "telephony",
+    "ai-agent"
+  ],
+  "license": "MIT",
+  "homepage": "https://jkrcalling.com",
+  "author": {
+    "name": "JKR Calling Team"
+  },
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/JkrApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/JkrCalling/JkrCalling.node.js",
+      "dist/nodes/JkrCalling/JkrCallingTrigger.node.js"
+    ]
+  },
+  "devDependencies": {
+    "n8n-workflow": "^1.0.0",
+    "typescript": "^5.6.3"
+  }
+}
