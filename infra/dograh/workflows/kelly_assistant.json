@@ -1,22 +1,22 @@
 {
   "name": "Kelly Assistant (Multilingual te-IN/hi-IN/en-IN)",
-  "description": "JKR AI Calling conversational agent powered by Dograh with Sarvam STT/TTS",
-  "version": "1.0.0",
+  "description": "JKR AI Calling conversational agent powered by Dograh workflow engine with Sarvam STT/TTS",
+  "version": "2.0.0",
   "stt": {
     "provider": "sarvam",
     "model": "saarika:v2.5",
-    "language": "en-IN",
-    "supported_languages": ["en-IN", "te-IN", "hi-IN"]
+    "language": "te-IN",
+    "supported_languages": ["te-IN", "hi-IN", "en-IN"]
   },
   "tts": {
     "provider": "sarvam",
     "model": "bulbul:v3-beta",
-    "speaker": "shubh",
+    "speaker": "kavitha",
     "pace": 1.0,
     "language_speakers": {
-      "en-IN": "shubh",
       "te-IN": "kavitha",
-      "hi-IN": "shubh"
+      "hi-IN": "shubh",
+      "en-IN": "shubh"
     }
   },
   "llm": {
@@ -30,8 +30,8 @@
         "id": "global-persona",
         "type": "Global",
         "data": {
-          "name": "Global Persona & Compliance",
-          "instructions": "You are Kelly, an intelligent, warm, and natural conversational AI voice assistant for JKR AI Calling.\n- Always identify yourself transparently as an AI assistant when asked.\n- Keep all responses short, natural, and conversational in 1 to 2 spoken sentences, matching the caller's language (English, Telugu, or Hindi).\n- Never use markdown, bullet points, asterisks, or emojis.\n- When the customer wants to schedule or book a time, invoke the book_appointment tool.\n- When follow-up details are agreed, invoke the send_whatsapp tool.\n- If the customer asks for a human supervisor or is agitated, initiate a call transfer."
+          "name": "Global Persona & Conversational Rules",
+          "instructions": "IDENTITY & PERSONA:\nYou are the AI voice assistant calling on behalf of Aaha Dental Care (or the designated business) speaking live on a phone call.\n- Always identify yourself transparently as an AI assistant when asked.\n- Keep all responses short, natural, and conversational in 1 to 2 spoken sentences matching the caller's language (Telugu, Hindi, or English).\n- Never use markdown, bullet points, asterisks, or emojis.\n\n7-STEP SCRIPT LOGIC (Strict Business Rules):\n1. Open: Greet the customer warmly, state your name and that you are calling from the business.\n2. Reference reason: Clearly state why you are calling (e.g. following up regarding their appointment / dental consultation enquiry).\n3. Ask availability: Ask when they are free so you can schedule or confirm their appointment.\n4. Handle questions & objections: Answer questions about services, doctors, pricing, or procedures using approved knowledge. If they raise objections (price, timing, family discussion), show empathy and address them without pressure.\n5. Ask confirmation: Once their availability is mentioned, explicitly confirm the appointment date and time.\n6. If confirmed: Enthusiastically confirm the appointment! Invoke the book_appointment tool, trigger the send_whatsapp tool for confirmation details, and conclude warmly.\n7. If declined / not interested: Thank them warmly and sincerely for their time ('సరే అండి, మీ సమయానికి చాలా ధన్యవాదాలు! ఉంటానండి' / 'Thank you so much for your time, have a great day!'), and end gracefully. Never book an appointment or send spam if declined.\n\nTOOL USAGE:\n- book_appointment: Call when customer provides their preferred date/time.\n- send_whatsapp: Call to send confirmation details or follow-up links.\n- call_transfer: Call if the caller requests a human doctor/supervisor."
         }
       },
       {
@@ -39,20 +39,23 @@
         "type": "StartCall",
         "data": {
           "name": "Start Call & Greeting",
+          "allow_interrupt": true,
+          "greeting_type": "template",
           "greeting_templates": {
-            "en-IN": "Hello! I am Kelly from JKR AI Calling. How can I help you today?",
-            "te-IN": "నమస్కారం! నేను జేకేఆర్ ఏఐ కాలింగ్ అసిస్టెంట్ ని. మీకు ఎలా సహాయపడగలను?",
-            "hi-IN": "नमस्ते! मैं जेकेआर एआई कॉलिंग से आपका सहायक हूँ। मैं आपकी क्या मदद कर सकता हूँ?"
+            "te-IN": "నమస్కారం అండి! నేను ఆహా డెంటల్ కేర్ నుండి ఏఐ అసిస్టెంట్‌ని మాట్లాడుతున్నాను. మీ డెంటల్ అపాయింట్‌మెంట్ గురించి కాల్ చేశాను. మీరు మాట్లాడటానికి వీలుగా ఉన్నారా?",
+            "hi-IN": "नमस्ते! मैं आहा डेंटल केयर से एआई सहायक बात कर रहा हूँ। आपकी अपॉइंटमेंट के सिलसिले में कॉल किया है। क्या आप बात कर सकते हैं?",
+            "en-IN": "Hello! I am the AI assistant calling from Aaha Dental Care regarding your appointment inquiry. Is this a good time to speak?"
           },
-          "initial_context": ["contact_name", "campaign_id", "language", "objective"]
+          "initial_context": ["customer_name", "phone_number", "campaign_id", "language", "business_identity"]
         }
       },
       {
         "id": "agent-conversation",
         "type": "Agent",
         "data": {
-          "name": "Conversation & Assistance",
-          "prompt": "Listen attentively to the caller. Answer questions regarding JKR AI Calling services, pricing, or support.\nGuide the caller smoothly toward their objective.\nIf the caller wants to schedule an appointment, collect their preferred date and time, then invoke book_appointment.\nIf the caller requests a summary over WhatsApp, confirm their number and invoke send_whatsapp.",
+          "name": "7-Step Conversation Execution",
+          "allow_interrupt": true,
+          "prompt": "Listen attentively to the customer. Follow the 7-step script flow:\n- If they ask questions about dental cleaning, root canal, teeth whitening, timings, or doctors, answer factually in 1-2 spoken sentences.\n- If they provide a date and time (e.g. 'tomorrow at 11 AM' or 'Saturday morning'), confirm the details and invoke 'book_appointment'.\n- After booking, invoke 'send_whatsapp' to dispatch the confirmed slot details.\n- If they say 'not interested' or 'I don't need it', thank them gracefully and transition to end-call.\n- If they want to talk to a human receptionist, invoke 'call_transfer'.",
           "tools": [
             "book_appointment",
             "send_whatsapp",
@@ -64,11 +67,11 @@
         "id": "end-call",
         "type": "EndCall",
         "data": {
-          "name": "End Call",
+          "name": "Graceful Call Conclusion",
           "goodbye_message": {
-            "en-IN": "Thank you for speaking with JKR AI Calling. Have a wonderful day!",
-            "te-IN": "జేకేఆర్ ఏఐ కాలింగ్‌తో మాట్లాడినందుకు ధన్యవాదాలు. మంచి రోజు కావాలని కోరుకుంటున్నాను!",
-            "hi-IN": "जेकेआर एआई कॉलिंग से बात करने के लिए धन्यवाद। आपका दिन शुभ हो!"
+            "te-IN": "ఆహా డెంటల్ కేర్‌తో మాట్లాడినందుకు చాలా ధన్యవాదాలు అండి. మీ రోజు శుభప్రదం కావాలని కోరుకుంటున్నాను! ఉంటానండి.",
+            "hi-IN": "आहा डेंटल केयर से बात करने के लिए धन्यवाद। आपका दिन शुभ हो!",
+            "en-IN": "Thank you for speaking with Aaha Dental Care. Have a wonderful day!"
           }
         }
       }
@@ -83,7 +86,7 @@
         "id": "edge-convo-to-end",
         "source": "agent-conversation",
         "target": "end-call",
-        "condition": "user_intends_to_hang_up"
+        "condition": "user_intends_to_hang_up_or_goal_completed"
       }
     ],
     "tools": [
@@ -91,45 +94,48 @@
         "id": "book_appointment",
         "type": "http_api",
         "name": "book_appointment",
-        "description": "Book a new appointment for the caller with JKR team",
+        "description": "Book a new confirmed appointment for the caller in JKR CRM/PostgreSQL database",
         "parameters": {
           "type": "object",
           "properties": {
             "contact_name": { "type": "string", "description": "Customer name" },
-            "preferred_date": { "type": "string", "description": "Date requested e.g. YYYY-MM-DD or tomorrow" },
-            "preferred_time": { "type": "string", "description": "Time requested e.g. 10:00 AM" },
-            "service_type": { "type": "string", "description": "Type of service or consultation requested" }
+            "phone_number": { "type": "string", "description": "Customer E.164 phone number" },
+            "preferred_date": { "type": "string", "description": "Date requested e.g. YYYY-MM-DD, tomorrow, or Saturday" },
+            "preferred_time": { "type": "string", "description": "Time requested e.g. 10:00 AM or 11:00 AM" },
+            "service_type": { "type": "string", "description": "Type of service or consultation requested" },
+            "call_session_id": { "type": "string", "description": "Call session UUID" }
           },
           "required": ["preferred_date"]
         },
-        "endpoint": "http://api:8000/internal/tools/book_appointment",
+        "endpoint": "http://api:8000/api/v1/internal/tools/book_appointment",
         "method": "POST"
       },
       {
         "id": "send_whatsapp",
         "type": "http_api",
         "name": "send_whatsapp",
-        "description": "Send a WhatsApp confirmation or follow-up message to the caller",
+        "description": "Send a WhatsApp confirmation message to the customer",
         "parameters": {
           "type": "object",
           "properties": {
-            "phone_number": { "type": "string", "description": "Caller E.164 phone number" },
-            "message_text": { "type": "string", "description": "Message content to send" }
+            "phone_number": { "type": "string", "description": "Recipient E.164 phone number" },
+            "message_text": { "type": "string", "description": "WhatsApp confirmation message text" },
+            "call_session_id": { "type": "string", "description": "Call session UUID" }
           },
           "required": ["phone_number", "message_text"]
         },
-        "endpoint": "http://api:8000/internal/tools/send_whatsapp",
+        "endpoint": "http://api:8000/api/v1/internal/tools/send_whatsapp",
         "method": "POST"
       },
       {
         "id": "call_transfer",
         "type": "telephony_transfer",
         "name": "call_transfer",
-        "description": "Transfer the live caller to a human supervisor or specialist",
+        "description": "Transfer the caller to a human doctor or front desk supervisor",
         "parameters": {
           "type": "object",
           "properties": {
-            "reason": { "type": "string", "description": "Reason for supervisor escalation" }
+            "reason": { "type": "string", "description": "Reason for human transfer" }
           }
         },
         "target": "sip:supervisor@jkr.internal"

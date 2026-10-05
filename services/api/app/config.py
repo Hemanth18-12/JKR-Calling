@@ -84,6 +84,14 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("SARVAM_API_KEY", "SARVAM_KEY", "sarvam_api_key"),
     )
+    dograh_api_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("DOGRAH_API_URL", "dograh_api_url"),
+    )
+    dograh_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("DOGRAH_API_KEY", "dograh_api_key"),
+    )
 
     # --- P3.5: ConversationEngine latency optimization ---
     # "legacy" (default, per spec §7's own recommendation) is byte-identical

@@ -436,12 +436,33 @@ async def start_live_test_call(
     # ring time is several seconds of otherwise-wasted lead time; neither
     # task depends on the other's result, so they run in parallel here, not
     # back-to-back.
+    async def _place_call() -> str:
+        if settings.dograh_api_url:
+            try:
+                from app.live_providers.dograh_telephony import DograhTelephonyClient
+                dograh_client = DograhTelephonyClient(api_url=settings.dograh_api_url, api_key=settings.dograh_api_key)
+                logger.info("Placing call via Dograh telephony at %s", settings.dograh_api_url)
+                return await dograh_client.create_call(
+                    to=to_e164,
+                    from_number=settings.twilio_from_number,
+                    workflow_id="kelly_assistant",
+                    initial_context={
+                        "call_session_id": str(call_session_id),
+                        "customer_name": contact.full_name,
+                        "language": language_code,
+                        "business_identity": biz_name,
+                    },
+                )
+            except Exception as d_exc:
+                logger.warning("Dograh call initiation failed (%s), falling back to direct Twilio", d_exc)
+        return await telephony.create_call(to=to_e164, webhook_url=webhook_url, status_callback_url=status_callback_url)
+
     try:
         (greeting_kind, greeting_content), call_sid = await asyncio.gather(
             _speak(greeting, language_code=language_code, settings=settings, redis=redis, speaker=tts_speaker, pace=tts_pace),
-            telephony.create_call(to=to_e164, webhook_url=webhook_url, status_callback_url=status_callback_url),
+            _place_call(),
         )
-    except Exception as exc:  # noqa: BLE001 — surface Twilio's own error text as-is
+    except Exception as exc:  # noqa: BLE001 — surface error text as-is
         async with workspace_scoped_session(workspace_id) as write_db:
             result = await write_db.execute(select(CallSession).where(CallSession.id == call_session_id))
             failed_session = result.scalar_one_or_none()

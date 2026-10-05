@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 
 from jkr_conversation.schemas import ConversationPolicySnapshot
 
+from typing import Any
+
 from app.turn_manager import TurnManager
 
 logger = logging.getLogger(__name__)
@@ -26,8 +28,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class CallRuntime:
-    turn_manager: TurnManager
+    turn_manager: Any
     language: str
+    engine: str = "dograh"
+    dograh_session: Any = None
     human_transfer_enabled: bool = True
     policy: ConversationPolicySnapshot = field(default_factory=ConversationPolicySnapshot)
     business_identity: str = ""

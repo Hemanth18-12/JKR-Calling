@@ -31,6 +31,7 @@ from app.modules.live_call.transport.twilio_media_stream import router as twilio
 from app.modules.operations.router import router as operations_router
 from app.modules.providers.router import router as providers_router
 from app.modules.tenancy.router import router as tenancy_router
+from app.modules.tools.internal_router import router as internal_tools_router
 from app.modules.tools.router import router as tools_router
 
 logger = logging.getLogger("jkr_api.main")
@@ -155,6 +156,9 @@ for r in (
     identity_router, tenancy_router, providers_router, agents_router, calls_router, knowledge_router,
     contacts_router, campaigns_router, tools_router, operations_router, analytics_router, experiments_router,
     compliance_router, billing_router, integrations_router, live_call_router, twilio_media_stream_router,
-    coins_router, admin_coins_router,
+    coins_router, admin_coins_router, internal_tools_router,
 ):
     app.include_router(r, prefix="/api/v1")
+
+# Mount internal tools router at root prefix as well so http://api:8000/internal/tools resolves
+app.include_router(internal_tools_router)

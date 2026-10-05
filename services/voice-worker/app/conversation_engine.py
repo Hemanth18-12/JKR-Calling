@@ -308,34 +308,28 @@ async def start_session(
     db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session.id, event_type="call_started", payload={}))
     db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session.id, event_type="disclosure_confirmed", payload={}))
 
-    turn_manager = TurnManager(
-        call_id=call_session.id,
-        accidental_interruption_phrases=policy.accidental_interruption_phrases if policy else [],
-        min_interruption_ms=policy.min_interruption_ms if policy else 250,
-    )
+    from app.providers.dograh import dograh_engine
+    dograh_session = dograh_engine.create_session(call_session.id, initial_context=conversation_state)
     registry_put(
         call_session.id,
         CallRuntime(
-            turn_manager=turn_manager, language=language,
+            turn_manager=dograh_session,
+            language=language,
+            engine="dograh",
+            dograh_session=dograh_session,
             human_transfer_enabled=policy.human_transfer_enabled if policy else True,
-            policy=_policy_snapshot(policy), business_identity=agent.business_identity,
+            policy=_policy_snapshot(policy),
+            business_identity=agent.business_identity,
         ),
     )
 
-    greeting = _fill_greeting(
-        version.greeting_text,
-        contact_name=resolved_name,
-        business_identity=agent.business_identity,
-        service_name=conversation_state.get("service_name"),
-    )
-    formatter = SpokenResponseFormatter(language=language, max_sentences=policy.max_response_sentences if policy else 3)
-    formatted = formatter.format(greeting, prepend_acknowledgement=False)
-    conversation_state["recent_turns"].append({"speaker": "agent", "text": formatted.text})
+    greeting = dograh_session.get_greeting()
+    conversation_state["recent_turns"].append({"speaker": "agent", "text": greeting})
 
-    turn_record = turn_manager.start_agent_turn(formatted.text)
+    turn_record = dograh_session.start_agent_turn(greeting)
     await _persist_agent_turn(
         db, workspace_id=workspace_id, call_id=call_session.id, sequence_index=0,
-        turn_ref=turn_record.turn_ref, text=formatted.text, language=language,
+        turn_ref=turn_record.turn_ref, text=greeting, language=language,
     )
     await db.flush()
     try:
@@ -498,12 +492,73 @@ async def submit_user_turn(
         recent_turns.append({"speaker": "supervisor_whisper", "text": f"[Supervisor instruction: {whisper_text}]"})
         state["supervisor_whispers"] = active_whispers
 
+    # Check if this session is orchestrated by Dograh workflow engine:
+    if getattr(runtime, "engine", "legacy") == "dograh" and getattr(runtime, "dograh_session", None):
+        reply_text, tools_executed, trace = await runtime.dograh_session.execute_turn(
+            customer_text=transcript.text,
+            state=state,
+        )
+        recent_turns.append({"speaker": "customer", "text": transcript.text})
+        recent_turns.append({"speaker": "agent", "text": reply_text})
+        state["recent_turns"] = recent_turns
+        state["dograh_trace"] = {
+            "engine": trace.engine,
+            "workflow_id": trace.workflow_id,
+            "workflow_version": trace.workflow_version,
+            "current_node_id": trace.current_node_id,
+            "previous_node_id": trace.previous_node_id,
+            "tools_executed": trace.tools_executed,
+            "allow_interrupt": trace.allow_interrupt,
+            "stt_model": trace.stt_model,
+            "tts_model": trace.tts_model,
+            "tts_speaker": trace.tts_speaker,
+        }
+
+        agent_turn_ref = runtime.dograh_session.next_turn_ref("agent")
+        db.add(
+            CallTurn(
+                workspace_id=workspace_id,
+                call_session_id=call_id,
+                turn_ref=agent_turn_ref,
+                sequence_index=sequence_index + 1,
+                speaker="agent",
+                text=reply_text,
+                language=runtime.language,
+                is_interrupted=False,
+                started_at=now,
+                ended_at=now,
+            )
+        )
+        db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_id, event_type="agent_turn", payload={"text": reply_text, "engine": "dograh"}))
+
+        if trace.current_node_id == "end-call":
+            call_session.status = "completed"
+            call_session.end_reason = "objective_completed"
+            call_session.ended_at = now
+            if call_session.started_at:
+                call_session.duration_seconds = int((now - call_session.started_at).total_seconds())
+
+        call_session.state = _make_json_safe(state)
+        await db.flush()
+
+        agent_turn_out = TurnOut(
+            turn_ref=agent_turn_ref,
+            speaker="agent",
+            text=reply_text,
+            estimated_duration_ms=estimate_speaking_duration_ms(reply_text, runtime.language),
+        )
+
+        return UserTurnOut(
+            user_turn=TurnOut(turn_ref=user_turn_ref, speaker="customer", text=transcript.text),
+            interruption_classification=classification.classification.value,
+            stop_latency_ms=stop_latency_ms,
+            agent_turn=agent_turn_out,
+            conversation_state=state,
+            call_status=call_session.status,
+        )
+
     # Everything from here down — field extraction, knowledge retrieval,
-    # next-action planning, response generation — is the shared engine, the
-    # exact same code path the real Twilio call path uses (see
-    # services/api/app/modules/live_call/service.py). This module only
-    # handles transport/turn-taking and persistence, never conversation
-    # reasoning itself.
+    # next-action planning, response generation — is the legacy engine
     result = await process_turn(
         db, workspace_id=workspace_id, call_session_id=call_id, state=state,
         customer_utterance=transcript.text, conversation_policy=runtime.policy,
