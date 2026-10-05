@@ -13,12 +13,16 @@ settings = get_settings()
 app = FastAPI(title="JKR AI Calling — voice-worker", version="0.1.0")
 
 
-async def require_internal_token(x_internal_token: str | None = Header(default=None)) -> None:
+async def require_internal_token(
+    x_internal_token: str | None = Header(default=None),
+    x_internal_service_token: str | None = Header(default=None),
+) -> None:
     """This process is never reached from the public internet — only
     services/api calls it (docs/ARCHITECTURE.md §1: "the browser never talks
     to voice-worker directly"). A shared-secret header is enough to keep it
     that way even if it's accidentally exposed on a shared network."""
-    if x_internal_token != settings.internal_service_token:
+    token = x_internal_token or x_internal_service_token
+    if token != settings.internal_service_token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid internal service token")
 
 

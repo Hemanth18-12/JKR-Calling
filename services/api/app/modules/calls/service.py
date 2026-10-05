@@ -23,6 +23,44 @@ def _headers(settings: Settings) -> dict:
     return {"X-Internal-Token": settings.internal_service_token}
 
 
+async def _post_to_voice_worker(
+    settings: Settings,
+    path: str,
+    payload: dict,
+    timeout: float = 30.0,
+) -> dict:
+    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=timeout) as client:
+        try:
+            response = await client.post(
+                path,
+                json=payload,
+                headers=_headers(settings),
+            )
+        except httpx.ConnectError as exc:
+            # Self-healing auto-spawn for localhost/Render container
+            from app.voice_worker_supervisor import ensure_voice_worker_running
+            spawned = await ensure_voice_worker_running(settings)
+            if spawned:
+                try:
+                    response = await client.post(
+                        path,
+                        json=payload,
+                        headers=_headers(settings),
+                    )
+                except httpx.ConnectError:
+                    raise HTTPException(
+                        status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
+                    ) from exc
+            else:
+                raise HTTPException(
+                    status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
+                ) from exc
+
+    if response.status_code >= 400:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, response.json().get("detail", "voice-worker error"))
+    return response.json()
+
+
 async def start_test_call(
     db: AsyncSession,
     *,
@@ -70,20 +108,7 @@ async def start_test_call(
         "phone_e164": phone_e164,
     }
 
-    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=30.0) as client:
-        try:
-            response = await client.post(
-                "/sessions",
-                json=payload,
-                headers=_headers(settings),
-            )
-        except httpx.ConnectError as exc:
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
-            ) from exc
-    if response.status_code >= 400:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, response.json().get("detail", "voice-worker error"))
-    return response.json()
+    return await _post_to_voice_worker(settings, "/sessions", payload, timeout=30.0)
 
 
 async def submit_user_turn(
@@ -95,20 +120,12 @@ async def submit_user_turn(
     if session_result.scalar_one_or_none() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
 
-    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=30.0) as client:
-        try:
-            response = await client.post(
-                f"/sessions/{call_id}/user-turn",
-                json={"workspace_id": str(workspace_id), "text": text},
-                headers=_headers(settings),
-            )
-        except httpx.ConnectError as exc:
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
-            ) from exc
-    if response.status_code >= 400:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, response.json().get("detail", "voice-worker error"))
-    return response.json()
+    return await _post_to_voice_worker(
+        settings,
+        f"/sessions/{call_id}/user-turn",
+        {"workspace_id": str(workspace_id), "text": text},
+        timeout=30.0,
+    )
 
 
 async def end_call(db: AsyncSession, *, settings: Settings, workspace_id: uuid.UUID, call_id: uuid.UUID) -> dict:
@@ -118,18 +135,12 @@ async def end_call(db: AsyncSession, *, settings: Settings, workspace_id: uuid.U
     if session_result.scalar_one_or_none() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
 
-    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=30.0) as client:
-        try:
-            response = await client.post(
-                f"/sessions/{call_id}/end",
-                json={"workspace_id": str(workspace_id)},
-                headers=_headers(settings),
-            )
-        except httpx.ConnectError as exc:
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
-            ) from exc
-    res_data = response.json()
+    res_data = await _post_to_voice_worker(
+        settings,
+        f"/sessions/{call_id}/end",
+        {"workspace_id": str(workspace_id)},
+        timeout=30.0,
+    )
     try:
         from jkr_db.pipeline import run_post_call_pipeline
         await run_post_call_pipeline(
@@ -205,20 +216,12 @@ async def whisper_call(
     if session_result.scalar_one_or_none() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
 
-    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
-        try:
-            response = await client.post(
-                f"/sessions/{call_id}/whisper",
-                json={"workspace_id": str(workspace_id), "text": text, "supervisor_name": supervisor_name},
-                headers=_headers(settings),
-            )
-        except httpx.ConnectError as exc:
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
-            ) from exc
-    if response.status_code >= 400:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, response.json().get("detail", "voice-worker error"))
-    return response.json()
+    return await _post_to_voice_worker(
+        settings,
+        f"/sessions/{call_id}/whisper",
+        {"workspace_id": str(workspace_id), "text": text, "supervisor_name": supervisor_name},
+        timeout=10.0,
+    )
 
 
 async def barge_call(
@@ -236,20 +239,12 @@ async def barge_call(
     if session_result.scalar_one_or_none() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
 
-    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
-        try:
-            response = await client.post(
-                f"/sessions/{call_id}/barge",
-                json={"workspace_id": str(workspace_id), "action": action, "supervisor_name": supervisor_name},
-                headers=_headers(settings),
-            )
-        except httpx.ConnectError as exc:
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
-            ) from exc
-    if response.status_code >= 400:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, response.json().get("detail", "voice-worker error"))
-    return response.json()
+    return await _post_to_voice_worker(
+        settings,
+        f"/sessions/{call_id}/barge",
+        {"workspace_id": str(workspace_id), "action": action, "supervisor_name": supervisor_name},
+        timeout=10.0,
+    )
 
 
 async def listen_call(
@@ -266,20 +261,12 @@ async def listen_call(
     if session_result.scalar_one_or_none() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
 
-    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
-        try:
-            response = await client.post(
-                f"/sessions/{call_id}/listen",
-                json={"workspace_id": str(workspace_id), "supervisor_id": supervisor_id},
-                headers=_headers(settings),
-            )
-        except httpx.ConnectError as exc:
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
-            ) from exc
-    if response.status_code >= 400:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, response.json().get("detail", "voice-worker error"))
-    return response.json()
+    return await _post_to_voice_worker(
+        settings,
+        f"/sessions/{call_id}/listen",
+        {"workspace_id": str(workspace_id), "supervisor_id": supervisor_id},
+        timeout=10.0,
+    )
 
 
 async def terminate_call(
@@ -296,18 +283,12 @@ async def terminate_call(
     if session_result.scalar_one_or_none() is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Call not found")
 
-    async with httpx.AsyncClient(base_url=settings.voice_worker_base_url, timeout=10.0) as client:
-        try:
-            response = await client.post(
-                f"/sessions/{call_id}/end",
-                json={"workspace_id": str(workspace_id), "end_reason": reason},
-                headers=_headers(settings),
-            )
-        except httpx.ConnectError as exc:
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "voice-worker is not reachable — is it running?"
-            ) from exc
-    res_data = response.json()
+    res_data = await _post_to_voice_worker(
+        settings,
+        f"/sessions/{call_id}/end",
+        {"workspace_id": str(workspace_id), "end_reason": reason},
+        timeout=10.0,
+    )
     try:
         from jkr_db.pipeline import run_post_call_pipeline
         await run_post_call_pipeline(

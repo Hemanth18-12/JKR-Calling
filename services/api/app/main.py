@@ -51,14 +51,20 @@ async def _async_startup_db_check() -> None:
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    from app.voice_worker_supervisor import ensure_voice_worker_running, stop_voice_worker
+
     # P7 §49 — process-wide, started once; see transport/event_loop_lag.py.
     event_loop_lag_monitor.start()
 
     # Startup DB health check — launched as a task so uvicorn binds to $PORT immediately
     asyncio.create_task(_async_startup_db_check())
 
+    # Ensure voice-worker is running in background if on localhost/Render container
+    asyncio.create_task(ensure_voice_worker_running(settings))
+
     yield
     event_loop_lag_monitor.stop()
+    stop_voice_worker()
 
 
 app = FastAPI(title="JKR AI Calling API", version="0.1.0", root_path="", lifespan=_lifespan)
