@@ -6,7 +6,11 @@ import { cookies } from "next/headers";
 import { NewAgentForm } from "@/components/new-agent-form";
 import { getServerSession } from "@/lib/session";
 
-export default async function NewAgentPage() {
+export default async function NewAgentPage({
+  searchParams,
+}: {
+  searchParams?: { prompt?: string; category?: string };
+}) {
   const me = await getServerSession();
   const cookieHeader = cookies().toString();
   const workspaces = await workspacesApi.list({ cookieHeader }).catch(() => []);
@@ -24,7 +28,12 @@ export default async function NewAgentPage() {
 
   return (
     <div className="p-8">
-      <NewAgentForm workspaceId={active.id} templates={templates} />
+      <NewAgentForm
+        workspaceId={active.id}
+        templates={templates}
+        initialPrompt={searchParams?.prompt}
+        initialCategory={searchParams?.category}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 
 import { getServerSession } from "@/lib/session";
+import { AgentPromptCreator } from "@/components/agent-prompt-creator";
 
 const STATUS_VARIANT: Record<string, "success" | "secondary" | "warning"> = {
   active: "success",
@@ -29,16 +30,28 @@ export default async function AgentsPage() {
   const agents = await agentsApi.list(active.id, { cookieHeader }).catch(() => []);
 
   return (
-    <div className="space-y-6 p-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
-          <p className="text-muted-foreground">Each agent has a persona, voice and conversation rules — versioned.</p>
-        </div>
-        <Link href="/app/agents/new" className={buttonVariants({ variant: "gradient" })}>
-          <Plus className="h-4 w-4" /> New agent
-        </Link>
+    <div className="space-y-8 p-6 sm:p-8 max-w-7xl">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Voice AI Assistants</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Create, train, and manage multilingual voice agents for your business calls.
+        </p>
       </div>
+
+      {/* Pattern 5b: Describe to create box */}
+      <AgentPromptCreator workspaceId={active.id} />
+
+      {/* Existing Agent List Section */}
+      <div className="space-y-4 pt-2">
+        <div className="flex items-center justify-between border-b border-border/40 pb-3">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight text-foreground">My Voice AI Assistants</h2>
+            <p className="text-xs text-muted-foreground">Active calling assistants in this workspace</p>
+          </div>
+          <Link href="/app/agents/new" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <Plus className="mr-1 h-3.5 w-3.5" /> Manual Wizard
+          </Link>
+        </div>
 
       {agents.length === 0 ? (
         <EmptyState
@@ -70,6 +83,7 @@ export default async function AgentsPage() {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }

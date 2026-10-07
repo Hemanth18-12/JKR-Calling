@@ -17,9 +17,21 @@ export default async function AgentLayout({
   const agent = await agentsApi.get(workspace.id, params.agentId, { cookieHeader }).catch(() => null);
   if (!agent) notFound();
 
+  const latestVersion = agent.versions[0];
+  const versionDetail = latestVersion
+    ? await agentsApi.getVersion(workspace.id, agent.id, latestVersion.id, { cookieHeader }).catch(() => null)
+    : null;
+
   return (
     <div>
-      <AgentTabs agentId={agent.id} agentName={agent.name} status={agent.status} />
+      <AgentTabs
+        agentId={agent.id}
+        agentName={agent.name}
+        status={agent.status}
+        workspaceId={workspace.id}
+        agent={agent}
+        version={versionDetail}
+      />
       <div className="p-8">{children}</div>
     </div>
   );
