@@ -1,6 +1,7 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "!packages/n8n-nodes-jkr"
   - "tests/e2e"
 allowBuilds:
   unrs-resolver: true
