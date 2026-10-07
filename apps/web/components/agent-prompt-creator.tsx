@@ -183,9 +183,16 @@ export function AgentPromptCreator({ workspaceId }: AgentPromptCreatorProps) {
               setPrompt(e.target.value);
             }
           }}
+          onPaste={(e) => {
+            const pastedText = e.clipboardData.getData("text");
+            if (pastedText) {
+              e.preventDefault();
+              setPrompt((prev) => (prev + pastedText).slice(0, charLimit));
+            }
+          }}
           placeholder="Describe your ideal Voice AI assistant (e.g. A polite bilingual receptionist for my clinic who can qualify patient inquiries and confirm appointment slots in Telugu and English)..."
           rows={4}
-          className="w-full resize-none rounded-xl border border-border/80 bg-surface p-4 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-inner"
+          className="w-full resize-none rounded-xl border border-border/80 bg-surface p-4 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-inner select-text"
         />
         {/* Character Counter */}
         <div className="absolute bottom-3 right-4 font-mono text-[11px] text-muted-foreground">
