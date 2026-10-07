@@ -200,16 +200,27 @@ async def _connect_streaming_tts(
     alongside TTSStreamingSession, never on its own (spec §92-94: every
     streaming response goes through the coordinator, so a call without a
     live TTS connection has nothing for the coordinator to orchestrate)."""
-    from app.live_providers.sarvam_streaming_tts import SarvamStreamingTTS
     from app.live_providers.streaming_tts import StreamingTTSConfig, TTSCallContext
     from app.modules.live_call.transport.coordinator import RealtimePipelineCoordinator
     from app.modules.live_call.transport.tts_bridge import TTSStreamingSession
 
-    api_key = settings.sarvam_tts_api_key or settings.sarvam_api_key
-    provider = SarvamStreamingTTS(api_key=api_key)
+    if getattr(settings, "cartesia_api_key", "") or (getattr(settings, "tts_provider", "") == "cartesia" and not getattr(settings, "sarvam_tts_api_key", "")):
+        from app.live_providers.cartesia_streaming_tts import CartesiaStreamingTTS
+
+        api_key = settings.cartesia_api_key or os.environ.get("CARTESIA_API_KEY", "")
+        model = getattr(settings, "cartesia_model", "sonic-3.6")
+        provider = CartesiaStreamingTTS(api_key=api_key, model=model)
+        provider_factory = lambda: CartesiaStreamingTTS(api_key=api_key, model=model)
+    else:
+        from app.live_providers.sarvam_streaming_tts import SarvamStreamingTTS
+
+        api_key = settings.sarvam_tts_api_key or settings.sarvam_api_key
+        provider = SarvamStreamingTTS(api_key=api_key)
+        provider_factory = lambda: SarvamStreamingTTS(api_key=api_key)  # P7 §82 — fresh instance per reconnect attempt
+
     tts_session = TTSStreamingSession(
         provider=provider, media_session=session,
-        provider_factory=lambda: SarvamStreamingTTS(api_key=api_key),  # P7 §82 — fresh instance per reconnect attempt
+        provider_factory=provider_factory,
     )
     t0 = time.perf_counter()
     try:

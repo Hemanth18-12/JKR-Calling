@@ -47,9 +47,22 @@ from app.session_registry import get as registry_get
 from app.session_registry import put as registry_put
 from app.turn_manager import InterruptionClassification, TurnManager, estimate_speaking_duration_ms
 
-get_settings()
+def get_tts_provider():
+    import app.config as cfg
+    settings = cfg.get_settings()
+    if settings.tts_provider == "cartesia" and settings.cartesia_api_key:
+        from app.providers.cartesia import CartesiaTTS
+
+        return CartesiaTTS(
+            api_key=settings.cartesia_api_key,
+            model=settings.cartesia_model,
+            default_voice_id=settings.cartesia_voice_id,
+        )
+    return MockTTS()
+
+
 _stt = MockSTT()
-_tts = MockTTS()
+_tts = get_tts_provider()
 
 
 def _make_json_safe(obj: Any) -> Any:
@@ -342,7 +355,7 @@ async def start_session(
                 "status": call_session.status,
                 "agent_name": agent.name,
                 "contact_name": contact_name or "Test Customer",
-                "greeting": formatted.text,
+                "greeting": greeting,
             },
         )
     except Exception:
@@ -352,8 +365,8 @@ async def start_session(
         "call_id": call_session.id,
         "status": call_session.status,
         "language": language,
-        "greeting": formatted.text,
-        "estimated_duration_ms": estimate_speaking_duration_ms(formatted.text),
+        "greeting": greeting,
+        "estimated_duration_ms": estimate_speaking_duration_ms(greeting),
         "conversation_state": conversation_state,
     }
 
@@ -454,7 +467,8 @@ async def submit_user_turn(
             await _record_latency(
                 db, workspace_id=workspace_id, call_id=call_id, stage="interrupt_stop", duration_ms=stop_latency_ms or 0
             )
-            runtime.turn_manager.mark_recovered()
+            if hasattr(runtime.turn_manager, "mark_recovered"):
+                runtime.turn_manager.mark_recovered()
 
     if classification.classification == InterruptionClassification.FALSE_POSITIVE:
         # Spec §11: a false interruption (short filler like "hmm"/"అవును")
@@ -545,7 +559,7 @@ async def submit_user_turn(
             turn_ref=agent_turn_ref,
             speaker="agent",
             text=reply_text,
-            estimated_duration_ms=estimate_speaking_duration_ms(reply_text, runtime.language),
+            estimated_duration_ms=estimate_speaking_duration_ms(reply_text),
         )
 
         return UserTurnOut(

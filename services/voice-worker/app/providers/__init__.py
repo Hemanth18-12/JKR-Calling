@@ -22,11 +22,13 @@ from app.providers.dograh import (
     DograhWorkflowSession,
     dograh_engine,
 )
+from app.providers.cartesia import CartesiaTTS
 from app.providers.mock import MockMediaRuntime, MockSTT, MockTTS, MockTelephony
 
 __all__ = [
     "CallHandle",
     "CallStatusInfo",
+    "CartesiaTTS",
     "DograhMediaRuntime",
     "DograhTelephony",
     "DograhTurnTrace",

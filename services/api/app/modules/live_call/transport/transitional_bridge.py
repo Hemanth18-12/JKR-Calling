@@ -45,6 +45,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.live_providers.cartesia_tts import CartesiaTTS
 from app.live_providers.sarvam_stt import SarvamSTT
 from app.live_providers.sarvam_tts import SarvamTTS
 from app.modules.live_call.transport.audio_codec import pcm16_to_wav_bytes, wav_bytes_to_pcm16
@@ -125,7 +126,14 @@ async def synthesize_for_stream(
     silence indefinitely") — a documented P2 limitation, not a silent gap;
     see docs/TWILIO_MEDIA_STREAMS.md's Known Limitations section."""
     try:
-        tts = SarvamTTS(api_key=settings.sarvam_tts_api_key or settings.sarvam_api_key, **({"speaker": speaker} if speaker else {}))
+        if getattr(settings, "cartesia_api_key", "") or (getattr(settings, "tts_provider", "") == "cartesia" and not getattr(settings, "sarvam_tts_api_key", "")):
+            tts = CartesiaTTS(
+                api_key=settings.cartesia_api_key or os.environ.get("CARTESIA_API_KEY", ""),
+                model=getattr(settings, "cartesia_model", "sonic-3.6"),
+                **({"speaker": speaker} if speaker else {}),
+            )
+        else:
+            tts = SarvamTTS(api_key=settings.sarvam_tts_api_key or settings.sarvam_api_key, **({"speaker": speaker} if speaker else {}))
         wav_bytes = await tts.synthesize(text=text, language_code=language_code)
     except Exception:  # noqa: BLE001 — see docstring; caller handles None explicitly
         return None

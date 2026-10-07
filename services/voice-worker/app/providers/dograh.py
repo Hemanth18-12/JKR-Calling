@@ -120,6 +120,9 @@ class DograhWorkflowSession:
             text: str
         return AgentTurnRecord(turn_ref=self.next_turn_ref("agent"), text=text)
 
+    def mark_recovered(self) -> None:
+        pass
+
     async def execute_turn(
         self,
         *,

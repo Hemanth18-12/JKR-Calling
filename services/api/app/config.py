@@ -84,6 +84,22 @@ class Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("SARVAM_API_KEY", "SARVAM_KEY", "sarvam_api_key"),
     )
+    cartesia_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("CARTESIA_API_KEY", "cartesia_api_key"),
+    )
+    cartesia_model: str = Field(
+        default="sonic-3.6",
+        validation_alias=AliasChoices("CARTESIA_MODEL", "cartesia_model"),
+    )
+    cartesia_voice_id: str = Field(
+        default="db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+        validation_alias=AliasChoices("CARTESIA_VOICE_ID", "cartesia_voice_id"),
+    )
+    tts_provider: str = Field(
+        default="cartesia",
+        validation_alias=AliasChoices("TTS_PROVIDER", "TTS_PROVIDER_DEFAULT", "tts_provider"),
+    )
     dograh_api_url: str = Field(
         default="",
         validation_alias=AliasChoices("DOGRAH_API_URL", "dograh_api_url"),

@@ -7,3 +7,8 @@ covers only what's specific to a real phone call: Twilio telephony/webhook
 signing, Sarvam TTS/STT — gated behind ENABLE_LIVE_CALLS + AUTHORIZED_TEST_NUMBERS
 (see app/modules/live_call/service.py).
 """
+
+from app.live_providers.cartesia_streaming_tts import CartesiaStreamingTTS
+from app.live_providers.cartesia_tts import CartesiaTTS
+
+__all__ = ["CartesiaStreamingTTS", "CartesiaTTS"]

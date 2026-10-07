@@ -64,6 +64,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
+from app.live_providers.cartesia_tts import CartesiaTTS
 from app.live_providers.sarvam_stt import SarvamSTT
 from app.live_providers.sarvam_tts import SarvamTTS
 from app.live_providers.twilio_telephony import NotConfiguredError as TelephonyNotConfiguredError
@@ -122,7 +123,7 @@ def _resolve_tts_speaker(voice: VoicePersona | None) -> str | None:
     that would break a real Sarvam TTS call if sent as a literal speaker
     name. Only pass voice_id through when the persona was actually set up
     for Sarvam — see docs/REALTIME_VOICE_MIGRATION_AUDIT.md."""
-    if voice is not None and voice.provider == ProviderName.SARVAM_TTS and voice.voice_id:
+    if voice is not None and voice.provider in (ProviderName.SARVAM_TTS, ProviderName.CARTESIA) and voice.voice_id:
         return voice.voice_id
     return None
 
@@ -138,11 +139,11 @@ SARVAM_V3_MAX_PACE = 2.0
 
 
 def _resolve_tts_pace(voice: VoicePersona | None) -> float:
-    """Only meaningful for a persona actually configured for Sarvam — same
+    """Only meaningful for a persona actually configured for Sarvam or Cartesia — same
     gating _resolve_tts_speaker already applies, for the same reason (a
-    non-Sarvam persona's speaking_speed wasn't necessarily authored with
-    Sarvam's pace semantics/range in mind)."""
-    if voice is None or voice.provider != ProviderName.SARVAM_TTS:
+    non-TTS persona's speaking_speed wasn't necessarily authored with
+    pace semantics/range in mind)."""
+    if voice is None or voice.provider not in (ProviderName.SARVAM_TTS, ProviderName.CARTESIA):
         return 1.0
     return max(SARVAM_V3_MIN_PACE, min(SARVAM_V3_MAX_PACE, voice.speaking_speed))
 
@@ -215,10 +216,18 @@ async def _speak(
     Sarvam's own natural-pace default — there is no "omit it" case to
     preserve here."""
     try:
-        tts = SarvamTTS(
-            api_key=settings.sarvam_tts_api_key or settings.sarvam_api_key, pace=pace,
-            **({"speaker": speaker} if speaker else {}),
-        )
+        if getattr(settings, "cartesia_api_key", "") or (getattr(settings, "tts_provider", "") == "cartesia" and not getattr(settings, "sarvam_tts_api_key", "")):
+            tts = CartesiaTTS(
+                api_key=settings.cartesia_api_key or os.environ.get("CARTESIA_API_KEY", ""),
+                pace=pace,
+                model=getattr(settings, "cartesia_model", "sonic-3.6"),
+                **({"speaker": speaker} if speaker else {}),
+            )
+        else:
+            tts = SarvamTTS(
+                api_key=settings.sarvam_tts_api_key or settings.sarvam_api_key, pace=pace,
+                **({"speaker": speaker} if speaker else {}),
+            )
         audio_bytes = await tts.synthesize(text=text, language_code=language_code)
     except Exception:  # noqa: BLE001 — deliberately broad, see docstring (covers TTSNotConfiguredError too)
         return ("say", text)
