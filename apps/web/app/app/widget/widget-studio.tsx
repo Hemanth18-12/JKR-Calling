@@ -337,7 +337,7 @@ export default function RootLayout({ children }) {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Paste this tag into your website's HTML before the closing <code className="text-foreground">&lt;/body&gt;</code> tag. It runs with zero external dependencies.
+              Paste this tag into your website&apos;s HTML before the closing <code className="text-foreground">&lt;/body&gt;</code> tag. It runs with zero external dependencies.
             </p>
 
             <div className="relative">

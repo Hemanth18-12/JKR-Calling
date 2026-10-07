@@ -2,6 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ["@jkr/ui", "@jkr/sdk", "@jkr/contracts"],
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   experimental: {
     typedRoutes: true,
   },

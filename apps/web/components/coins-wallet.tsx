@@ -330,7 +330,7 @@ export function CoinsWallet({
                   {/* Features List */}
                   <div className="mb-6 space-y-2.5">
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      What's Included:
+                      What&apos;s Included:
                     </p>
                     {features.map((feat, idx) => (
                       <div key={idx} className="flex items-start gap-2 text-xs text-foreground">
