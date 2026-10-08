@@ -85,7 +85,7 @@ export default async function CompliancePage() {
                   <div>
                     <span className="font-mono text-xs">{entry.action}</span>
                     <p className="text-xs text-muted-foreground">
-                      {entry.actor_name ?? "system"} · {new Date(entry.created_at).toLocaleString()}
+                      {entry.actor_name ?? "system"} · {new Date(entry.created_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} (IST)
                     </p>
                   </div>
                   <Badge variant="outline">{entry.resource_type}</Badge>

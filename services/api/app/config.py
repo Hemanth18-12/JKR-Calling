@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_oauth_redirect_uri: str = "http://localhost:3000/auth/oauth/google/callback"
+    firebase_project_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("FIREBASE_PROJECT_ID", "NEXT_PUBLIC_FIREBASE_PROJECT_ID", "firebase_project_id"),
+    )
 
     enable_live_calls: bool = True
     authorized_test_numbers: str = "+916301567773,+918074634178,+919742682839,+918019101606,+919100664228,+919704917948,*"

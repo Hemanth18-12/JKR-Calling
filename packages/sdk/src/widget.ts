@@ -31,4 +31,14 @@ export const widgetApi = {
       ...opts,
       method: "POST",
     }),
+
+  checkInstall: (url: string, opts?: ApiFetchOptions) =>
+    apiFetch<{ installed: boolean; url: string; message: string; details?: Record<string, unknown> }>(
+      "/widget/check-install",
+      {
+        ...opts,
+        method: "POST",
+        body: { url },
+      }
+    ),
 };

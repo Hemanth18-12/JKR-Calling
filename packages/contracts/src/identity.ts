@@ -97,10 +97,17 @@ export const GoogleOAuthUrlResponse = z.object({
 export type GoogleOAuthUrlResponse = z.infer<typeof GoogleOAuthUrlResponse>;
 
 export const GoogleOAuthCallbackRequest = z.object({
-  code: z.string().min(1, "Authorization code is required"),
+  code: z.string().optional(),
+  id_token: z.string().optional(),
   redirect_uri: z.string().optional(),
 });
 export type GoogleOAuthCallbackRequest = z.infer<typeof GoogleOAuthCallbackRequest>;
+
+export const FirebaseAuthRequest = z.object({
+  id_token: z.string().min(1, "Firebase ID token is required"),
+  workspace_name: z.string().optional(),
+});
+export type FirebaseAuthRequest = z.infer<typeof FirebaseAuthRequest>;
 
 export const ApiError = z.object({
   error: z.object({

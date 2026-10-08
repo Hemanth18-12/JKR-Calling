@@ -60,6 +60,15 @@ async def get_transactions(
     return await service.list_transactions(db, workspace_id=auth.workspace_id)
 
 
+@router.post("/reconcile")
+async def reconcile_calls(
+    auth: AuthContext = Depends(require_permission("billing:manage")),
+    db: AsyncSession = Depends(workspace_db),
+) -> dict:
+    reconciled = await service.reconcile_stuck_calls(db, workspace_id=auth.workspace_id)
+    return {"reconciled_count": len(reconciled), "calls": reconciled}
+
+
 @router.get("/topup-requests", response_model=list[CoinTopupRequestOut])
 async def get_topup_requests(
     auth: AuthContext = Depends(require_permission("billing:view")),

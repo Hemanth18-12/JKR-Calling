@@ -319,3 +319,174 @@ async def send_otp_email(to_email: str, code: str, purpose: str = "signup") -> t
     logger.info(banner)
     print(banner, flush=True)
     return True, ""
+
+
+def _build_invitation_html(
+    *,
+    workspace_name: str,
+    inviter_name: str,
+    role_name: str,
+    invite_url: str,
+) -> str:
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>You're invited to join {workspace_name}</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f17; color: #f1f5f9; padding: 40px 20px; margin: 0;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 560px; margin: 0 auto; background: #131b2e; border: 1px solid #1e293b; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.4);">
+    <tr>
+      <td style="padding: 32px 32px 20px 32px; text-align: center; background: linear-gradient(135deg, rgba(234, 88, 12, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%); border-bottom: 1px solid #1e293b;">
+        <div style="display: inline-block; width: 48px; height: 48px; background: linear-gradient(135deg, #f59e0b, #d97706); border-radius: 12px; line-height: 48px; font-size: 24px; color: #000; font-weight: bold; margin-bottom: 12px;">⚡</div>
+        <h1 style="color: #ffffff; font-size: 20px; margin: 0; font-weight: 700;">JKR AI Calling</h1>
+        <p style="color: #94a3b8; font-size: 13px; margin: 6px 0 0 0;">India-first Real-Time Voice Platform</p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 32px;">
+        <h2 style="color: #f8fafc; font-size: 20px; margin: 0 0 16px 0;">Team Invitation</h2>
+        <p style="color: #cbd5e1; font-size: 14px; line-height: 1.6; margin: 0 0 20px 0;">
+          <strong>{inviter_name}</strong> has invited you to collaborate in the <strong style="color: #f59e0b;">{workspace_name}</strong> workspace on JKR AI Calling as a <strong>{role_name}</strong>.
+        </p>
+
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="{invite_url}" style="display: inline-block; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000000; font-weight: 700; font-size: 15px; text-decoration: none; padding: 14px 36px; border-radius: 10px; box-shadow: 0 4px 15px rgba(245, 158, 11, 0.35);">
+            Accept Invitation
+          </a>
+        </div>
+
+        <p style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin: 24px 0 8px 0;">
+          Or copy and paste this link in your browser:
+        </p>
+        <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px 14px; word-break: break-all; font-family: monospace; font-size: 11px; color: #cbd5e1; margin-bottom: 24px;">
+          {invite_url}
+        </div>
+
+        <p style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin: 0;">
+          ⏳ <strong>This secure single-use invitation link expires in 7 days.</strong><br>
+          If you were not expecting this invitation, you can safely ignore this email.
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 20px 32px; background: #0a0f1d; border-top: 1px solid #1e293b; text-align: center;">
+        <p style="color: #64748b; font-size: 11px; margin: 0;">&copy; 2026 JKR AI Calling. All rights reserved.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
+async def send_invitation_email(
+    *,
+    to_email: str,
+    workspace_name: str,
+    inviter_name: str,
+    role_name: str,
+    invite_url: str,
+) -> tuple[bool, str]:
+    """Sends a workspace invitation email via Brevo REST API v3, with fallback to Resend/SMTP/console."""
+    subject = f"You're invited to join {workspace_name} on JKR AI Calling"
+    html_body = _build_invitation_html(
+        workspace_name=workspace_name,
+        inviter_name=inviter_name,
+        role_name=role_name,
+        invite_url=invite_url,
+    )
+    text_body = (
+        f"You're invited to join {workspace_name} on JKR AI Calling!\n\n"
+        f"{inviter_name} has invited you to collaborate in the {workspace_name} workspace as a {role_name}.\n\n"
+        f"Accept your invitation here:\n{invite_url}\n\n"
+        f"This single-use link expires in 7 days.\n"
+        f"If you did not expect this invitation, you can safely ignore this email."
+    )
+
+    # 1. Brevo API (primary)
+    brevo_api_key = os.getenv("BREVO_API_KEY")
+    if brevo_api_key:
+        sender_email = (
+            os.getenv("BREVO_SENDER_EMAIL")
+            or "gowthamkrishna19123@gmail.com"
+        )
+        sender_name = os.getenv("BREVO_SENDER_NAME", "JKR AI Calling")
+
+        success, err_msg = await _send_brevo_async(
+            api_key=brevo_api_key,
+            sender_email=sender_email,
+            sender_name=sender_name,
+            to_email=to_email,
+            subject=subject,
+            html_body=html_body,
+            text_body=text_body,
+        )
+        if success:
+            logger.info("[INVITATION EMAIL] Sent via Brevo to %s", to_email)
+            return True, ""
+        return False, err_msg
+
+    # 2. Resend API fallback
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    if resend_api_key:
+        from_email = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+        try:
+            success = await _send_resend_async(
+                api_key=resend_api_key,
+                to_email=to_email,
+                subject=subject,
+                html_body=html_body,
+                from_email=from_email,
+            )
+            if success:
+                logger.info("[INVITATION EMAIL] Sent via Resend to %s", to_email)
+                return True, ""
+            return False, "Failed to deliver invitation via Resend"
+        except Exception as exc:
+            logger.error("[INVITATION EMAIL RESEND ERROR] %s", exc)
+            return False, f"Resend error: {exc}"
+
+    # 3. SMTP fallback
+    smtp_host = os.getenv("SMTP_HOST")
+    if smtp_host:
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        smtp_user = os.getenv("SMTP_USER", "")
+        smtp_password = os.getenv("SMTP_PASSWORD", "")
+        smtp_from_email = os.getenv("SMTP_FROM_EMAIL", smtp_user or "noreply@jkr-calling.com")
+        smtp_from_name = os.getenv("SMTP_FROM_NAME", "JKR AI Calling")
+
+        try:
+            await asyncio.to_thread(
+                _send_smtp_sync,
+                to_email=to_email,
+                subject=subject,
+                html_body=html_body,
+                text_body=text_body,
+                host=smtp_host,
+                port=smtp_port,
+                user=smtp_user,
+                password=smtp_password,
+                from_email=smtp_from_email,
+                from_name=smtp_from_name,
+            )
+            logger.info("[INVITATION EMAIL] Sent via SMTP to %s", to_email)
+            return True, ""
+        except Exception as exc:
+            logger.error("[INVITATION EMAIL SMTP ERROR] %s", exc)
+            return False, f"SMTP error: {exc}"
+
+    # 4. Safe dev fallback
+    banner = (
+        "\n" + "=" * 60 + "\n"
+        f"[WORKSPACE INVITATION DISPATCH]\n"
+        f"  To:        {to_email}\n"
+        f"  Workspace: {workspace_name}\n"
+        f"  Role:      {role_name}\n"
+        f"  Link:      {invite_url}\n"
+        f"  Expires:   7 days\n"
+        + "=" * 60 + "\n"
+    )
+    logger.info(banner)
+    print(banner, flush=True)
+    return True, ""
+

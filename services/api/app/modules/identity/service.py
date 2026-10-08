@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.modules.identity.email_service import send_otp_email
+from app.modules.tenancy import service as tenancy_service
 from app.security import generate_session_token, hash_password, hash_session_token, verify_password
 
 
@@ -354,8 +356,9 @@ async def get_google_oauth_url(
 async def authenticate_with_google(
     db: AsyncSession,
     *,
-    code: str,
-    redirect_uri: str | None,
+    code: str | None = None,
+    id_token: str | None = None,
+    redirect_uri: str | None = None,
     settings: Settings,
 ) -> User:
     import logging
@@ -363,25 +366,36 @@ async def authenticate_with_google(
     import secrets
     import httpx
     from app.modules.tenancy import service as tenancy_service
+    from app.modules.identity.firebase_auth import verify_firebase_id_token
     from app.security import hash_password
 
-    logger = logging.getLogger("jkr_api.identity.google_oauth")
-    clean_code = code.strip()
-
-    is_demo_code = clean_code.startswith("demo_") or clean_code in ("test_google_code", "mock_google_code")
-    has_live_creds = bool(settings.google_client_id and settings.google_client_secret)
+    logger = logging.getLogger("jkr_api.identity.google_auth")
 
     email: str | None = None
     full_name: str | None = None
 
-    if is_demo_code or not has_live_creds:
-        if "@" in clean_code:
-            email = clean_code.replace("demo_", "").strip().lower()
-            full_name = email.split("@")[0].replace(".", " ").title()
-        else:
-            email = "demo.google.user@jkr.ai"
-            full_name = "Google User"
-    else:
+    # Path 1: Real Firebase ID Token (Primary recommended path, Spark plan, 0 secrets needed)
+    if id_token and id_token.strip():
+        firebase_project = settings.firebase_project_id or os.getenv("FIREBASE_PROJECT_ID") or os.getenv("NEXT_PUBLIC_FIREBASE_PROJECT_ID", "")
+        if not firebase_project:
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "FIREBASE_PROJECT_ID is not configured on the server. Please set it in Render environment variables.",
+            )
+        verified_data = await verify_firebase_id_token(id_token.strip(), project_id=firebase_project)
+        email = verified_data["email"]
+        full_name = verified_data["name"]
+
+    # Path 2: Standard Google OAuth Authorization Code exchange (if live credentials configured)
+    elif code and code.strip():
+        clean_code = code.strip()
+        has_live_creds = bool(settings.google_client_id and settings.google_client_secret)
+        if not has_live_creds:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Google OAuth credentials (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) are not configured. Please use Firebase Google Sign-In.",
+            )
+
         effective_redirect = (
             redirect_uri
             or settings.google_oauth_redirect_uri
@@ -422,9 +436,14 @@ async def authenticate_with_google(
                 or userinfo.get("given_name")
                 or (email.split("@")[0].replace(".", " ").title() if email else "User")
             )
+    else:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Either id_token (Firebase) or code (OAuth) is required for Google authentication.",
+        )
 
     if not email:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No email address returned from Google.")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No verified email address returned from Google.")
 
     clean_email = email.lower().strip()
     result = await db.execute(select(User).where(User.email == clean_email))
@@ -448,7 +467,8 @@ async def authenticate_with_google(
     await db.flush()
 
     # Set user context on session so RLS allows workspace & member creation
-    await db.execute(text(f"SET LOCAL app.current_user_id = '{user.id}'"))
+    if db.bind and db.bind.dialect.name == "postgresql":
+        await db.execute(text(f"SET LOCAL app.current_user_id = '{user.id}'"))
 
     # Ensure workspace exists for this user
     existing_membership = await db.execute(

@@ -732,6 +732,7 @@ async def _persist_turn(
 async def _finalize_call(
     db: AsyncSession, *, workspace_id: uuid.UUID, call_session_id: uuid.UUID, call_status: str, end_reason: str,
     had_exchange: bool, language_code: str = FALLBACK_LANGUAGE, settings: Settings | None = None,
+    provider_duration: int | None = None,
 ) -> None:
     session_result = await db.execute(select(CallSession).where(CallSession.id == call_session_id))
     call_session = session_result.scalar_one_or_none()
@@ -746,10 +747,20 @@ async def _finalize_call(
     call_session.status = call_status
     call_session.end_reason = end_reason
     call_session.ended_at = now
-    if call_session.answered_at is None:
-        call_session.answered_at = call_session.started_at
-    if call_session.started_at:
-        call_session.duration_seconds = int((now - call_session.started_at).total_seconds())
+
+    # Connected window billing rule:
+    # Charge ZERO for unanswered, busy, failed, canceled, no-answer, or calls without an exchange
+    unanswered_statuses = {"no_answer", "busy", "failed", "canceled", "abandoned", "no-answer"}
+    if call_status in unanswered_statuses or call_session.answered_at is None or not had_exchange:
+        call_session.duration_seconds = 0
+    else:
+        # Billable window starts strictly when customer picks up (answered_at) and ends at hangup (ended_at)
+        if provider_duration is not None and provider_duration > 0:
+            call_session.duration_seconds = int(provider_duration)
+        elif call_session.answered_at is not None:
+            call_session.duration_seconds = max(0, int((now - call_session.answered_at).total_seconds()))
+        else:
+            call_session.duration_seconds = 0
 
     existing_transcript = (await db.execute(select(CallTranscript).where(CallTranscript.call_session_id == call_session_id))).scalar_one_or_none()
     if existing_transcript is None:
@@ -784,7 +795,7 @@ async def _finalize_call(
 
     db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session_id, event_type="call_ended", payload={"reason": end_reason}))
 
-    if call_session.duration_seconds is not None:
+    if call_session.duration_seconds is not None and call_session.duration_seconds > 0:
         db.add(
             UsageEvent(
                 workspace_id=workspace_id, call_session_id=call_session_id, event_type="telephony_seconds",
@@ -792,24 +803,13 @@ async def _finalize_call(
             )
         )
         try:
-            from jkr_db.models.coins import CoinWallet, CoinTransaction
-            w_res = await db.execute(select(CoinWallet).where(CoinWallet.workspace_id == workspace_id))
-            wallet = w_res.scalar_one_or_none()
-            if wallet is not None:
-                duration = int(call_session.duration_seconds)
-                wallet.balance_coins = max(0, wallet.balance_coins - duration)
-                wallet.total_spent_coins += duration
-                db.add(
-                    CoinTransaction(
-                        workspace_id=workspace_id,
-                        user_id=None,
-                        amount_coins=-duration,
-                        transaction_type="call_deduction",
-                        reference_id=str(call_session_id),
-                        description=f"Live Call usage: {duration}s AI conversation ({duration} coins)",
-                        balance_after=wallet.balance_coins,
-                    )
-                )
+            from app.modules.coins.service import deduct_call_coins
+            await deduct_call_coins(
+                db,
+                workspace_id=workspace_id,
+                call_id=call_session_id,
+                duration_seconds=call_session.duration_seconds,
+            )
         except Exception as exc:
             logger.warning("Could not deduct coins for live call %s: %s", call_session_id, exc)
 
@@ -1030,6 +1030,17 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
         # keeps the session open after an acknowledged handoff.
         force_close = result.call_should_end or result.planner_action == "HUMAN_HANDOFF"
 
+        # Mid-call coin balance guard: if coins run out, close gracefully
+        from app.modules.coins.service import get_or_create_wallet
+        wallet = await get_or_create_wallet(db, workspace_id=workspace_id)
+        now_ts = datetime.now(UTC)
+        elapsed_s = int((now_ts - call_session.answered_at).total_seconds()) if call_session and call_session.answered_at else 0
+        if wallet.balance_coins <= elapsed_s or wallet.balance_coins <= 0:
+            logger.info("Balance exhausted mid-call for session %s (balance: %s, elapsed: %ss)", call_session_id, wallet.balance_coins, elapsed_s)
+            reply = "Your account balance has run out. Thank you for speaking with us. Goodbye."
+            force_close = True
+            state["pending_end_reason"] = "balance_exhausted"
+
         if force_close:
             # Never finalize the instant a closing is decided — the closing
             # audio must fully play, then a short grace window gives the
@@ -1202,11 +1213,14 @@ async def handle_status_webhook(*, token: str, form: dict[str, str], signature: 
         return
 
     if call_status == "completed":
+        provider_dur_raw = form.get("CallDuration")
+        provider_duration = int(provider_dur_raw) if provider_dur_raw and provider_dur_raw.isdigit() else None
         async with workspace_scoped_session(workspace_id) as db:
             await _finalize_call(
                 db, workspace_id=workspace_id, call_session_id=call_session_id, call_status="completed",
                 end_reason=state.get("pending_end_reason", "completed"), had_exchange=state["agent_turns"] > 1,
                 language_code=state.get("language_code", FALLBACK_LANGUAGE), settings=settings,
+                provider_duration=provider_duration,
             )
         await redis.delete(_redis_key(token))
         return

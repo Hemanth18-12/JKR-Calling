@@ -117,5 +117,10 @@ class GoogleOAuthUrlResponse(BaseModel):
 
 
 class GoogleOAuthCallbackRequest(BaseModel):
-    code: str
+    code: str | None = None
+    id_token: str | None = None
     redirect_uri: str | None = None
+
+
+class FirebaseAuthRequest(BaseModel):
+    id_token: str

@@ -64,6 +64,11 @@ class CoinTransactionOut(BaseModel):
     description: str
     balance_after: int
     created_at: datetime
+    dialed_at: datetime | None = None
+    answered_at: datetime | None = None
+    ended_at: datetime | None = None
+    billable_seconds: int | None = None
+    coins_charged: int | None = None
 
 
 class AdminReviewRequest(BaseModel):

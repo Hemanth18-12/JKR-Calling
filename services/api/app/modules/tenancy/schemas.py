@@ -57,10 +57,54 @@ class MemberUpdate(BaseModel):
 
 class MemberOut(BaseModel):
     id: uuid.UUID
-    user_id: uuid.UUID
+    user_id: uuid.UUID | None = None
     email: str
     full_name: str
     role_key: str
     status: str
-    invited_at: datetime | None
-    joined_at: datetime | None
+    invited_at: datetime | None = None
+    joined_at: datetime | None = None
+    invitation_id: uuid.UUID | None = None
+
+
+class InvitationOut(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    email: str
+    role_key: str
+    status: str
+    expires_at: datetime
+    created_at: datetime
+
+
+class AcceptInvitationRequest(BaseModel):
+    token: str | None = None
+    invitation_id: uuid.UUID | None = None
+
+
+class AcceptInvitationResponse(BaseModel):
+    success: bool
+    workspace_id: uuid.UUID
+    workspace_name: str
+    role_key: str
+
+
+class PendingInvitationOut(BaseModel):
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    workspace_name: str
+    role_key: str
+    role_name: str
+    inviter_name: str
+    email: str
+    expires_at: datetime
+
+
+class InvitationDetailsPublic(BaseModel):
+    workspace_name: str
+    role_key: str
+    role_name: str
+    inviter_name: str
+    email: str
+    expires_at: datetime
+

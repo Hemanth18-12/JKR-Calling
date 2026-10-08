@@ -60,15 +60,52 @@ export type MemberUpdate = z.infer<typeof MemberUpdate>;
 
 export const MemberOut = z.object({
   id: z.string().uuid(),
-  user_id: z.string().uuid(),
+  user_id: z.string().uuid().nullable().optional(),
   email: z.string(),
   full_name: z.string(),
   role_key: z.string(),
   status: z.string(),
-  invited_at: z.string().nullable(),
-  joined_at: z.string().nullable(),
+  invited_at: z.string().nullable().optional(),
+  joined_at: z.string().nullable().optional(),
+  invitation_id: z.string().uuid().nullable().optional(),
 });
 export type MemberOut = z.infer<typeof MemberOut>;
+
+export const PendingInvitationOut = z.object({
+  id: z.string().uuid(),
+  workspace_id: z.string().uuid(),
+  workspace_name: z.string(),
+  role_key: z.string(),
+  role_name: z.string(),
+  inviter_name: z.string(),
+  email: z.string(),
+  expires_at: z.string(),
+});
+export type PendingInvitationOut = z.infer<typeof PendingInvitationOut>;
+
+export const AcceptInvitationRequest = z.object({
+  token: z.string().optional(),
+  invitation_id: z.string().uuid().optional(),
+});
+export type AcceptInvitationRequest = z.infer<typeof AcceptInvitationRequest>;
+
+export const AcceptInvitationResponse = z.object({
+  success: z.boolean(),
+  workspace_id: z.string().uuid(),
+  workspace_name: z.string(),
+  role_key: z.string(),
+});
+export type AcceptInvitationResponse = z.infer<typeof AcceptInvitationResponse>;
+
+export const InvitationDetailsPublic = z.object({
+  workspace_name: z.string(),
+  role_key: z.string(),
+  role_name: z.string(),
+  inviter_name: z.string(),
+  email: z.string(),
+  expires_at: z.string(),
+});
+export type InvitationDetailsPublic = z.infer<typeof InvitationDetailsPublic>;
 
 export const ROLE_OPTIONS = [
   { key: "workspace_owner", label: "Owner" },

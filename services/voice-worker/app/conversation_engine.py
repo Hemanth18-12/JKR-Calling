@@ -299,7 +299,7 @@ async def start_session(
         language=language,
         state=conversation_state,
         started_at=datetime.now(UTC),
-        answered_at=datetime.now(UTC),
+        answered_at=None,
         is_mock=True,
         disclosure_confirmed=True,
     )
@@ -406,6 +406,8 @@ async def submit_user_turn(
     sequence_index = len(existing_turns.scalars().all())
 
     now = datetime.now(UTC)
+    if call_session.answered_at is None:
+        call_session.answered_at = now
     user_turn_ref = runtime.turn_manager.next_turn_ref("user")
     db.add(
         CallTurn(
@@ -645,8 +647,11 @@ async def end_session(db: AsyncSession, *, workspace_id: uuid.UUID, call_id: uui
     call_session.status = "completed"
     call_session.end_reason = end_reason
     call_session.ended_at = now
-    if call_session.started_at:
-        call_session.duration_seconds = int((now - call_session.started_at).total_seconds())
+    had_exchange = len(turns) > 0
+    if not had_exchange or call_session.answered_at is None:
+        call_session.duration_seconds = 0
+    else:
+        call_session.duration_seconds = max(0, int((now - call_session.answered_at).total_seconds()))
 
     db.add(CallTranscript(workspace_id=workspace_id, call_session_id=call_id, full_text=full_text, language=call_session.language, is_final=True))
 
@@ -674,13 +679,7 @@ async def end_session(db: AsyncSession, *, workspace_id: uuid.UUID, call_id: uui
     )
     db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_id, event_type="call_ended", payload={"reason": end_reason}))
 
-    # Real usage tracking (docs/IMPLEMENTATION_CHECKLIST.md Phase 9) — every
-    # completed call logs its actual duration as billable telephony seconds,
-    # regardless of mock-vs-real provider. Mock calls are free (cost_paise
-    # stays 0, per the campaign safety gate's budget check), but the *usage*
-    # itself is real, not simulated — this is what a real provider bill
-    # would be metered against once one is configured.
-    if call_session.duration_seconds is not None:
+    if call_session.duration_seconds is not None and call_session.duration_seconds > 0:
         db.add(
             UsageEvent(
                 workspace_id=workspace_id, call_session_id=call_id, event_type="telephony_seconds",
@@ -689,23 +688,32 @@ async def end_session(db: AsyncSession, *, workspace_id: uuid.UUID, call_id: uui
         )
         try:
             from jkr_db.models.coins import CoinWallet, CoinTransaction
-            w_res = await db.execute(select(CoinWallet).where(CoinWallet.workspace_id == workspace_id))
-            wallet = w_res.scalar_one_or_none()
-            if wallet is not None:
-                duration = int(call_session.duration_seconds)
-                wallet.balance_coins = max(0, wallet.balance_coins - duration)
-                wallet.total_spent_coins += duration
-                db.add(
-                    CoinTransaction(
-                        workspace_id=workspace_id,
-                        user_id=None,
-                        amount_coins=-duration,
-                        transaction_type="call_deduction",
-                        reference_id=str(call_id),
-                        description=f"Call usage: {duration}s AI conversation ({duration} coins)",
-                        balance_after=wallet.balance_coins,
-                    )
+            # Idempotency check:
+            existing_tx_res = await db.execute(
+                select(CoinTransaction).where(
+                    CoinTransaction.workspace_id == workspace_id,
+                    CoinTransaction.transaction_type == "call_deduction",
+                    CoinTransaction.reference_id == str(call_id),
                 )
+            )
+            if existing_tx_res.scalar_one_or_none() is None:
+                w_res = await db.execute(select(CoinWallet).where(CoinWallet.workspace_id == workspace_id))
+                wallet = w_res.scalar_one_or_none()
+                if wallet is not None:
+                    duration = int(call_session.duration_seconds)
+                    wallet.balance_coins = max(0, wallet.balance_coins - duration)
+                    wallet.total_spent_coins += duration
+                    db.add(
+                        CoinTransaction(
+                            workspace_id=workspace_id,
+                            user_id=None,
+                            amount_coins=-duration,
+                            transaction_type="call_deduction",
+                            reference_id=str(call_id),
+                            description=f"Call usage: {duration}s connected AI conversation ({duration} coins)",
+                            balance_after=wallet.balance_coins,
+                        )
+                    )
         except Exception as exc:
             logger.warning("Could not deduct coins for call %s: %s", call_id, exc)
 

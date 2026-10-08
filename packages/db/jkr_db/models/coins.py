@@ -43,6 +43,11 @@ class CoinTopupRequest(Base, TenantMixin):
 
 class CoinTransaction(Base, TenantMixin):
     __tablename__ = "coin_transactions"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id", "transaction_type", "reference_id", name="uq_coin_tx_ws_type_ref"
+        ),
+    )
 
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True

@@ -438,30 +438,70 @@ export function CoinsWallet({
               </p>
             ) : (
               <div className="space-y-3">
-                {transactions.slice(0, 10).map((tx) => (
+                {transactions.slice(0, 15).map((tx) => (
                   <div
                     key={tx.id}
-                    className="flex items-center justify-between rounded-xl border border-border/60 bg-surface-raised/40 p-3 text-xs"
+                    className="rounded-xl border border-border/60 bg-surface-raised/40 p-3.5 text-xs space-y-2"
                   >
-                    <div className="space-y-1">
-                      <p className="font-medium text-foreground">{tx.description}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {new Date(tx.created_at).toLocaleString("en-IN", {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                        })}
-                      </p>
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <p className="font-semibold text-foreground">{tx.description}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          Logged: {new Date(tx.created_at).toLocaleString("en-IN", {
+                            timeZone: "Asia/Kolkata",
+                            dateStyle: "medium",
+                            timeStyle: "medium",
+                          })} (IST)
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span
+                          className={`font-bold font-mono text-sm ${
+                            tx.amount_coins >= 0 ? "text-emerald-400" : "text-amber-400"
+                          }`}
+                        >
+                          {tx.amount_coins >= 0 ? `+${tx.amount_coins}` : tx.amount_coins} 🪙
+                        </span>
+                        <p className="text-[10px] text-muted-foreground font-mono">Bal: {tx.balance_after}</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span
-                        className={`font-bold font-mono text-sm ${
-                          tx.amount_coins >= 0 ? "text-emerald-400" : "text-amber-400"
-                        }`}
-                      >
-                        {tx.amount_coins >= 0 ? `+${tx.amount_coins}` : tx.amount_coins}
-                      </span>
-                      <p className="text-[10px] text-muted-foreground">Bal: {tx.balance_after}</p>
-                    </div>
+
+                    {tx.transaction_type === "call_deduction" && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-border/30 text-[11px] bg-surface/50 p-2 rounded-lg">
+                        <div>
+                          <span className="text-muted-foreground block text-[10px]">Dialed:</span>
+                          <span className="font-mono text-foreground font-medium">
+                            {tx.dialed_at
+                              ? new Date(tx.dialed_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: true })
+                              : "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px]">Answered (Pickup):</span>
+                          <span className="font-mono text-emerald-400 font-medium">
+                            {tx.answered_at
+                              ? new Date(tx.answered_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: true })
+                              : "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px]">Ended (Hangup):</span>
+                          <span className="font-mono text-foreground font-medium">
+                            {tx.ended_at
+                              ? new Date(tx.ended_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: true })
+                              : "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px]">Billable Talk Time:</span>
+                          <span className="font-mono text-amber-300 font-bold">
+                            {tx.billable_seconds !== null && tx.billable_seconds !== undefined
+                              ? `${tx.billable_seconds}s (${tx.coins_charged ?? Math.abs(tx.amount_coins)} coins)`
+                              : `${Math.abs(tx.amount_coins)}s`}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -39,5 +39,23 @@ export const IntegrationCatalogItem = z.object({
   connected_account: z.string().nullable().optional(),
   external_url: z.string().nullable().optional(),
   last_synced_at: z.string().nullable().optional(),
+  last_error: z.string().nullable().optional(),
 });
 export type IntegrationCatalogItem = z.infer<typeof IntegrationCatalogItem>;
+
+export const CrmVerifyRequest = z.object({
+  crm_type: z.string().default("hubspot"),
+  hubspot_token: z.string().optional(),
+  webhook_url: z.string().optional(),
+  crm_name: z.string().default("HubSpot"),
+});
+export type CrmVerifyRequest = z.infer<typeof CrmVerifyRequest>;
+
+export const IntegrationTestResult = z.object({
+  status: z.string(),
+  integration_type: z.string(),
+  message: z.string(),
+  details: z.record(z.any()).default({}),
+  tested_at: z.string(),
+});
+export type IntegrationTestResult = z.infer<typeof IntegrationTestResult>;

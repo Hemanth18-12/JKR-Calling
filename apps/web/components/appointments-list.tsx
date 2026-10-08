@@ -347,7 +347,7 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-primary">
-                        {dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric" })}
+                        {dateObj.toLocaleDateString("en-IN", { month: "short", day: "numeric", timeZone: "Asia/Kolkata" })}
                       </span>
                       <Badge variant={APPOINTMENT_STATUS_VARIANT[a.status] ?? "secondary"} className="text-[10px]">
                         {a.status}
@@ -358,7 +358,7 @@ export function AppointmentsList({ workspaceId, appointments }: { workspaceId: s
                   <CardContent className="space-y-3 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1.5 font-medium text-foreground">
                       <Clock className="h-3.5 w-3.5 text-secondary" />
-                      {dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} ({a.duration_minutes} mins)
+                      {dateObj.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" })} ({a.duration_minutes} mins)
                     </div>
                     {a.notes && <p className="italic">&ldquo;{a.notes}&rdquo;</p>}
                     {hasConflict && (

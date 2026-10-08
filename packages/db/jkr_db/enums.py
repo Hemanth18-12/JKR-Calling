@@ -300,6 +300,7 @@ class IntegrationType(StrEnum):
 
 class IntegrationStatus(StrEnum):
     NOT_CONNECTED = "not_connected"
+    CONNECTING = "connecting"
     CONNECTED = "connected"
     ERROR = "error"
     DISABLED = "disabled"

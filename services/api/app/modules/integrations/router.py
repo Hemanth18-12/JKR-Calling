@@ -16,6 +16,8 @@ from app.modules.integrations.schemas import (
     GoogleCalendarStatusOut,
     GoogleSheetsConnectRequest,
     IntegrationCatalogItem,
+    IntegrationTestRequest,
+    IntegrationTestResult,
     MetaConnectRequest,
     MetaVerifyRequest,
     N8nVerifyRequest,
@@ -206,6 +208,7 @@ async def connect_meta_endpoint(
     payload: MetaConnectRequest,
     auth: AuthContext = Depends(require_permission("integrations:manage")),
     db: AsyncSession = Depends(workspace_db_for("integrations:manage")),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
     return await service.connect_meta_lead_ads(
         db,
@@ -213,6 +216,7 @@ async def connect_meta_endpoint(
         page_id=payload.page_id,
         page_name=payload.page_name,
         access_token=payload.access_token,
+        settings=settings,
     )
 
 
@@ -221,6 +225,7 @@ async def connect_whatsapp_endpoint(
     payload: WhatsAppConnectRequest,
     auth: AuthContext = Depends(require_permission("integrations:manage")),
     db: AsyncSession = Depends(workspace_db_for("integrations:manage")),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
     return await service.connect_whatsapp_business(
         db,
@@ -228,6 +233,7 @@ async def connect_whatsapp_endpoint(
         phone_number=payload.phone_number,
         waba_id=payload.waba_id,
         access_token=payload.access_token,
+        settings=settings,
     )
 
 
@@ -265,10 +271,34 @@ async def verify_crm_endpoint(
     payload: CrmVerifyRequest,
     auth: AuthContext = Depends(require_permission("integrations:manage")),
     db: AsyncSession = Depends(workspace_db_for("integrations:manage")),
+    settings: Settings = Depends(get_settings),
 ) -> dict:
     return await service.verify_and_connect_crm(
         db,
         workspace_id=auth.workspace_id,
+        crm_type=payload.crm_type,
+        hubspot_token=payload.hubspot_token,
         webhook_url=payload.webhook_url,
         crm_name=payload.crm_name,
+        settings=settings,
     )
+
+
+# --- Unified Test Runner for Any Integration ---
+
+@router.post("/{integration_type}/test", response_model=IntegrationTestResult)
+async def test_integration_endpoint(
+    integration_type: str,
+    payload: IntegrationTestRequest | None = None,
+    auth: AuthContext = Depends(require_permission("integrations:manage")),
+    db: AsyncSession = Depends(workspace_db_for("integrations:manage")),
+    settings: Settings = Depends(get_settings),
+) -> IntegrationTestResult:
+    result = await service.run_integration_test(
+        db,
+        workspace_id=auth.workspace_id,
+        integration_type=integration_type,
+        payload=payload.model_dump() if payload else {},
+        settings=settings,
+    )
+    return IntegrationTestResult(**result)

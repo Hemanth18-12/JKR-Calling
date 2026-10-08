@@ -114,14 +114,61 @@ export function OrganizationManagement({
       await workspacesApi.inviteMember(workspace.id, data);
       toast({
         title: "Invitation sent! ✉️",
-        description: `${data.email} has been added as ${ROLE_LABELS[data.role_key] || data.role_key}.`,
+        description: `A secure 7-day invitation link has been emailed to ${data.email}.`,
         variant: "success",
       });
       reset({ email: "", role_key: "agent_operator" });
       setShowInviteModal(false);
       onRefresh();
     } catch (err) {
-      setFormError(err instanceof ApiClientError ? err.message : "Could not invite member. Please ensure the email has an account.");
+      setFormError(err instanceof ApiClientError ? err.message : "Could not invite member.");
+    }
+  };
+
+  const [resendingId, setResendingId] = React.useState<string | null>(null);
+  const [revokingId, setRevokingId] = React.useState<string | null>(null);
+
+  const handleResend = async (m: MemberOut) => {
+    const invId = m.invitation_id || m.id;
+    setResendingId(m.id);
+    try {
+      await workspacesApi.resendInvitation(workspace.id, invId);
+      toast({
+        title: "Invitation resent! ✉️",
+        description: `A fresh invitation email was dispatched to ${m.email}.`,
+        variant: "success",
+      });
+      onRefresh();
+    } catch (err) {
+      toast({
+        title: "Resend failed",
+        description: err instanceof ApiClientError ? err.message : "Unable to resend invitation.",
+        variant: "danger",
+      });
+    } finally {
+      setResendingId(null);
+    }
+  };
+
+  const handleRevoke = async (m: MemberOut) => {
+    const invId = m.invitation_id || m.id;
+    setRevokingId(m.id);
+    try {
+      await workspacesApi.revokeInvitation(workspace.id, invId);
+      toast({
+        title: "Invitation revoked",
+        description: `The invitation for ${m.email} has been cancelled.`,
+        variant: "success",
+      });
+      onRefresh();
+    } catch (err) {
+      toast({
+        title: "Revoke failed",
+        description: err instanceof ApiClientError ? err.message : "Unable to revoke invitation.",
+        variant: "danger",
+      });
+    } finally {
+      setRevokingId(null);
     }
   };
 
@@ -242,7 +289,13 @@ export function OrganizationManagement({
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-3 py-1.5 text-xs text-muted-foreground">
                 <Users className="h-3.5 w-3.5 text-primary" />
-                <span>{members.length} of 10 seats used</span>
+                <span>
+                  {members.length} of 10 seats used ({members.filter((m) => m.status === "active").length} active
+                  {members.filter((m) => m.status === "invited").length > 0
+                    ? `, ${members.filter((m) => m.status === "invited").length} invited`
+                    : ""}
+                  )
+                </span>
               </div>
 
               <Button
@@ -396,22 +449,42 @@ export function OrganizationManagement({
                         {/* Actions */}
                         <td className="py-3.5 pr-2 text-right">
                           {m.role_key !== "workspace_owner" && (
-                            <div className="flex items-center justify-end gap-1.5">
+                            <div className="flex items-center justify-end gap-2">
                               {m.status === "active" ? (
                                 <button
                                   type="button"
                                   onClick={() => handleStatusChange(m.id, "suspended")}
-                                  className="text-xs text-muted-foreground hover:text-danger"
+                                  className="text-xs text-muted-foreground hover:text-danger font-medium transition-colors"
                                 >
                                   Suspend
                                 </button>
+                              ) : m.status === "invited" ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResend(m)}
+                                    disabled={resendingId === m.id}
+                                    className="text-xs text-primary hover:underline font-medium disabled:opacity-50"
+                                  >
+                                    {resendingId === m.id ? "Resending..." : "Resend"}
+                                  </button>
+                                  <span className="text-border">|</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRevoke(m)}
+                                    disabled={revokingId === m.id}
+                                    className="text-xs text-muted-foreground hover:text-danger font-medium disabled:opacity-50 transition-colors"
+                                  >
+                                    {revokingId === m.id ? "Revoking..." : "Revoke"}
+                                  </button>
+                                </>
                               ) : (
                                 <button
                                   type="button"
                                   onClick={() => handleStatusChange(m.id, "active")}
-                                  className="text-xs text-primary hover:underline"
+                                  className="text-xs text-primary hover:underline font-medium"
                                 >
-                                  Activate
+                                  Reactivate
                                 </button>
                               )}
                             </div>

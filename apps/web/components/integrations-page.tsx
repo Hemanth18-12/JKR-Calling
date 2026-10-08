@@ -21,16 +21,22 @@ import {
 } from "@jkr/ui";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  AlertCircle,
   Calendar,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Database,
+  Download,
   ExternalLink,
   FileSpreadsheet,
   Globe,
+  HelpCircle,
   Loader2,
   MessageSquare,
   Network,
-  Radio,
+  Play,
+  Send,
   Share2,
   Unplug,
   Webhook,
@@ -39,6 +45,7 @@ import {
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useForm } from "react-hook-form";
+import { INTEGRATION_GUIDES } from "@/lib/integration-guides";
 
 const INTEGRATION_ICONS: Record<string, React.ElementType> = {
   webhook: Webhook,
@@ -160,6 +167,14 @@ export function IntegrationsPage({
   const [modalLoading, setModalLoading] = React.useState(false);
   const [modalError, setModalError] = React.useState<string | null>(null);
 
+  // Testing states
+  const [testingType, setTestingType] = React.useState<string | null>(null);
+  const [testResults, setTestResults] = React.useState<
+    Record<string, { status: "success" | "error" | "not_configured"; message: string; details?: Record<string, any>; tested_at: string }>
+  >({});
+  const [expandedGuides, setExpandedGuides] = React.useState<Record<string, boolean>>({});
+  const [testWebhookUrl, setTestWebhookUrl] = React.useState("");
+
   // Form states for modals
   const [googleEmail, setGoogleEmail] = React.useState("gowthamkrishna19123@gmail.com");
   const [calendarId, setCalendarId] = React.useState("primary");
@@ -168,14 +183,63 @@ export function IntegrationsPage({
 
   const [n8nUrl, setN8nUrl] = React.useState("https://n8n.io");
   const [n8nKey, setN8nKey] = React.useState("");
-  const [crmUrl, setCrmUrl] = React.useState("https://api.hubspot.com/webhooks/v1/leads");
+  const [crmType, setCrmType] = React.useState<"hubspot" | "webhook">("hubspot");
+  const [hubspotToken, setHubspotToken] = React.useState("");
+  const [crmUrl, setCrmUrl] = React.useState("");
   const [crmName, setCrmName] = React.useState("HubSpot");
-  const [metaPageId, setMetaPageId] = React.useState("108294719284102");
-  const [metaPageName, setMetaPageName] = React.useState("JKR Calling Page");
+  const [metaPageId, setMetaPageId] = React.useState("");
+  const [metaPageName, setMetaPageName] = React.useState("My Facebook Page");
   const [metaToken, setMetaToken] = React.useState("");
   const [waPhone, setWaPhone] = React.useState("+919876543210");
-  const [waWabaId, setWaWabaId] = React.useState("waba_jkr_prod");
+  const [waWabaId, setWaWabaId] = React.useState("");
   const [waToken, setWaToken] = React.useState("");
+
+  const toggleGuide = (type: string) => {
+    setExpandedGuides((prev) => ({ ...prev, [type]: !prev[type] }));
+  };
+
+  const handleTestIntegration = async (type: string, customPayload?: Record<string, any>) => {
+    setTestingType(type);
+    try {
+      const res = await integrationsApi.testIntegration(workspaceId, type, customPayload);
+      setTestResults((prev) => ({
+        ...prev,
+        [type]: {
+          status: res.status as "success" | "error" | "not_configured",
+          message: res.message,
+          details: res.details,
+          tested_at: res.tested_at,
+        },
+      }));
+      toast({
+        title:
+          res.status === "success"
+            ? "Verification Successful"
+            : res.status === "not_configured"
+            ? "Configuration Required"
+            : "Verification Failed",
+        description: res.message,
+        variant: res.status === "success" ? "success" : res.status === "not_configured" ? "default" : "danger",
+      });
+    } catch (err) {
+      const msg = err instanceof ApiClientError ? err.message : "Verification test failed.";
+      setTestResults((prev) => ({
+        ...prev,
+        [type]: {
+          status: "error",
+          message: msg,
+          tested_at: new Date().toISOString(),
+        },
+      }));
+      toast({
+        title: "Test Error",
+        description: msg,
+        variant: "danger",
+      });
+    } finally {
+      setTestingType(null);
+    }
+  };
 
   const handleOAuthGoogle = async (type: string) => {
     try {
@@ -250,14 +314,14 @@ export function IntegrationsPage({
     setModalLoading(true);
     setModalError(null);
     try {
-      await integrationsApi.connectMeta(workspaceId, {
+      const res = await integrationsApi.connectMeta(workspaceId, {
         page_id: metaPageId,
         page_name: metaPageName,
         access_token: metaToken || undefined,
       });
       toast({
         title: "Meta Lead Ads Connected",
-        description: `Page ${metaPageName} (ID: ${metaPageId}) is now active.`,
+        description: `Facebook Page ${res.page_id} is now verified and active.`,
         variant: "success",
       });
       setActiveModal(null);
@@ -281,7 +345,7 @@ export function IntegrationsPage({
       });
       toast({
         title: "WhatsApp Business Connected",
-        description: `WhatsApp line ${waPhone} is now active for notifications & confirmations.`,
+        description: `WhatsApp line ${waPhone} is now verified and active.`,
         variant: "success",
       });
       setActiveModal(null);
@@ -299,7 +363,7 @@ export function IntegrationsPage({
     setModalError(null);
     try {
       await integrationsApi.verifyN8n(workspaceId, { instance_url: n8nUrl, api_key: n8nKey || undefined });
-      toast({ title: "n8n Connected", description: `Successfully connected instance at ${n8nUrl}`, variant: "success" });
+      toast({ title: "n8n Connected", description: `Successfully verified instance at ${n8nUrl}`, variant: "success" });
       setActiveModal(null);
       router.refresh();
     } catch (err) {
@@ -314,12 +378,23 @@ export function IntegrationsPage({
     setModalLoading(true);
     setModalError(null);
     try {
-      await integrationsApi.verifyCrm(workspaceId, { webhook_url: crmUrl, crm_name: crmName });
-      toast({ title: "CRM Connected", description: `Connected ${crmName} at ${crmUrl}`, variant: "success" });
+      const res = await integrationsApi.verifyCrm(workspaceId, {
+        crm_type: crmType,
+        hubspot_token: crmType === "hubspot" ? hubspotToken : undefined,
+        webhook_url: crmType === "webhook" ? crmUrl : undefined,
+        crm_name: crmType === "hubspot" ? "HubSpot" : crmName,
+      });
+      toast({
+        title: "CRM Connected",
+        description: res.hubspot_id
+          ? `Verified HubSpot connection! Real test contact ID: ${res.hubspot_id}`
+          : `Connected ${res.crm_name} at ${res.webhook_url}`,
+        variant: "success",
+      });
       setActiveModal(null);
       router.refresh();
     } catch (err) {
-      setModalError(err instanceof ApiClientError ? err.message : "Failed to verify CRM webhook.");
+      setModalError(err instanceof ApiClientError ? err.message : "Failed to verify CRM.");
     } finally {
       setModalLoading(false);
     }
@@ -346,22 +421,25 @@ export function IntegrationsPage({
   return (
     <div className="space-y-8">
       {/* Integrations Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {catalog.map((item) => {
           const Icon = INTEGRATION_ICONS[item.type] || Globe;
           const isConnected = item.status === "connected";
+          const isConnecting = item.status === "connecting";
+          const isError = item.status === "error";
+          const isBuiltIn = item.type === "google_calendar" || item.type === "google_sheets";
+          const isExpanded = !!expandedGuides[item.type];
+          const testResult = testResults[item.type];
+          const guide = INTEGRATION_GUIDES[item.type];
 
           return (
             <Card
               key={item.type}
-              onClick={() => {
-                if (isConnected && item.external_url) {
-                  window.open(item.external_url, "_blank", "noopener,noreferrer");
-                }
-              }}
-              className={`relative overflow-hidden transition-all duration-200 border-border/60 ${
+              className={`relative overflow-hidden transition-all duration-200 border-border/60 flex flex-col justify-between ${
                 isConnected
-                  ? "cursor-pointer hover:border-emerald-500/50 hover:shadow-md hover:shadow-emerald-500/5"
+                  ? "border-emerald-500/40 shadow-sm shadow-emerald-500/5"
+                  : isError
+                  ? "border-danger/40"
                   : "hover:border-border"
               }`}
             >
@@ -373,6 +451,8 @@ export function IntegrationsPage({
                         className={`flex h-10 w-10 items-center justify-center rounded-xl border ${
                           isConnected
                             ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                            : isError
+                            ? "bg-danger/10 border-danger/30 text-danger"
                             : "bg-surface-raised border-border text-muted-foreground"
                         }`}
                       >
@@ -385,9 +465,6 @@ export function IntegrationsPage({
                             : item.type === "google_sheets"
                             ? "Data Export (CSV)"
                             : item.label}
-                          {isConnected && item.external_url && item.type !== "google_calendar" && item.type !== "google_sheets" ? (
-                            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-60" />
-                          ) : null}
                         </h3>
                         {item.type === "google_calendar" ? (
                           <p className="text-xs text-emerald-400 font-medium flex items-center gap-1 mt-0.5">
@@ -404,21 +481,42 @@ export function IntegrationsPage({
                             <CheckCircle2 className="h-3 w-3" />
                             {item.connected_account || "Connected"}
                           </p>
+                        ) : isError ? (
+                          <p className="text-xs text-danger font-medium flex items-center gap-1 mt-0.5">
+                            <AlertCircle className="h-3 w-3" />
+                            Connection Error
+                          </p>
                         ) : (
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {item.requires_oauth ? "OAuth / Direct" : "Not connected"}
+                            {item.requires_oauth ? "OAuth / Direct Token" : "Not connected"}
                           </p>
                         )}
                       </div>
                     </div>
-                    <Badge variant={isConnected ? "success" : "secondary"} className="capitalize">
-                      {item.type === "google_calendar" || item.type === "google_sheets"
+                    <Badge
+                      variant={
+                        isConnected ? "success" : isError ? "danger" : isConnecting ? "secondary" : "secondary"
+                      }
+                      className="capitalize"
+                    >
+                      {isBuiltIn
                         ? "Active (Built-in)"
                         : isConnected
                         ? "Connected"
+                        : isError
+                        ? "Error"
+                        : isConnecting
+                        ? "Connecting"
                         : "Not Connected"}
                     </Badge>
                   </div>
+
+                  {item.last_error && isError && (
+                    <div className="mb-2.5 p-2 rounded-lg bg-danger/10 border border-danger/20 text-xs text-danger flex items-start gap-1.5">
+                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span className="line-clamp-2">{item.last_error}</span>
+                    </div>
+                  )}
 
                   <p className="text-xs text-muted-foreground line-clamp-2">
                     {item.type === "google_calendar"
@@ -429,132 +527,201 @@ export function IntegrationsPage({
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-border/40">
-                  {item.type === "google_calendar" ? (
-                    <>
-                      <span className="text-xs text-emerald-400/90 font-medium">Built-in with every call</span>
-                      <a
-                        href="/app/appointments"
-                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
-                      >
-                        View Appointments &rarr;
-                      </a>
-                    </>
-                  ) : item.type === "google_sheets" ? (
-                    <>
-                      <span className="text-xs text-emerald-400/90 font-medium">Export CSV on-demand</span>
-                      <a
-                        href="/app/appointments"
-                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
-                      >
-                        Export CSV &rarr;
-                      </a>
-                    </>
-                  ) : isConnected ? (
-                    <>
-                      {item.external_url ? (
+                {/* Inline Test Result Box */}
+                {testResult && (
+                  <div
+                    className={`p-3 rounded-lg border text-xs space-y-1.5 ${
+                      testResult.status === "success"
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-foreground"
+                        : testResult.status === "not_configured"
+                        ? "bg-amber-500/10 border-amber-500/30 text-foreground"
+                        : "bg-danger/10 border-danger/30 text-danger"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-semibold">
+                      <span className="flex items-center gap-1">
+                        {testResult.status === "success" ? (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                        ) : testResult.status === "not_configured" ? (
+                          <AlertCircle className="h-3.5 w-3.5 text-amber-400" />
+                        ) : (
+                          <AlertCircle className="h-3.5 w-3.5 text-danger" />
+                        )}
+                        {testResult.status === "success"
+                          ? "Test Passed"
+                          : testResult.status === "not_configured"
+                          ? "Setup Required"
+                          : "Verification Failed"}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-normal">
+                        {new Date(testResult.tested_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })} IST
+                      </span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">{testResult.message}</p>
+                    {testResult.details && testResult.details.download_url && (
+                      <div className="pt-1 flex items-center gap-2">
                         <a
-                          href={item.external_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium"
+                          href={testResult.details.download_url}
+                          download
+                          className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium"
                         >
-                          Open Service <ExternalLink className="h-3 w-3" />
+                          <Download className="h-3 w-3" /> Download Sample
                         </a>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Active in pipeline</span>
-                      )}
+                        {testResult.details.google_calendar_url && (
+                          <a
+                            href={testResult.details.google_calendar_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium"
+                          >
+                            <ExternalLink className="h-3 w-3" /> Add to Google Calendar
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Expandable How To Connect Guide */}
+                {guide && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleGuide(item.type)}
+                      className="w-full flex items-center justify-between text-xs text-muted-foreground hover:text-foreground font-medium py-1 transition-colors"
+                    >
+                      <span className="flex items-center gap-1">
+                        <HelpCircle className="h-3.5 w-3.5 text-primary/80" />
+                        How to connect & use
+                      </span>
+                      {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                    </button>
+
+                    {isExpanded && (
+                      <div className="mt-2.5 p-3 rounded-lg bg-surface-raised border border-border text-xs space-y-2.5 max-h-72 overflow-y-auto">
+                        <div>
+                          <p className="font-semibold text-foreground">What it does</p>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{guide.whatItDoes}</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground">Why use it</p>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{guide.whyUseIt}</p>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground">Before starting</p>
+                          <ul className="list-disc list-inside text-muted-foreground mt-0.5 space-y-0.5">
+                            {guide.prerequisites.map((p, idx) => (
+                              <li key={idx}>{p}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground">Step-by-step setup</p>
+                          <ol className="list-decimal list-inside text-muted-foreground mt-0.5 space-y-1">
+                            {guide.steps.map((s, idx) => (
+                              <li key={idx} className="leading-relaxed">
+                                {s}
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground">What success looks like</p>
+                          <p className="text-muted-foreground mt-0.5 leading-relaxed">{guide.successIndicator}</p>
+                        </div>
+                        {guide.troubleshooting.length > 0 && (
+                          <div>
+                            <p className="font-semibold text-foreground">Troubleshooting</p>
+                            <div className="space-y-1 mt-0.5">
+                              {guide.troubleshooting.map((t, idx) => (
+                                <div key={idx} className="text-[11px]">
+                                  <span className="font-medium text-foreground">&bull; {t.issue}: </span>
+                                  <span className="text-muted-foreground">{t.solution}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {guide.extraNotice && (
+                          <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300">
+                            {guide.extraNotice}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Footer Action Buttons */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border/40">
+                  <div className="flex items-center gap-1.5">
+                    {/* Live Test / Verify Button */}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 px-2.5 text-xs font-medium"
+                      loading={testingType === item.type}
+                      onClick={() => {
+                        if (item.type === "webhook") {
+                          setActiveModal("test_webhook");
+                        } else {
+                          handleTestIntegration(item.type);
+                        }
+                      }}
+                    >
+                      <Play className="h-3 w-3 mr-1" />
+                      {item.type === "webhook" ? "Send Test" : "Verify Connection"}
+                    </Button>
+
+                    {/* Portal link for connected services */}
+                    {isConnected && item.external_url && item.external_url.startsWith("http") && (
+                      <a
+                        href={item.external_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium px-1.5 py-1"
+                      >
+                        Open Portal <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                    {isBuiltIn && (
+                      <a
+                        href="/app/appointments"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline font-medium px-1.5 py-1"
+                      >
+                        {item.type === "google_calendar" ? "Appointments →" : "Export CSV →"}
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {isConnected && !isBuiltIn ? (
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-7 text-xs text-danger/80 hover:text-danger hover:bg-danger/10"
+                        className="h-7 text-xs text-danger/80 hover:text-danger hover:bg-danger/10 px-2"
                         loading={disconnectingType === item.type}
                         onClick={(e) => handleDisconnect(item.type, e)}
                       >
                         <Unplug className="h-3 w-3 mr-1" /> Disconnect
                       </Button>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-xs text-muted-foreground font-mono">Status: Idle</span>
-                      {item.type === "google_calendar" ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            setModalError(null);
-                            setActiveModal("google_calendar");
-                          }}
-                        >
-                          Connect Calendar
-                        </Button>
-                      ) : item.type === "google_sheets" ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            setModalError(null);
-                            setActiveModal("google_sheets");
-                          }}
-                        >
-                          Connect Sheets
-                        </Button>
-                      ) : item.type === "n8n" ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            setModalError(null);
-                            setActiveModal("n8n");
-                          }}
-                        >
-                          Connect n8n
-                        </Button>
-                      ) : item.type === "crm" ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            setModalError(null);
-                            setActiveModal("crm");
-                          }}
-                        >
-                          Connect CRM
-                        </Button>
-                      ) : item.type === "meta_lead_ads" ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            setModalError(null);
-                            setActiveModal("meta");
-                          }}
-                        >
-                          Connect Meta
-                        </Button>
-                      ) : item.type === "whatsapp" ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          className="h-7 text-xs"
-                          onClick={() => {
-                            setModalError(null);
-                            setActiveModal("whatsapp");
-                          }}
-                        >
-                          Connect WA
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">Via Webhooks</span>
-                      )}
-                    </>
-                  )}
+                    ) : !isBuiltIn ? (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        className="h-7 text-xs px-2.5"
+                        onClick={() => {
+                          setModalError(null);
+                          if (item.type === "crm") setActiveModal("crm");
+                          else if (item.type === "n8n") setActiveModal("n8n");
+                          else if (item.type === "meta_lead_ads") setActiveModal("meta");
+                          else if (item.type === "whatsapp") setActiveModal("whatsapp");
+                        }}
+                      >
+                        Connect
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -584,7 +751,7 @@ export function IntegrationsPage({
                 <Webhook className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
                 <p className="text-sm font-medium text-foreground">No webhooks registered</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Add an endpoint below to receive signed call.completed & CRM events.
+                  Add an endpoint to receive signed call.completed & CRM events.
                 </p>
               </div>
             ) : (
@@ -599,17 +766,17 @@ export function IntegrationsPage({
         <NewWebhookForm workspaceId={workspaceId} />
       </div>
 
-      {/* Modal: Google Calendar Configuration */}
-      {activeModal === "google_calendar" && (
+      {/* Modal: Test Webhook Payload */}
+      {activeModal === "test_webhook" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <Card className="w-full max-w-md border-border bg-surface shadow-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-primary" /> Connect Google Calendar
+                  <Send className="h-4 w-4 text-primary" /> Send Test Webhook
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Sync booked appointments directly to your Google Calendar.
+                  Dispatches a real call.completed event with HMAC-SHA256 signature.
                 </CardDescription>
               </div>
               <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
@@ -617,50 +784,39 @@ export function IntegrationsPage({
               </Button>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleConnectGoogleCalendar} className="space-y-4">
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  setModalLoading(true);
+                  try {
+                    await handleTestIntegration("webhook", testWebhookUrl ? { target_url: testWebhookUrl } : undefined);
+                    setActiveModal(null);
+                  } finally {
+                    setModalLoading(false);
+                  }
+                }}
+                className="space-y-4"
+              >
                 <div>
-                  <Label htmlFor="google-email" className="text-xs font-medium">Google Account Email</Label>
+                  <Label htmlFor="test-webhook-url" className="text-xs font-medium">Destination URL (Optional)</Label>
                   <Input
-                    id="google-email"
-                    type="email"
-                    placeholder="youremail@gmail.com"
-                    value={googleEmail}
-                    onChange={(e) => setGoogleEmail(e.target.value)}
-                    required
+                    id="test-webhook-url"
+                    placeholder="https://webhook.site/your-unique-id or leave empty for active endpoint"
+                    value={testWebhookUrl}
+                    onChange={(e) => setTestWebhookUrl(e.target.value)}
                     className="mt-1"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1">Calendar events will be created and viewable under this account.</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Tip: Visit <a href="https://webhook.site" target="_blank" rel="noreferrer" className="text-primary underline">webhook.site</a> to get a free test URL and inspect incoming JSON headers live.
+                  </p>
                 </div>
-                <div>
-                  <Label htmlFor="calendar-id" className="text-xs font-medium">Calendar ID</Label>
-                  <Input
-                    id="calendar-id"
-                    placeholder="primary"
-                    value={calendarId}
-                    onChange={(e) => setCalendarId(e.target.value)}
-                    className="mt-1"
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1">Use primary or your specific Google Calendar ID.</p>
-                </div>
-                {modalError ? <p className="text-xs text-danger">{modalError}</p> : null}
-                <div className="flex flex-col gap-2 pt-2">
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setActiveModal(null)}>
-                      Cancel
-                    </Button>
-                    <Button type="submit" size="sm" loading={modalLoading}>
-                      Connect Calendar
-                    </Button>
-                  </div>
-                  <div className="border-t border-border/40 pt-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => handleOAuthGoogle("google_calendar")}
-                      className="text-[11px] text-primary hover:underline"
-                    >
-                      Or authorize via official Google OAuth screen &rarr;
-                    </button>
-                  </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setActiveModal(null)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" loading={modalLoading}>
+                    Dispatch Test Payload
+                  </Button>
                 </div>
               </form>
             </CardContent>
@@ -668,17 +824,17 @@ export function IntegrationsPage({
         </div>
       )}
 
-      {/* Modal: Google Sheets Configuration */}
-      {activeModal === "google_sheets" && (
+      {/* Modal: CRM (HubSpot & Webhook) Configuration */}
+      {activeModal === "crm" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-md border-border bg-surface shadow-2xl">
+          <Card className="w-full max-w-lg border-border bg-surface shadow-2xl">
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <FileSpreadsheet className="h-4 w-4 text-emerald-400" /> Connect Google Sheets
+                  <Database className="h-4 w-4 text-primary" /> Connect CRM Lead Pipeline
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Automatically append confirmed appointments and caller leads.
+                  Sync qualified callers directly into your CRM.
                 </CardDescription>
               </div>
               <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
@@ -686,59 +842,84 @@ export function IntegrationsPage({
               </Button>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleConnectGoogleSheets} className="space-y-4">
-                <div>
-                  <Label htmlFor="gsheet-email" className="text-xs font-medium">Google Account Email</Label>
-                  <Input
-                    id="gsheet-email"
-                    type="email"
-                    placeholder="youremail@gmail.com"
-                    value={googleEmail}
-                    onChange={(e) => setGoogleEmail(e.target.value)}
-                    required
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="gsheet-id" className="text-xs font-medium">Spreadsheet ID or URL (Optional)</Label>
-                  <Input
-                    id="gsheet-id"
-                    placeholder="1BxiMVs0XRX... or leave blank for auto-sheet"
-                    value={sheetsSpreadsheetId}
-                    onChange={(e) => setSheetsSpreadsheetId(e.target.value)}
-                    className="mt-1"
-                  />
-                  <p className="text-[11px] text-muted-foreground mt-1">Leave empty to connect your default JKR Appointments & Leads sheet.</p>
-                </div>
-                <div>
-                  <Label htmlFor="gsheet-name" className="text-xs font-medium">Sheet Tab Name</Label>
-                  <Input
-                    id="gsheet-name"
-                    placeholder="Appointments & Leads"
-                    value={sheetsName}
-                    onChange={(e) => setSheetsName(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
+              {/* Type Switcher */}
+              <div className="flex rounded-lg bg-surface-raised p-1 mb-4 border border-border">
+                <button
+                  type="button"
+                  onClick={() => setCrmType("hubspot")}
+                  className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    crmType === "hubspot" ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  HubSpot (Direct API)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCrmType("webhook")}
+                  className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    crmType === "webhook" ? "bg-surface text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Custom CRM Webhook
+                </button>
+              </div>
+
+              <form onSubmit={handleVerifyCrm} className="space-y-4">
+                {crmType === "hubspot" ? (
+                  <>
+                    <div>
+                      <Label htmlFor="hubspot-token" className="text-xs font-medium">HubSpot Private App Access Token</Label>
+                      <Input
+                        id="hubspot-token"
+                        type="password"
+                        placeholder="pat-na1-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        value={hubspotToken}
+                        onChange={(e) => setHubspotToken(e.target.value)}
+                        required
+                        className="mt-1 font-mono text-xs"
+                      />
+                      <div className="mt-2 p-2.5 rounded bg-surface-raised border border-border text-[11px] text-muted-foreground space-y-1">
+                        <p className="font-semibold text-foreground">How to get your Private App Token:</p>
+                        <p>1. Open HubSpot &rarr; Settings (gear icon) &rarr; Integrations &rarr; Private Apps.</p>
+                        <p>2. Click &quot;Create a private app&quot; and grant scopes: <code className="text-primary font-mono">crm.objects.contacts.write</code> and <code className="text-primary font-mono">crm.objects.contacts.read</code>.</p>
+                        <p>3. Click &quot;Create app&quot;, copy the token, and paste it here.</p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <Label htmlFor="crm-name" className="text-xs font-medium">CRM Name</Label>
+                      <Input
+                        id="crm-name"
+                        placeholder="Salesforce / Zoho CRM / College ERP"
+                        value={crmName}
+                        onChange={(e) => setCrmName(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="crm-url" className="text-xs font-medium">Webhook Receiver URL</Label>
+                      <Input
+                        id="crm-url"
+                        placeholder="https://your-crm-server.com/api/v1/leads"
+                        value={crmUrl}
+                        onChange={(e) => setCrmUrl(e.target.value)}
+                        required
+                        className="mt-1"
+                      />
+                    </div>
+                  </>
+                )}
+
                 {modalError ? <p className="text-xs text-danger">{modalError}</p> : null}
-                <div className="flex flex-col gap-2 pt-2">
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setActiveModal(null)}>
-                      Cancel
-                    </Button>
-                    <Button type="submit" size="sm" loading={modalLoading}>
-                      Connect Google Sheets
-                    </Button>
-                  </div>
-                  <div className="border-t border-border/40 pt-2 text-center">
-                    <button
-                      type="button"
-                      onClick={() => handleOAuthGoogle("google_sheets")}
-                      className="text-[11px] text-primary hover:underline"
-                    >
-                      Or authorize via official Google OAuth screen &rarr;
-                    </button>
-                  </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setActiveModal(null)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" loading={modalLoading}>
+                    {crmType === "hubspot" ? "Verify & Connect HubSpot" : "Verify & Connect Webhook"}
+                  </Button>
                 </div>
               </form>
             </CardContent>
@@ -756,7 +937,7 @@ export function IntegrationsPage({
                   <Share2 className="h-4 w-4 text-blue-400" /> Connect Meta Lead Ads
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Connect Facebook & Instagram Lead Ads to trigger AI voice outreach.
+                  Connect Facebook & Instagram Lead Ads for instant AI callback.
                 </CardDescription>
               </div>
               <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
@@ -775,6 +956,7 @@ export function IntegrationsPage({
                     required
                     className="mt-1"
                   />
+                  <p className="text-[11px] text-muted-foreground mt-1">Found in Facebook Page Settings &rarr; About.</p>
                 </div>
                 <div>
                   <Label htmlFor="meta-page-name" className="text-xs font-medium">Page Display Name</Label>
@@ -787,16 +969,19 @@ export function IntegrationsPage({
                   />
                 </div>
                 <div>
-                  <Label htmlFor="meta-token" className="text-xs font-medium">Page Access Token (Optional)</Label>
+                  <Label htmlFor="meta-token" className="text-xs font-medium">Page Access Token</Label>
                   <Input
                     id="meta-token"
                     type="password"
                     placeholder="EAABwz..."
                     value={metaToken}
                     onChange={(e) => setMetaToken(e.target.value)}
-                    className="mt-1"
+                    required
+                    className="mt-1 font-mono text-xs"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1">From Meta Business Manager or Developer portal.</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Generated from Meta Developers with <code className="text-primary font-mono">leads_retrieval</code> and <code className="text-primary font-mono">pages_manage_ads</code> permissions.
+                  </p>
                 </div>
                 {modalError ? <p className="text-xs text-danger">{modalError}</p> : null}
                 <div className="flex justify-end gap-2 pt-2">
@@ -820,10 +1005,10 @@ export function IntegrationsPage({
             <CardHeader className="flex flex-row items-center justify-between pb-3">
               <div>
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-emerald-400" /> Connect WhatsApp Business
+                  <MessageSquare className="h-4 w-4 text-emerald-400" /> Connect WhatsApp Business (Meta Cloud API)
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Send automated appointment confirmations and brochures over WhatsApp.
+                  Connect official Meta WABA for custom templates.
                 </CardDescription>
               </div>
               <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
@@ -831,6 +1016,9 @@ export function IntegrationsPage({
               </Button>
             </CardHeader>
             <CardContent>
+              <div className="mb-3.5 p-2.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-300">
+                Note: JKR Calling already has built-in transactional WhatsApp confirmations via Twilio. Configure this only if you want official Meta Cloud API WABA templates.
+              </div>
               <form onSubmit={handleConnectWhatsapp} className="space-y-4">
                 <div>
                   <Label htmlFor="wa-phone" className="text-xs font-medium">WhatsApp Business Phone Number</Label>
@@ -842,27 +1030,29 @@ export function IntegrationsPage({
                     required
                     className="mt-1"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1">E.164 formatted number with country code.</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">E.164 format with country code.</p>
                 </div>
                 <div>
-                  <Label htmlFor="wa-waba" className="text-xs font-medium">WABA Account ID (Optional)</Label>
+                  <Label htmlFor="wa-waba" className="text-xs font-medium">WABA Account ID</Label>
                   <Input
                     id="wa-waba"
-                    placeholder="waba_jkr_prod"
+                    placeholder="waba_1092837482"
                     value={waWabaId}
                     onChange={(e) => setWaWabaId(e.target.value)}
+                    required
                     className="mt-1"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="wa-token" className="text-xs font-medium">System Access Token (Optional)</Label>
+                  <Label htmlFor="wa-token" className="text-xs font-medium">System User Access Token</Label>
                   <Input
                     id="wa-token"
                     type="password"
                     placeholder="EAABwz..."
                     value={waToken}
                     onChange={(e) => setWaToken(e.target.value)}
-                    className="mt-1"
+                    required
+                    className="mt-1 font-mono text-xs"
                   />
                 </div>
                 {modalError ? <p className="text-xs text-danger">{modalError}</p> : null}
@@ -916,7 +1106,7 @@ export function IntegrationsPage({
                     placeholder="n8n_api_key_..."
                     value={n8nKey}
                     onChange={(e) => setN8nKey(e.target.value)}
-                    className="mt-1"
+                    className="mt-1 font-mono text-xs"
                   />
                 </div>
                 {modalError ? <p className="text-xs text-danger">{modalError}</p> : null}
@@ -926,59 +1116,6 @@ export function IntegrationsPage({
                   </Button>
                   <Button type="submit" size="sm" loading={modalLoading}>
                     Connect n8n
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Modal: CRM Configuration */}
-      {activeModal === "crm" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <Card className="w-full max-w-md border-border bg-surface shadow-2xl">
-            <CardHeader className="flex flex-row items-center justify-between pb-3">
-              <div>
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Database className="h-4 w-4 text-primary" /> Connect CRM Lead Pipeline
-                </CardTitle>
-                <CardDescription className="text-xs">Configure your CRM webhook receiver or college ERP endpoint.</CardDescription>
-              </div>
-              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setActiveModal(null)}>
-                <X className="h-4 w-4" />
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleVerifyCrm} className="space-y-4">
-                <div>
-                  <Label htmlFor="crm-name" className="text-xs font-medium">CRM Name</Label>
-                  <Input
-                    id="crm-name"
-                    placeholder="HubSpot / Salesforce / CollPoll"
-                    value={crmName}
-                    onChange={(e) => setCrmName(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="crm-url" className="text-xs font-medium">Webhook URL</Label>
-                  <Input
-                    id="crm-url"
-                    placeholder="https://api.hubspot.com/webhooks/v1/leads"
-                    value={crmUrl}
-                    onChange={(e) => setCrmUrl(e.target.value)}
-                    required
-                    className="mt-1"
-                  />
-                </div>
-                {modalError ? <p className="text-xs text-danger">{modalError}</p> : null}
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setActiveModal(null)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" size="sm" loading={modalLoading}>
-                    Connect CRM
                   </Button>
                 </div>
               </form>

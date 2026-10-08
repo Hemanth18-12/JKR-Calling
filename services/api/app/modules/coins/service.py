@@ -211,26 +211,63 @@ async def list_topup_requests(
 async def list_transactions(
     db: AsyncSession, *, workspace_id: uuid.UUID
 ) -> list[CoinTransactionOut]:
+    from jkr_db.models.calls import CallSession
+
     res = await db.execute(
         select(CoinTransaction)
         .where(CoinTransaction.workspace_id == workspace_id)
         .order_by(desc(CoinTransaction.created_at))
         .limit(100)
     )
-    return [
-        CoinTransactionOut(
-            id=tx.id,
-            workspace_id=tx.workspace_id,
-            user_id=tx.user_id,
-            amount_coins=tx.amount_coins,
-            transaction_type=tx.transaction_type,
-            reference_id=tx.reference_id,
-            description=tx.description,
-            balance_after=tx.balance_after,
-            created_at=tx.created_at,
+    txs = res.scalars().all()
+
+    # Pre-fetch matching call sessions for call_deduction transactions
+    call_ids = []
+    for tx in txs:
+        if tx.transaction_type == "call_deduction" and tx.reference_id:
+            try:
+                call_ids.append(uuid.UUID(tx.reference_id))
+            except (ValueError, TypeError):
+                pass
+
+    call_map: dict[str, CallSession] = {}
+    if call_ids:
+        calls_res = await db.execute(
+            select(CallSession).where(CallSession.id.in_(call_ids))
         )
-        for tx in res.scalars().all()
-    ]
+        for cs in calls_res.scalars().all():
+            call_map[str(cs.id)] = cs
+
+    out = []
+    for tx in txs:
+        cs = call_map.get(tx.reference_id) if tx.reference_id else None
+        dialed_at = cs.started_at if cs else None
+        answered_at = cs.answered_at if cs else None
+        ended_at = cs.ended_at if cs else None
+        billable_seconds = cs.duration_seconds if (cs and cs.duration_seconds is not None) else (
+            abs(tx.amount_coins) if tx.transaction_type == "call_deduction" else None
+        )
+        coins_charged = abs(tx.amount_coins) if tx.amount_coins < 0 else 0
+
+        out.append(
+            CoinTransactionOut(
+                id=tx.id,
+                workspace_id=tx.workspace_id,
+                user_id=tx.user_id,
+                amount_coins=tx.amount_coins,
+                transaction_type=tx.transaction_type,
+                reference_id=tx.reference_id,
+                description=tx.description,
+                balance_after=tx.balance_after,
+                created_at=tx.created_at,
+                dialed_at=dialed_at,
+                answered_at=answered_at,
+                ended_at=ended_at,
+                billable_seconds=billable_seconds,
+                coins_charged=coins_charged,
+            )
+        )
+    return out
 
 
 async def admin_list_topup_requests(
@@ -395,11 +432,26 @@ async def deduct_call_coins(
     call_id: uuid.UUID,
     duration_seconds: int,
 ) -> int:
-    coins_to_deduct = max(0, int(duration_seconds))
-    if coins_to_deduct == 0:
-        return 0
-
     wallet = await get_or_create_wallet(db, workspace_id=workspace_id)
+    coins_to_deduct = max(0, int(duration_seconds))
+
+    # 1. Idempotency guard: check if this call was already charged in the ledger
+    existing_tx_res = await db.execute(
+        select(CoinTransaction).where(
+            CoinTransaction.workspace_id == workspace_id,
+            CoinTransaction.transaction_type == "call_deduction",
+            CoinTransaction.reference_id == str(call_id),
+        )
+    )
+    existing_tx = existing_tx_res.scalar_one_or_none()
+    if existing_tx is not None:
+        # Already charged — return current balance without charging twice
+        return wallet.balance_coins
+
+    if coins_to_deduct == 0:
+        return wallet.balance_coins
+
+    # 2. Charge strictly from customer pickup to hangup (never let balance go negative)
     wallet.balance_coins = max(0, wallet.balance_coins - coins_to_deduct)
     wallet.total_spent_coins += coins_to_deduct
 
@@ -409,12 +461,75 @@ async def deduct_call_coins(
         amount_coins=-coins_to_deduct,
         transaction_type="call_deduction",
         reference_id=str(call_id),
-        description=f"Call usage: {duration_seconds}s AI conversation ({coins_to_deduct} coins)",
+        description=f"Call usage: {duration_seconds}s connected AI conversation ({coins_to_deduct} coins)",
         balance_after=wallet.balance_coins,
     )
     db.add(tx)
     await db.flush()
     return wallet.balance_coins
+
+
+async def reconcile_stuck_calls(
+    db: AsyncSession,
+    *,
+    workspace_id: uuid.UUID | None = None,
+    max_age_minutes: int = 15,
+) -> list[dict[str, Any]]:
+    """Reconciles calls stuck in 'in_progress' or 'queued' beyond max_age_minutes.
+    Finalizes duration and ledger idempotently using provider or timestamp data.
+    """
+    from datetime import timedelta
+    from jkr_db.models.calls import CallSession
+
+    cutoff = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
+    query = (
+        select(CallSession)
+        .where(
+            CallSession.status.in_(["in_progress", "queued"]),
+            CallSession.started_at <= cutoff,
+        )
+    )
+    if workspace_id is not None:
+        query = query.where(CallSession.workspace_id == workspace_id)
+
+    res = await db.execute(query)
+    stuck_calls = res.scalars().all()
+    reconciled: list[dict[str, Any]] = []
+
+    now = datetime.now(UTC)
+    for cs in stuck_calls:
+        if cs.answered_at is None:
+            # Customer never answered — zero charge
+            cs.status = "no_answer"
+            cs.end_reason = "reconciled_unanswered_timeout"
+            cs.ended_at = now
+            cs.duration_seconds = 0
+        else:
+            # Answered but webhook was lost — cap at reasonable max or elapsed
+            cs.status = "completed"
+            cs.end_reason = "reconciled_stuck_timeout"
+            cs.ended_at = now
+            # Cap at 5 minutes (300s) default max session if hung
+            elapsed = int((now - cs.answered_at).total_seconds())
+            cs.duration_seconds = min(300, max(0, elapsed))
+
+            # Deduct coins idempotently
+            await deduct_call_coins(
+                db,
+                workspace_id=cs.workspace_id,
+                call_id=cs.id,
+                duration_seconds=cs.duration_seconds,
+            )
+
+        reconciled.append({
+            "call_id": str(cs.id),
+            "workspace_id": str(cs.workspace_id),
+            "status": cs.status,
+            "duration_seconds": cs.duration_seconds,
+        })
+
+    await db.flush()
+    return reconciled
 
 
 async def get_screenshot_file_path(

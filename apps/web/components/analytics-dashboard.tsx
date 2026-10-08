@@ -74,7 +74,7 @@ export function AnalyticsDashboard({
         <Stat label="Active campaigns" value={overview.active_campaigns} />
         <Stat label="Pending handoffs" value={overview.pending_handoffs} />
         <Stat label="Avg call duration" value={calls.avg_duration_seconds !== null ? `${calls.avg_duration_seconds}s` : "—"} />
-        <Stat label="Revenue (₹)" value={(overview.revenue_paise / 100).toLocaleString("en-IN")} />
+        <Stat label="Revenue" value={`₹${(overview.revenue_paise / 100).toLocaleString("en-IN")}`} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

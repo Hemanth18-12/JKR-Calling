@@ -177,6 +177,7 @@ async def start_widget_session(
             language=language_code,
             state=conversation_state,
             started_at=datetime.now(UTC),
+            answered_at=None,
             is_mock=False,
             disclosure_confirmed=True,
         )
@@ -237,27 +238,23 @@ async def send_widget_message(
         workspace_id = call_sess.workspace_id
         agent_id = call_sess.agent_id
 
-    # Deduct 2 coins for this interaction turn
+    # Verify wallet has coins to continue
     async with workspace_scoped_session(workspace_id) as write_db:
         w_res = await write_db.execute(select(CoinWallet).where(CoinWallet.workspace_id == workspace_id))
         wallet = w_res.scalar_one_or_none()
-        if wallet and wallet.balance_coins > 0:
-            wallet.balance_coins = max(0, wallet.balance_coins - 2)
-            write_db.add(
-                CoinTransaction(
-                    workspace_id=workspace_id,
-                    amount_coins=-2,
-                    transaction_type="usage_deduct",
-                    reference_id=str(session_id),
-                    description=f"Widget session turn: {session_id}",
-                    balance_after=wallet.balance_coins,
-                )
+        if wallet is not None and wallet.balance_coins <= 0:
+            raise HTTPException(
+                status.HTTP_402_PAYMENT_REQUIRED,
+                "Your coin balance is 0. Please top up your wallet to continue interacting with this agent.",
             )
 
     # Load session and turns
     async with workspace_scoped_session(workspace_id) as write_db:
         res = await write_db.execute(select(CallSession).where(CallSession.id == session_id))
         call_sess = res.scalar_one()
+        now = datetime.now(UTC)
+        if call_sess.answered_at is None:
+            call_sess.answered_at = now
 
         t_res = await write_db.execute(
             select(CallTurn).where(CallTurn.call_session_id == session_id).order_by(CallTurn.sequence_index)
@@ -412,7 +409,14 @@ async def end_widget_session(session_id: uuid.UUID) -> dict[str, Any]:
         full_text = "\n".join(f"[{t.speaker.upper()}]: {t.text}" for t in turns)
 
         call_sess.status = "completed"
-        call_sess.ended_at = datetime.now(UTC)
+        now = datetime.now(UTC)
+        call_sess.ended_at = now
+        had_exchange = len(turns) > 1  # At least greeting + 1 visitor turn
+        if not had_exchange or call_sess.answered_at is None:
+            call_sess.duration_seconds = 0
+        else:
+            call_sess.duration_seconds = max(0, int((now - call_sess.answered_at).total_seconds()))
+
         write_db.add(
             CallTranscript(
                 workspace_id=workspace_id,
@@ -422,6 +426,66 @@ async def end_widget_session(session_id: uuid.UUID) -> dict[str, Any]:
                 is_final=True,
             )
         )
+
+        if call_sess.duration_seconds > 0:
+            from app.modules.coins.service import deduct_call_coins
+            await deduct_call_coins(
+                write_db,
+                workspace_id=workspace_id,
+                call_id=session_id,
+                duration_seconds=call_sess.duration_seconds,
+            )
+
         await write_db.flush()
 
-    return {"status": "completed", "session_id": str(session_id)}
+    return {"status": "completed", "session_id": str(session_id), "duration_seconds": call_sess.duration_seconds}
+
+
+class CheckInstallRequest(BaseModel):
+    url: str
+
+
+class CheckInstallResponse(BaseModel):
+    installed: bool
+    url: str
+    message: str
+    details: dict[str, Any] = {}
+
+
+@router.post("/check-install", response_model=CheckInstallResponse)
+async def check_widget_installed(payload: CheckInstallRequest) -> CheckInstallResponse:
+    """Verifies whether the embed snippet is present on a given target URL."""
+    import httpx
+
+    target_url = payload.url.strip()
+    if not target_url.startswith(("http://", "https://")):
+        target_url = f"https://{target_url}"
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=8.0, follow_redirects=True, headers={"User-Agent": "JKR-Widget-Checker/1.0"}
+        ) as client:
+            resp = await client.get(target_url)
+            html = resp.text
+
+            if "jkr-widget.js" in html:
+                return CheckInstallResponse(
+                    installed=True,
+                    url=target_url,
+                    message="Widget script successfully detected on your website!",
+                    details={"status_code": resp.status_code, "has_script": True},
+                )
+            else:
+                return CheckInstallResponse(
+                    installed=False,
+                    url=target_url,
+                    message="Widget script was not found in the HTML of this page. Ensure you pasted the script tag right before the closing </body> tag.",
+                    details={"status_code": resp.status_code, "has_script": False},
+                )
+    except Exception as exc:
+        return CheckInstallResponse(
+            installed=False,
+            url=target_url,
+            message=f"Could not reach {target_url}: {str(exc)}",
+            details={"error": str(exc)},
+        )

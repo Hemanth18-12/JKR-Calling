@@ -32,6 +32,7 @@ import * as React from "react";
 import { BackButton } from "./back-button";
 import { FaqChatbox } from "./faq-chatbox";
 import { GuidedTourProvider, GuidedTourPlayer, StartTourButton } from "./guided-tour";
+import { PendingInvitationsBanner } from "./pending-invitations-banner";
 
 interface NavItem {
   label: string;
@@ -104,6 +105,12 @@ export function AppShell({
   const router = useRouter();
   const { toast } = useToast();
   const [collapsed, setCollapsed] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setCollapsed(true);
+    }
+  }, []);
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? workspaces[0];
 
   const handleLogout = async () => {
@@ -345,6 +352,9 @@ export function AppShell({
               </Button>
             </div>
           </header>
+
+          {/* In-app Pending Invitations Banner */}
+          <PendingInvitationsBanner />
 
           {/* Page content */}
           <main className="flex-1 overflow-y-auto bg-gradient-mesh">{children}</main>

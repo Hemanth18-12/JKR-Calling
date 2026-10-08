@@ -66,6 +66,11 @@ export const CoinTransactionOutSchema = z.object({
   description: z.string(),
   balance_after: z.number().int(),
   created_at: z.string().datetime({ offset: true }),
+  dialed_at: z.string().datetime({ offset: true }).nullable().optional(),
+  answered_at: z.string().datetime({ offset: true }).nullable().optional(),
+  ended_at: z.string().datetime({ offset: true }).nullable().optional(),
+  billable_seconds: z.number().int().nullable().optional(),
+  coins_charged: z.number().int().nullable().optional(),
 });
 
 export type CoinTransactionOut = z.infer<typeof CoinTransactionOutSchema>;

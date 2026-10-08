@@ -1,4 +1,5 @@
 import type {
+  FirebaseAuthRequest,
   GoogleOAuthCallbackRequest,
   GoogleOAuthUrlResponse,
   LoginRequest,
@@ -40,5 +41,7 @@ export const authApi = {
   },
   googleOAuthCallback: (data: GoogleOAuthCallbackRequest, opts?: ApiFetchOptions) =>
     apiFetch<UserOut>("/auth/oauth/google/callback", { ...opts, method: "POST", body: data }),
+  firebaseGoogleAuth: (data: FirebaseAuthRequest, opts?: ApiFetchOptions) =>
+    apiFetch<UserOut>("/auth/firebase/google", { ...opts, method: "POST", body: data }),
 };
 

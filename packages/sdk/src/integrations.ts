@@ -38,8 +38,11 @@ export const integrationsApi = {
   verifyN8n: (workspaceId: string, data: { instance_url: string; api_key?: string; webhook_url?: string }, opts?: ApiFetchOptions) =>
     apiFetch<{ status: string; instance_url: string }>(`/integrations/n8n/verify${qs(workspaceId)}`, { ...opts, method: "POST", body: data }),
 
-  verifyCrm: (workspaceId: string, data: { webhook_url: string; crm_name?: string }, opts?: ApiFetchOptions) =>
-    apiFetch<{ status: string; crm_name: string; webhook_url: string }>(`/integrations/crm/verify${qs(workspaceId)}`, { ...opts, method: "POST", body: data }),
+  verifyCrm: (workspaceId: string, data: { crm_type?: string; hubspot_token?: string; webhook_url?: string; crm_name?: string }, opts?: ApiFetchOptions) =>
+    apiFetch<{ status: string; crm_name: string; provider?: string; hubspot_id?: string; webhook_url?: string }>(`/integrations/crm/verify${qs(workspaceId)}`, { ...opts, method: "POST", body: data }),
+
+  testIntegration: (workspaceId: string, integrationType: string, data?: { target_url?: string; token?: string; config?: Record<string, any> }, opts?: ApiFetchOptions) =>
+    apiFetch<{ status: string; integration_type: string; message: string; details: Record<string, any>; tested_at: string }>(`/integrations/${integrationType}/test${qs(workspaceId)}`, { ...opts, method: "POST", body: data || {} }),
 
   listWebhooks: (workspaceId: string, opts?: ApiFetchOptions) =>
     apiFetch<WebhookEndpointOut[]>(`/integrations/webhooks${qs(workspaceId)}`, { ...opts, method: "GET" }),

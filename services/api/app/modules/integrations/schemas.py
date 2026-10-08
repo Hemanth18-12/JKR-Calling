@@ -39,6 +39,7 @@ class IntegrationCatalogItem(BaseModel):
     connected_account: str | None = None
     external_url: str | None = None
     last_synced_at: datetime | None = None
+    last_error: str | None = None
 
 
 class OAuthUrlResponse(BaseModel):
@@ -76,8 +77,24 @@ class MetaVerifyRequest(BaseModel):
 
 
 class CrmVerifyRequest(BaseModel):
-    webhook_url: str = Field(min_length=1, max_length=1000)
-    crm_name: str = Field(default="Custom CRM", max_length=100)
+    crm_type: str = Field(default="hubspot")  # "hubspot" | "webhook"
+    hubspot_token: str | None = None
+    webhook_url: str | None = None
+    crm_name: str = Field(default="HubSpot", max_length=100)
+
+
+class IntegrationTestRequest(BaseModel):
+    target_url: str | None = None
+    token: str | None = None
+    config: dict = Field(default_factory=dict)
+
+
+class IntegrationTestResult(BaseModel):
+    status: str  # "success" | "error" | "not_configured"
+    integration_type: str
+    message: str
+    details: dict = Field(default_factory=dict)
+    tested_at: datetime
 
 
 class GoogleSheetsConnectRequest(BaseModel):

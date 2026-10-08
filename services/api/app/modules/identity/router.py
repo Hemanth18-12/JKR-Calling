@@ -355,7 +355,32 @@ async def google_oauth_callback(
     user = await service.authenticate_with_google(
         db,
         code=payload.code,
+        id_token=payload.id_token,
         redirect_uri=payload.redirect_uri,
+        settings=settings,
+    )
+    _session, raw_token = await service.create_session(
+        db,
+        user=user,
+        settings=settings,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
+    _set_session_cookie(response, raw_token=raw_token, settings=settings)
+    return UserOut.model_validate(user)
+
+
+@router.post("/firebase/google", response_model=UserOut)
+async def firebase_google_auth(
+    payload: FirebaseAuthRequest,
+    response: Response,
+    request: Request,
+    db: AsyncSession = Depends(platform_db),
+    settings: Settings = Depends(get_settings),
+) -> UserOut:
+    user = await service.authenticate_with_google(
+        db,
+        id_token=payload.id_token,
         settings=settings,
     )
     _session, raw_token = await service.create_session(

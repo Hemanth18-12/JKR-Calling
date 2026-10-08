@@ -1,13 +1,22 @@
 "use client";
 
 import type { AgentOut } from "@jkr/contracts";
+import { widgetApi } from "@jkr/sdk";
 import { Badge, Button } from "@jkr/ui";
 import {
+  AlertCircle,
+  Bot,
   Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Code2,
   Coins,
   Copy,
   ExternalLink,
+  Globe,
+  HelpCircle,
+  Info,
   Laptop,
   MessageSquare,
   Mic,
@@ -16,6 +25,7 @@ import {
   RotateCcw,
   Sparkles,
   Volume2,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
@@ -48,6 +58,16 @@ export function WidgetStudio({
   const [language, setLanguage] = React.useState<string>("te-IN");
   const [copied, setCopied] = React.useState<boolean>(false);
   const [codeTab, setCodeTab] = React.useState<"html" | "react">("html");
+
+  // Help drawer & Install Checker states
+  const [helpDrawerOpen, setHelpDrawerOpen] = React.useState<boolean>(false);
+  const [checkUrl, setCheckUrl] = React.useState<string>("");
+  const [isChecking, setIsChecking] = React.useState<boolean>(false);
+  const [checkResult, setCheckResult] = React.useState<{
+    installed: boolean;
+    message: string;
+    url?: string;
+  } | null>(null);
 
   // Interactive Live Preview State
   const [previewOpen, setPreviewOpen] = React.useState<boolean>(false);
@@ -137,6 +157,53 @@ export default function RootLayout({ children }) {
     }, 900);
   };
 
+  const handleCheckInstall = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!checkUrl.trim()) return;
+    setIsChecking(true);
+    setCheckResult(null);
+
+    try {
+      const res = await widgetApi.checkInstall(checkUrl.trim());
+      setCheckResult({
+        installed: res.installed,
+        message: res.message,
+        url: res.url,
+      });
+    } catch (err: unknown) {
+      setCheckResult({
+        installed: false,
+        message: err instanceof Error ? err.message : "Failed to verify website URL",
+      });
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  // Empty state if no agents exist in workspace
+  if (agents.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-2xl border border-border bg-card p-10 text-center shadow-sm">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Bot className="h-7 w-7" />
+          </div>
+          <h2 className="mt-4 text-xl font-bold tracking-tight text-foreground">
+            No AI Agents Configured Yet
+          </h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            The Website Voice &amp; Chat Widget attaches an AI agent to your website. You need at least one configured agent in this workspace to generate your embed snippet.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link href="/app/agents">
+              <Button variant="gradient">Create Your First AI Agent →</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       {/* Header Banner */}
@@ -149,9 +216,18 @@ export default function RootLayout({ children }) {
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
               Website Voice &amp; Chat Widget Studio
             </h1>
+            <button
+              type="button"
+              onClick={() => setHelpDrawerOpen((prev) => !prev)}
+              className="flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors ml-1"
+              title="Explain how Widget Studio works"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
+              <span>How it works</span>
+            </button>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Embed your native JKR AI voice agent into any website with real-time Telugu/Hindi/English speech recognition, Sarvam TTS playback, and automated appointment booking.
+          <p className="mt-1 text-sm text-muted-foreground max-w-3xl">
+            Put your AI agent directly on <strong>your own website</strong> as a floating voice and chat bubble. Visitors can speak or type with your agent to learn about your services, qualify needs, and book appointments 24/7.
           </p>
         </div>
 
@@ -181,6 +257,95 @@ export default function RootLayout({ children }) {
           </div>
         </div>
       </div>
+
+      {/* Explanatory "How It Works" 3-Step Guide */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded-2xl border border-border bg-gradient-to-br from-card via-surface to-card p-5 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary font-bold text-sm">
+            1
+          </div>
+          <div>
+            <h4 className="font-semibold text-foreground text-sm">Choose Agent &amp; Branding</h4>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              Select which AI assistant responds, pick your brand colors, button text, and default spoken language (Telugu, Hindi, English).
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary font-bold text-sm">
+            2
+          </div>
+          <div>
+            <h4 className="font-semibold text-foreground text-sm">Copy Embed Snippet</h4>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              Copy the lightweight 1-line script tag below and paste it before the closing <code className="text-foreground">&lt;/body&gt;</code> tag on WordPress, Shopify, or custom HTML.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary font-bold text-sm">
+            3
+          </div>
+          <div>
+            <h4 className="font-semibold text-foreground text-sm">Check Installation &amp; Go Live</h4>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+              Use our live URL checker below to verify the widget is installed correctly on your website, then test live voice bookings.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Coin Metering Rule Callout */}
+      <div className="flex items-start gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-xs text-muted-foreground">
+        <Coins className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+        <div className="space-y-0.5 leading-relaxed">
+          <strong className="text-foreground font-semibold">How the widget uses coins:</strong>
+          <p>
+            Coins are only charged for time the customer is <strong>actually connected and conversing</strong> (1 coin per second of active voice or chat interaction). Visitors simply browsing your site or loading pages with the widget cost <strong>0 coins</strong>.
+          </p>
+        </div>
+      </div>
+
+      {/* Contextual Help Drawer (Expandable) */}
+      {helpDrawerOpen && (
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 shadow-sm space-y-4 animate-in fade-in duration-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <HelpCircle className="h-5 w-5 text-primary" />
+              <h3 className="font-bold text-foreground text-sm">Website Widget Studio — Frequently Asked Questions</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setHelpDrawerOpen(false)}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              ✕ Close help
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs leading-relaxed text-muted-foreground">
+            <div className="space-y-1.5 rounded-xl border border-border/60 bg-background/60 p-3">
+              <strong className="text-foreground block font-semibold">How do I install on WordPress?</strong>
+              <p>
+                Install the free plugin <em>&ldquo;Insert Headers and Footers&rdquo;</em> (or edit your active theme&rsquo;s <code className="text-foreground">footer.php</code>), then paste the snippet into the &ldquo;Scripts in Footer&rdquo; box and save.
+              </p>
+            </div>
+            <div className="space-y-1.5 rounded-xl border border-border/60 bg-background/60 p-3">
+              <strong className="text-foreground block font-semibold">How do I install on Shopify or Wix?</strong>
+              <p>
+                In Shopify, go to <strong>Online Store &rarr; Themes &rarr; Edit Code &rarr; theme.liquid</strong> and paste before <code className="text-foreground">&lt;/body&gt;</code>. In Wix, go to Settings &rarr; Custom Code &rarr; Add to Body - End.
+              </p>
+            </div>
+            <div className="space-y-1.5 rounded-xl border border-border/60 bg-background/60 p-3">
+              <strong className="text-foreground block font-semibold">Does it work on mobile phones?</strong>
+              <p>
+                Yes! The widget is 100% responsive, detects touch screens, and uses native Web Speech recognition for voice or a keyboard input field on mobile devices.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
         {/* Left Column: Widget Customization Controls */}
@@ -353,6 +518,59 @@ export default function RootLayout({ children }) {
                 {copied ? "Copied!" : "Copy"}
               </button>
             </div>
+          </div>
+
+          {/* Check If Installed Verification Tool Card */}
+          <div className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <Globe className="h-4 w-4 text-primary" /> 3. Check If Installed
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Enter your live website URL to verify that the widget script is loading properly before your visitors arrive.
+            </p>
+            <form onSubmit={handleCheckInstall} className="space-y-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="https://example.com"
+                  value={checkUrl}
+                  onChange={(e) => setCheckUrl(e.target.value)}
+                  className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-xs font-mono text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="gradient"
+                  disabled={!checkUrl.trim() || isChecking}
+                  loading={isChecking}
+                  className="text-xs shrink-0"
+                >
+                  Verify Live
+                </Button>
+              </div>
+
+              {checkResult && (
+                <div
+                  className={`rounded-lg border p-3 text-xs flex items-start gap-2.5 animate-in fade-in ${
+                    checkResult.installed
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                      : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                  }`}
+                >
+                  {checkResult.installed ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+                  )}
+                  <div className="space-y-0.5">
+                    <strong className="block font-semibold">
+                      {checkResult.installed ? "Widget Detected & Verified!" : "Verification Notice"}
+                    </strong>
+                    <span className="leading-relaxed block">{checkResult.message}</span>
+                  </div>
+                </div>
+              )}
+            </form>
           </div>
         </div>
 
