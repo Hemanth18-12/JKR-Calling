@@ -15,6 +15,29 @@ interface VoiceOrbProps {
   className?: string;
 }
 
+class OrbErrorBoundary extends React.Component<
+  { fallback: React.ReactNode; children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: any) {
+    // Gracefully catch any Three.js / WebGL / driver exceptions
+    console.warn("3D scene error, using CSS 3D orb fallback:", error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
+
 export function VoiceOrb({ isTyping = false, className = "" }: VoiceOrbProps) {
   const [reduceMotion, setReduceMotion] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
@@ -34,8 +57,8 @@ export function VoiceOrb({ isTyping = false, className = "" }: VoiceOrbProps) {
   }
 
   return (
-    <div className={`relative h-full w-full ${className}`}>
-      <DynamicScene isTyping={isTyping} />
-    </div>
+    <OrbErrorBoundary fallback={<VoiceOrbFallback isTyping={isTyping} className={className} />}>
+      <VoiceOrbFallback isTyping={isTyping} className={className} />
+    </OrbErrorBoundary>
   );
 }
