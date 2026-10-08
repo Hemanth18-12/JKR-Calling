@@ -27,6 +27,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 import { Suspense } from "react";
 
+import { MotionOtpInput } from "@/components/motion-otp-input";
+
 function AdminLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -305,25 +307,20 @@ function AdminLoginForm() {
               <CardContent>
                 <form onSubmit={handleVerifyOtp} className="space-y-4">
                   <div>
-                    <Label htmlFor="admin-otp" className="text-xs font-medium">
+                    <Label className="text-xs font-semibold text-muted-foreground block text-center mb-3">
                       Enter 6-digit Code
                     </Label>
-                    <Input
+                    <MotionOtpInput
                       id="admin-otp"
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={6}
-                      autoFocus
-                      placeholder="• • • • • •"
-                      className="mt-1.5 text-center text-2xl tracking-[0.5em] font-mono font-bold h-12"
                       value={otpCode}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+                      onChange={(val) => {
                         setOtpCode(val);
+                        setError(null);
                       }}
+                      hasError={Boolean(error)}
+                      disabled={submitting}
                     />
-                    <p className="mt-1 text-[11px] text-muted-foreground text-center">
+                    <p className="mt-2 text-[11px] text-muted-foreground text-center">
                       Code valid for 10 minutes.
                     </p>
                   </div>

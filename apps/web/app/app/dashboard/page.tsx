@@ -34,6 +34,8 @@ import { cookies } from "next/headers";
 import { CreateWorkspaceForm } from "@/components/create-workspace-form";
 import { getServerSession } from "@/lib/session";
 import { StartTourButton } from "@/components/guided-tour";
+import { DashboardStatCards } from "@/components/dashboard/dashboard-stat-cards";
+import { DashboardLiveTicker } from "@/components/dashboard/dashboard-live-ticker";
 
 const STAT_CONFIG = [
   { key: "total_calls", label: "Total calls", icon: "📞", accent: "primary", stagger: 1 },
@@ -175,65 +177,22 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Real-Time Active Ticker & Quick Actions */}
-      <div id="tour-quick-actions" className="grid gap-4 md:grid-cols-3">
-        {/* Active Telephony Channel status */}
-        <Card className="border-secondary/30 bg-secondary/5">
-          <CardContent className="flex items-center gap-3 p-4">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary/15 text-secondary">
-              <Radio className="h-4 w-4 animate-pulse" />
-            </div>
-            <div className="text-xs">
-              <p className="font-medium text-foreground">Live Telephony & SIP Pipeline</p>
-              <p className="text-muted-foreground">Dograh Engine connected · Ready for calls</p>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Real-Time Active Ticker & Quick Actions with Live Waveform */}
+      <DashboardLiveTicker />
 
-        {/* Quick Action: Test Agent Call */}
-        <Link href="/app/agents">
-          <Card className="hover:border-primary/40 transition-colors cursor-pointer h-full">
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
-                <Bot className="h-4 w-4" />
-              </div>
-              <div className="text-xs">
-                <p className="font-medium text-foreground">Test AI Voice Agent</p>
-                <p className="text-muted-foreground">Open Test Lab in browser or SIP dialer →</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-
-        {/* Quick Action: Upload Contacts */}
-        <Link href="/app/contacts">
-          <Card className="hover:border-primary/40 transition-colors cursor-pointer h-full">
-            <CardContent className="flex items-center gap-3 p-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-500">
-                <UploadCloud className="h-4 w-4" />
-              </div>
-              <div className="text-xs">
-                <p className="font-medium text-foreground">Import Contact Lists</p>
-                <p className="text-muted-foreground">CSV bulk upload with consent logging →</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
-
-      {/* Stats grid */}
-      <div id="tour-kpi-cards" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {STAT_CONFIG.map((cfg) => (
-          <StatCard
-            key={cfg.key}
-            label={cfg.label}
-            value={statValues[cfg.key] ?? 0}
-            icon={cfg.icon}
-            accent={cfg.accent}
-            stagger={cfg.stagger}
-          />
-        ))}
-      </div>
+      {/* Animated Stats Grid with Spring Count-ups and Cursor Spotlight */}
+      <DashboardStatCards
+        items={[
+          { key: "total_calls", label: "Total calls", rawValue: overview.total_calls, icon: "📞", accent: "primary", stagger: 1 },
+          { key: "connect_rate", label: "Connect rate", rawValue: overview.connect_rate, isPct: true, icon: "🎯", accent: "amber", stagger: 2 },
+          { key: "appointments_booked", label: "Appointments booked", rawValue: overview.appointments_booked, icon: "📅", accent: "amber", stagger: 3 },
+          { key: "contacts_reached", label: "Contacts reached", rawValue: overview.contacts_reached, icon: "👥", accent: "primary", stagger: 4 },
+          { key: "active_campaigns", label: "Active campaigns", rawValue: overview.active_campaigns, icon: "📣", accent: "primary", stagger: 5 },
+          { key: "pending_handoffs", label: "Pending handoffs", rawValue: overview.pending_handoffs, icon: "🤝", accent: "danger", stagger: 6 },
+          { key: "revenue_paise", label: "Revenue generated (₹)", rawValue: Math.round(overview.revenue_paise / 100), isRevenue: true, icon: "₹", accent: "amber", stagger: 7 },
+          { key: "revenue_event_count", label: "Revenue events", rawValue: overview.revenue_event_count, icon: "⚡", accent: "amber", stagger: 8 },
+        ]}
+      />
 
       {/* Unique Feature #4: Cost-per-outcome ROI Ticker */}
       <Card id="tour-roi-ticker" className="border-border bg-gradient-to-r from-surface to-surface-raised">

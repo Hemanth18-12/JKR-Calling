@@ -196,15 +196,30 @@ export function CallDetail({ call, toolExecutions }: { call: CallDetailType; too
               <span>0:{durationSec.toString().padStart(2, "0")}</span>
             </div>
 
-            {/* Scrubber */}
+            {/* Interactive 54-Bar Audio Waveform Scrubber */}
             <div
-              className="relative h-2 w-full cursor-pointer rounded-full bg-surface-raised overflow-hidden"
+              className="relative flex h-10 w-full cursor-pointer items-end gap-1 px-1 py-1 group select-none rounded-lg bg-surface/50 border border-border/40 hover:border-primary/40 transition-colors"
               onClick={handleSeek}
             >
-              <div
-                className="h-full bg-gradient-to-r from-primary to-[#FFE066] transition-all"
-                style={{ width: `${playbackProgress}%` }}
-              />
+              {Array.from({ length: 54 }).map((_, i) => {
+                const height = Math.max(0.2, Math.sin(i * 0.28) * 0.4 + Math.cos(i * 0.7) * 0.3 + 0.35);
+                const barPct = (i / 54) * 100;
+                const isActive = barPct <= playbackProgress;
+                return (
+                  <div
+                    key={i}
+                    className={`w-full rounded-full transition-all duration-150 ${
+                      isActive
+                        ? "bg-primary shadow-[0_0_8px_rgba(255,212,0,0.45)]"
+                        : "bg-border/50 group-hover:bg-border/80"
+                    }`}
+                    style={{
+                      height: `${Math.round(height * 30)}px`,
+                      opacity: isActive ? 1 : 0.45,
+                    }}
+                  />
+                );
+              })}
             </div>
           </div>
 

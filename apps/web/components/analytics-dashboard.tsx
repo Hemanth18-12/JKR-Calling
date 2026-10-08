@@ -1,15 +1,19 @@
+"use client";
+
+import * as React from "react";
+import { motion } from "framer-motion";
 import type { BusinessOverview, CallAnalytics, ConversationQuality, ProviderAnalytics } from "@jkr/contracts";
 import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@jkr/ui";
 import { Globe2, Languages, MapPin, MessageSquareDashed, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <Card>
+    <Card className="card-3d transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40">
       <CardHeader className="pb-2">
         <CardDescription>{label}</CardDescription>
       </CardHeader>
       <CardContent>
-        <p className="text-2xl font-semibold tabular-nums">{value}</p>
+        <p className="text-2xl font-semibold tabular-nums text-foreground">{value}</p>
       </CardContent>
     </Card>
   );
@@ -24,7 +28,12 @@ function Bar({ label, count, max, color = "bg-primary" }: { label: string; count
         <span className="tabular-nums font-medium text-foreground">{count} ({pct}%)</span>
       </div>
       <div className="h-2 rounded-full bg-surface-raised overflow-hidden">
-        <div className={`h-2 rounded-full ${color}`} style={{ width: `${pct}%` }} />
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
+          className={`h-2 rounded-full ${color}`}
+        />
       </div>
     </div>
   );

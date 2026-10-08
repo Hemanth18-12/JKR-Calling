@@ -13,7 +13,7 @@ interface AgentPromptCreatorProps {
 interface CategoryTemplate {
   id: string;
   label: string;
-  icon: React.ElementType;
+  icon: React.ComponentType<{ className?: string }>;
   defaultName: string;
   defaultBiz: string;
   templateKey: string;

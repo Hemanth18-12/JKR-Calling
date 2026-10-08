@@ -1,6 +1,7 @@
 import { Badge, buttonVariants } from "@jkr/ui";
 import { ArrowRight, Globe2, PhoneCall, ShieldCheck, Zap } from "lucide-react";
 import Link from "next/link";
+import { LandingInteractive } from "@/components/landing/landing-interactive";
 
 const FEATURES = [
   {
@@ -60,7 +61,7 @@ function WaveformHero() {
 
 export default function LandingPage() {
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background font-sans">
+    <div className="relative min-h-screen overflow-x-hidden bg-background font-sans">
       {/* Ambient background gradient orbs */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
         <div className="absolute left-1/4 top-0 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-primary/10 blur-[120px]" />
@@ -135,6 +136,11 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* 3D Voice Orb, 3D Dashboard Mockup & 4-Stage Pipeline */}
+        <section className="pb-24">
+          <LandingInteractive />
         </section>
 
         {/* Feature cards */}

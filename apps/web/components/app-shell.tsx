@@ -28,8 +28,10 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import * as React from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 import { BackButton } from "./back-button";
+import { CommandPalette } from "./command-palette";
 import { FaqChatbox } from "./faq-chatbox";
 import { GuidedTourProvider, GuidedTourPlayer, StartTourButton } from "./guided-tour";
 import { PendingInvitationsBanner } from "./pending-invitations-banner";
@@ -197,19 +199,26 @@ export function AppShell({
                       <Link
                         key={item.href}
                         href={item.href as never}
-                        className={`group flex items-center gap-3 rounded-lg px-2.5 py-2 text-xs font-medium transition-all duration-150 ${
+                        className={`group relative flex items-center gap-3 rounded-lg px-2.5 py-2 text-xs font-medium transition-all duration-150 ${
                           active
-                            ? "bg-primary/15 text-primary shadow-sm shadow-primary/10 border-l-2 border-primary"
+                            ? "text-primary font-semibold"
                             : "text-muted-foreground hover:bg-surface-raised hover:text-foreground"
                         }`}
                       >
+                        {active && (
+                          <motion.div
+                            layoutId="activeNavIndicator"
+                            className="absolute inset-0 rounded-lg bg-primary/15 border-l-2 border-primary shadow-sm shadow-primary/10"
+                            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                          />
+                        )}
                         <item.icon
-                          className={`h-4 w-4 shrink-0 transition-colors ${
+                          className={`relative z-10 h-4 w-4 shrink-0 transition-colors ${
                             active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
                           }`}
                         />
                         {!collapsed && (
-                          <div className="flex flex-1 items-center justify-between">
+                          <div className="relative z-10 flex flex-1 items-center justify-between">
                             <span>{item.label}</span>
                             {item.isLive ? (
                               <span className="flex h-1.5 w-1.5 rounded-full bg-secondary animate-pulse" />
@@ -314,6 +323,9 @@ export function AppShell({
               </Badge>
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
+              {/* Global Command Palette */}
+              <CommandPalette />
+
               {/* Coin Wallet Balance Pill */}
               <Link
                 href="/app/billing"
@@ -356,8 +368,18 @@ export function AppShell({
           {/* In-app Pending Invitations Banner */}
           <PendingInvitationsBanner />
 
-          {/* Page content */}
-          <main className="flex-1 overflow-y-auto bg-gradient-mesh">{children}</main>
+          {/* Page content with route transitions */}
+          <main className="flex-1 overflow-y-auto bg-gradient-mesh">
+            <motion.div
+              key={pathname}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+              className="h-full"
+            >
+              {children}
+            </motion.div>
+          </main>
 
           {/* Global Floating Draggable FAQ Assistant */}
           <FaqChatbox />

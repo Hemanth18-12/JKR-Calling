@@ -47,7 +47,7 @@ import * as React from "react";
 import { useForm } from "react-hook-form";
 import { INTEGRATION_GUIDES } from "@/lib/integration-guides";
 
-const INTEGRATION_ICONS: Record<string, React.ElementType> = {
+const INTEGRATION_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   webhook: Webhook,
   crm: Database,
   google_calendar: Calendar,

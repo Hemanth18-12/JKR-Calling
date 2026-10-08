@@ -167,29 +167,73 @@ export default function LoginPage() {
     }
   };
 
+  // 3D Card tilt physics
+  const cardRef = React.useRef<HTMLDivElement>(null);
+  const [tilt, setTilt] = React.useState({ x: 0, y: 0, glareX: 50, glareY: 50, active: false });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    const rotateX = ((y - centerY) / centerY) * -6;
+    const rotateY = ((x - centerX) / centerX) * 6;
+    const glareX = (x / rect.width) * 100;
+    const glareY = (y / rect.height) * 100;
+    setTilt({ x: rotateX, y: rotateY, glareX, glareY, active: true });
+  };
+
+  const handleMouseLeave = () => {
+    setTilt({ x: 0, y: 0, glareX: 50, glareY: 50, active: false });
+  };
+
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4">
-      {/* Ambient background */}
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 perspective-1000">
+      {/* 3D Ambient background lighting */}
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        <div className="absolute left-1/4 top-0 h-96 w-96 -translate-x-1/2 rounded-full bg-primary/10 blur-[100px]" />
-        <div className="absolute bottom-0 right-1/4 h-64 w-64 rounded-full bg-secondary/8 blur-[80px]" />
+        <div className="absolute left-1/4 top-0 h-96 w-96 -translate-x-1/2 rounded-full bg-primary/10 blur-[120px] animate-ambient-glow" />
+        <div className="absolute bottom-0 right-1/4 h-80 w-80 rounded-full bg-secondary/8 blur-[100px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(#ffffff05_1px,transparent_1px)] [background-size:24px_24px]" />
       </div>
 
-      <div className="relative w-full max-w-sm">
-        {/* Logo */}
-        <div className="mb-8 flex flex-col items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[#FFA000] shadow-lg shadow-primary/30">
+      <div
+        ref={cardRef}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+        className={`relative w-full max-w-sm preserve-3d transition-transform duration-200 ease-out ${!tilt.active ? "animate-float-3d" : ""}`}
+        style={{
+          transform: tilt.active
+            ? `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) scale3d(1.02, 1.02, 1.02)`
+            : undefined,
+        }}
+      >
+        {/* Logo Header */}
+        <div className="mb-6 flex flex-col items-center gap-2.5 preserve-3d" style={{ transform: "translateZ(20px)" }}>
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[#FFA000] shadow-lg shadow-primary/30 transition-transform duration-300 hover:scale-110">
             <Zap className="h-6 w-6 text-black fill-black" />
           </div>
           <div className="text-center">
-            <h1 className="font-display text-xl font-bold text-foreground">JKR AI Calling</h1>
-            <p className="text-sm text-muted-foreground">India-first AI voice platform</p>
+            <h1 className="font-display text-xl font-bold tracking-tight text-foreground">JKR AI Calling</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">India-first AI voice platform</p>
           </div>
         </div>
 
-        <Card className="border-border/60 shadow-card-raised overflow-hidden">
+        {/* 3D Glass Surface Card */}
+        <Card className="relative border-border/60 bg-surface/90 shadow-card-raised backdrop-blur-xl overflow-hidden card-3d transition-all duration-300 hover:border-primary/50 hover:shadow-2xl">
+          {/* Specular glare reflection moving in 3D */}
+          <div
+            className="pointer-events-none absolute inset-0 z-20 transition-opacity duration-200"
+            style={{
+              opacity: tilt.active ? 0.35 : 0,
+              background: `radial-gradient(circle at ${tilt.glareX}% ${tilt.glareY}%, rgba(255, 212, 0, 0.25) 0%, transparent 60%)`,
+            }}
+            aria-hidden="true"
+          />
+
           {/* Two-Option Toggle: User Login vs Admin Login */}
-          <div className="p-3 pb-0">
+          <div className="p-3 pb-0 relative z-10">
             <div className="grid grid-cols-2 p-1 bg-surface-raised border border-border/80 rounded-xl text-xs font-semibold">
               <button
                 type="button"
@@ -211,7 +255,7 @@ export default function LoginPage() {
 
           {step === "form" ? (
             <>
-              <CardHeader className="pb-4 pt-3">
+              <CardHeader className="pb-4 pt-3 relative z-10">
                 <CardTitle className="font-display text-lg font-semibold">User Login</CardTitle>
                 <CardDescription>Welcome back to your workspace.</CardDescription>
               </CardHeader>
@@ -271,17 +315,17 @@ export default function LoginPage() {
                     <FieldError>{errors.password?.message}</FieldError>
                   </div>
                   {formError ? (
-                    <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+                    <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger animate-in fade-in">
                       {formError}
                     </div>
                   ) : null}
-                  <Button type="submit" className="w-full" variant="gradient" loading={isSubmitting}>
+                  <Button type="submit" className="w-full font-bold shadow-md" variant="gradient" loading={isSubmitting}>
                     Continue &amp; Send OTP
                   </Button>
                 </form>
                 <p className="mt-5 text-center text-sm text-muted-foreground">
                   No account?{" "}
-                  <Link href="/signup" className="font-medium text-primary hover:underline">
+                  <Link href="/signup" className="font-semibold text-primary hover:underline">
                     Sign up
                   </Link>
                 </p>
@@ -322,14 +366,14 @@ export default function LoginPage() {
                   </div>
 
                   {otpError ? (
-                    <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+                    <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger animate-in fade-in">
                       {otpError}
                     </div>
                   ) : null}
 
                   <Button
                     type="submit"
-                    className="w-full"
+                    className="w-full font-bold shadow-md"
                     variant="gradient"
                     loading={otpVerifying}
                     disabled={otpCode.length !== 6}
