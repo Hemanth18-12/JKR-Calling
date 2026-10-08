@@ -4,6 +4,6 @@ packages:
   - "!packages/n8n-nodes-jkr"
   - "tests/e2e"
 allowBuilds:
-  '@firebase/util': set this to true or false
-  protobufjs: set this to true or false
+  '@firebase/util': true
+  protobufjs: true
   unrs-resolver: true
