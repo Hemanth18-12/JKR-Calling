@@ -30,6 +30,8 @@ services:
         generateValue: true
       - key: ENABLE_LIVE_CALLS
         value: "true"
+      - key: FIREBASE_PROJECT_ID
+        value: "jkr-calling"
       - key: API_BASE_URL
         value: "https://jkr-api.onrender.com"
       - key: PUBLIC_WEBHOOK_BASE_URL

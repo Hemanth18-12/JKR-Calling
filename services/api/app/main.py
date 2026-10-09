@@ -138,6 +138,21 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error("Unhandled exception processing %s %s: %s", request.method, request.url.path, exc, exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": 500,
+                "message": "An unexpected server error occurred.",
+                "details": {"error_type": exc.__class__.__name__, "detail": str(exc)},
+            }
+        },
+    )
+
+
 @app.get("/health")
 async def health() -> dict:
     has_brevo = bool(os.getenv("BREVO_API_KEY"))

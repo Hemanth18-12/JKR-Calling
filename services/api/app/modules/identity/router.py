@@ -379,21 +379,30 @@ async def firebase_google_auth(
     db: AsyncSession = Depends(platform_db),
     settings: Settings = Depends(get_settings),
 ) -> UserOut:
-    user = await service.authenticate_with_google(
-        db,
-        id_token=payload.id_token,
-        settings=settings,
-    )
-    _session, raw_token = await service.create_session(
-        db,
-        user=user,
-        settings=settings,
-        user_agent=request.headers.get("user-agent"),
-        ip_address=request.client.host if request.client else None,
-    )
-    _set_session_cookie(response, raw_token=raw_token, settings=settings)
-    logger.info("Google authentication successful for user_id=%s, email=%s", user.id, user.email)
-    return UserOut.model_validate(user)
+    try:
+        user = await service.authenticate_with_google(
+            db,
+            id_token=payload.id_token,
+            settings=settings,
+        )
+        _session, raw_token = await service.create_session(
+            db,
+            user=user,
+            settings=settings,
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host if request.client else None,
+        )
+        _set_session_cookie(response, raw_token=raw_token, settings=settings)
+        logger.info("Google authentication successful for user_id=%s, email=%s", user.id, user.email)
+        return UserOut.model_validate(user)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("[GOOGLE AUTH ERROR] Failure during Google authentication: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Google authentication failed: {exc}",
+        ) from exc
 
 
 @router.post("/google", response_model=UserOut, dependencies=[Depends(_auth_rate_limit)])
