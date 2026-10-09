@@ -9,13 +9,22 @@ import {
   type UserCredential,
 } from "firebase/auth";
 
+const FIREBASE_DEFAULT_CONFIG = {
+  apiKey: "AIzaSyALaBBV9G2t2dfLDRwz1xzJOUKwQkBsrB0",
+  authDomain: "jkr-calling.firebaseapp.com",
+  projectId: "jkr-calling",
+  storageBucket: "jkr-calling.firebasestorage.app",
+  messagingSenderId: "174011280990",
+  appId: "1:174011280990:web:f8796d58288f3bd5b14ecf",
+};
+
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || FIREBASE_DEFAULT_CONFIG.apiKey,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || FIREBASE_DEFAULT_CONFIG.authDomain,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || FIREBASE_DEFAULT_CONFIG.projectId,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || FIREBASE_DEFAULT_CONFIG.storageBucket,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || FIREBASE_DEFAULT_CONFIG.messagingSenderId,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || FIREBASE_DEFAULT_CONFIG.appId,
 };
 
 let app: FirebaseApp | null = null;
@@ -24,10 +33,7 @@ const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
 
 export function isFirebaseConfigured(): boolean {
-  return Boolean(
-    process.env.NEXT_PUBLIC_FIREBASE_API_KEY &&
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
-  );
+  return Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
 }
 
 export function getFirebaseAuth(): Auth | null {

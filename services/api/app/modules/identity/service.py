@@ -377,12 +377,12 @@ async def authenticate_with_google(
 
     # Path 1: Real Firebase ID Token (Primary recommended path, Spark plan, 0 secrets needed)
     if id_token and id_token.strip():
-        firebase_project = settings.firebase_project_id or os.getenv("FIREBASE_PROJECT_ID") or os.getenv("NEXT_PUBLIC_FIREBASE_PROJECT_ID", "")
-        if not firebase_project:
-            raise HTTPException(
-                status.HTTP_500_INTERNAL_SERVER_ERROR,
-                "FIREBASE_PROJECT_ID is not configured on the server. Please set it in Render environment variables.",
-            )
+        firebase_project = (
+            settings.firebase_project_id
+            or os.getenv("FIREBASE_PROJECT_ID")
+            or os.getenv("NEXT_PUBLIC_FIREBASE_PROJECT_ID", "")
+            or "jkr-calling"
+        )
         verified_data = await verify_firebase_id_token(id_token.strip(), project_id=firebase_project)
         email = verified_data["email"]
         full_name = verified_data["name"]

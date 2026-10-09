@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_oauth_redirect_uri: str = "http://localhost:3000/auth/oauth/google/callback"
     firebase_project_id: str = Field(
-        default="",
+        default="jkr-calling",
         validation_alias=AliasChoices("FIREBASE_PROJECT_ID", "NEXT_PUBLIC_FIREBASE_PROJECT_ID", "firebase_project_id"),
     )
 
