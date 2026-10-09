@@ -321,6 +321,9 @@ async def start_session(
     db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session.id, event_type="call_started", payload={}))
     db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session.id, event_type="disclosure_confirmed", payload={}))
 
+    conversation_state["accidental_interruption_phrases"] = policy.accidental_interruption_phrases if policy else []
+    conversation_state["min_interruption_ms"] = policy.min_interruption_ms if policy else 250
+
     from app.providers.dograh import dograh_engine
     dograh_session = dograh_engine.create_session(call_session.id, initial_context=conversation_state)
     registry_put(

@@ -164,7 +164,9 @@ async def post_member(
         settings=settings,
     )
     rows = await service.list_members(db, workspace_id=workspace_id)
-    return next(MemberOut(**r) for r in rows if r["email"].lower() == payload.email.lower())
+    out = next(MemberOut(**r) for r in rows if r["email"].lower() == payload.email.lower())
+    out.invite_url = invitation.get("invite_url")
+    return out
 
 
 @router.post("/{workspace_id}/invitations/{invitation_id}/resend", response_model=MemberOut)
@@ -178,7 +180,7 @@ async def resend_member_invitation(
     await service.require_membership_with_permission(
         db, user=auth.user, workspace_id=workspace_id, permission_key="workspaces:manage_members"
     )
-    await service.resend_invitation(
+    resent = await service.resend_invitation(
         db,
         workspace_id=workspace_id,
         invitation_id=invitation_id,
@@ -186,11 +188,13 @@ async def resend_member_invitation(
         settings=settings,
     )
     rows = await service.list_members(db, workspace_id=workspace_id)
-    return next(
+    out = next(
         MemberOut(**r)
         for r in rows
         if r["id"] == invitation_id or r.get("invitation_id") == invitation_id
     )
+    out.invite_url = resent.get("invite_url")
+    return out
 
 
 @router.delete("/{workspace_id}/invitations/{invitation_id}", status_code=204)

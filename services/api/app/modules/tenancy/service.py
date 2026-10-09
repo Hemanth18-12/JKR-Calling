@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import re
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -8,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import HTTPException, status
 from jkr_db.models.identity import User
 from jkr_db.models.tenancy import Organization, Role, Workspace, WorkspaceMember, WorkspaceInvitation
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func as sa_func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -125,12 +127,15 @@ async def update_workspace(db: AsyncSession, workspace: Workspace, **fields) -> 
 
 
 async def list_members(db: AsyncSession, *, workspace_id: uuid.UUID) -> list[dict]:
-    # 1. Active and existing workspace members
+    # 1. Active and suspended workspace members
     result = await db.execute(
         select(WorkspaceMember, User, Role)
         .join(User, User.id == WorkspaceMember.user_id)
         .join(Role, Role.id == WorkspaceMember.role_id)
-        .where(WorkspaceMember.workspace_id == workspace_id)
+        .where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.status.in_(["active", "suspended"]),
+        )
         .order_by(User.full_name)
     )
     members_list = [
@@ -150,7 +155,7 @@ async def list_members(db: AsyncSession, *, workspace_id: uuid.UUID) -> list[dic
 
     active_emails = {m["email"].lower() for m in members_list}
 
-    # 2. Pending invitations for this workspace
+    # 2. Pending unexpired invitations for this workspace
     inv_result = await db.execute(
         select(WorkspaceInvitation, Role)
         .join(Role, Role.id == WorkspaceInvitation.role_id)
@@ -190,6 +195,9 @@ async def invite_member(
     settings: Settings,
 ) -> dict:
     clean_email = email.strip().lower()
+    if not clean_email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", clean_email):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Please provide a valid email address.")
+
     workspace = await get_workspace_or_404(db, workspace_id)
 
     role_result = await db.execute(select(Role).where(Role.key == role_key))
@@ -209,14 +217,49 @@ async def invite_member(
             )
         )
         if existing_mem.scalar_one_or_none() is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "User is already an active member of this workspace")
+            raise HTTPException(status.HTTP_409_CONFLICT, f"{clean_email} is already an active member of this workspace.")
 
-    # Invalidate previous pending invitations for this email in this workspace
-    prev_invs = await db.execute(
+    # Check for duplicate active pending invitation
+    active_pending = await db.execute(
         select(WorkspaceInvitation).where(
             WorkspaceInvitation.workspace_id == workspace_id,
             WorkspaceInvitation.email == clean_email,
             WorkspaceInvitation.status == "pending",
+            WorkspaceInvitation.expires_at > datetime.now(UTC),
+        )
+    )
+    if active_pending.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"An invitation for {clean_email} is already pending. Use 'Resend' or 'Copy Link' from the team list.",
+        )
+
+    # Check workspace seat limit (standard tier max 10 members)
+    active_mems_count = await db.scalar(
+        select(sa_func.count()).select_from(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.status == "active",
+        )
+    ) or 0
+    pending_invs_count = await db.scalar(
+        select(sa_func.count()).select_from(WorkspaceInvitation).where(
+            WorkspaceInvitation.workspace_id == workspace_id,
+            WorkspaceInvitation.status == "pending",
+            WorkspaceInvitation.expires_at > datetime.now(UTC),
+        )
+    ) or 0
+    if active_mems_count + pending_invs_count >= 10:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Workspace seat limit reached (maximum 10 team members). Upgrade workspace plan to add more seats.",
+        )
+
+    # Invalidate any old or expired invitations for this email in this workspace
+    prev_invs = await db.execute(
+        select(WorkspaceInvitation).where(
+            WorkspaceInvitation.workspace_id == workspace_id,
+            WorkspaceInvitation.email == clean_email,
+            WorkspaceInvitation.status.in_(["pending", "expired"]),
         )
     )
     for prev in prev_invs.scalars().all():
@@ -239,13 +282,21 @@ async def invite_member(
     db.add(invitation)
     await db.flush()
 
-    # Dispatch email via Brevo
-    app_base = (settings.app_base_url or "http://localhost:3000").rstrip("/")
+    # Determine real application base URL
+    app_base = (
+        os.getenv("APP_BASE_URL")
+        or os.getenv("NEXT_PUBLIC_APP_URL")
+        or (
+            "https://jkr-calling.vercel.app"
+            if (settings.app_env == "production" or os.getenv("RENDER"))
+            else (settings.app_base_url or "http://localhost:3000")
+        )
+    ).rstrip("/")
     invite_url = f"{app_base}/invite/accept?token={raw_token}"
     inviter_name = inviter.full_name or inviter.email.split("@")[0]
     role_name = role.name or role.key.replace("_", " ").title()
 
-    await send_invitation_email(
+    email_sent, err_msg = await send_invitation_email(
         to_email=clean_email,
         workspace_name=workspace.name,
         inviter_name=inviter_name,
@@ -261,6 +312,9 @@ async def invite_member(
         "status": "pending",
         "expires_at": expires_at,
         "created_at": invitation.created_at,
+        "invite_url": invite_url,
+        "email_sent": email_sent,
+        "email_error": err_msg,
     }
 
 
@@ -292,12 +346,20 @@ async def resend_invitation(
     invitation.expires_at = datetime.now(UTC) + timedelta(days=7)
     await db.flush()
 
-    app_base = (settings.app_base_url or "http://localhost:3000").rstrip("/")
+    app_base = (
+        os.getenv("APP_BASE_URL")
+        or os.getenv("NEXT_PUBLIC_APP_URL")
+        or (
+            "https://jkr-calling.vercel.app"
+            if (settings.app_env == "production" or os.getenv("RENDER"))
+            else (settings.app_base_url or "http://localhost:3000")
+        )
+    ).rstrip("/")
     invite_url = f"{app_base}/invite/accept?token={raw_token}"
     inviter_name = inviter.full_name or inviter.email.split("@")[0]
     role_name = role.name or role.key.replace("_", " ").title()
 
-    await send_invitation_email(
+    email_sent, err_msg = await send_invitation_email(
         to_email=invitation.email,
         workspace_name=workspace.name,
         inviter_name=inviter_name,
@@ -313,6 +375,9 @@ async def resend_invitation(
         "status": "pending",
         "expires_at": invitation.expires_at,
         "created_at": invitation.created_at,
+        "invite_url": invite_url,
+        "email_sent": email_sent,
+        "email_error": err_msg,
     }
 
 

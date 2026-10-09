@@ -35,6 +35,10 @@ elif raw_url.startswith("postgres://"):
 elif raw_url.startswith("postgresql://") and not raw_url.startswith("postgresql+psycopg://"):
     raw_url = raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
+# psycopg 3 requires 'sslmode=' instead of asyncpg's 'ssl='
+if "ssl=" in raw_url and "psycopg" in raw_url:
+    raw_url = raw_url.replace("ssl=", "sslmode=")
+
 MIGRATIONS_DATABASE_URL_SYNC = raw_url
 config.set_main_option("sqlalchemy.url", MIGRATIONS_DATABASE_URL_SYNC)
 

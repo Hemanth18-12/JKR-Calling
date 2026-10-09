@@ -26,8 +26,20 @@ export default function SignupPage() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<SignupRequest>({ resolver: zodResolver(SignupRequest) });
+
+  const getRedirectTarget = React.useCallback(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get("redirect");
+      if (redirect && redirect.startsWith("/")) {
+        return redirect;
+      }
+    }
+    return "/app/dashboard";
+  }, []);
 
   // Cooldown countdown timer
   React.useEffect(() => {
@@ -43,6 +55,10 @@ export default function SignupPage() {
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
+      const emailParam = params.get("email");
+      if (emailParam) {
+        setValue("email", emailParam);
+      }
       const err = params.get("error");
       if (err === "google_oauth_cancelled") {
         setFormError("Google sign-up was cancelled. Please try again or sign up with your email.");
@@ -58,7 +74,7 @@ export default function SignupPage() {
               setGoogleLoading(true);
               const user = await authApi.firebaseGoogleAuth({ id_token: res.idToken });
               if (user) {
-                window.location.href = "/app/dashboard";
+                window.location.href = getRedirectTarget();
               }
             }
           })
@@ -67,7 +83,7 @@ export default function SignupPage() {
           });
       }
     }
-  }, []);
+  }, [setValue, getRedirectTarget]);
 
   const handleGoogleSignUp = async () => {
     setGoogleLoading(true);
@@ -92,7 +108,7 @@ export default function SignupPage() {
 
       const user = await authApi.firebaseGoogleAuth({ id_token: idToken });
       if (user) {
-        window.location.href = "/app/dashboard";
+        window.location.href = getRedirectTarget();
       }
     } catch (err: any) {
       if (err?.code === "auth/popup-closed-by-user") {
@@ -124,7 +140,7 @@ export default function SignupPage() {
         setOtpCode("");
         setOtpError(null);
       } else {
-        window.location.href = "/app/dashboard";
+        window.location.href = getRedirectTarget();
       }
     } catch (err) {
       setFormError(err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.");
@@ -148,7 +164,7 @@ export default function SignupPage() {
       if (user?.is_platform_super_admin) {
         window.location.href = "/admin";
       } else {
-        window.location.href = "/app/dashboard";
+        window.location.href = getRedirectTarget();
       }
     } catch (err) {
       setOtpError(err instanceof ApiClientError ? err.message : "Verification failed. Please check the code and try again.");

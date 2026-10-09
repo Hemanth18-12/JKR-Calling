@@ -26,8 +26,20 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<LoginRequest>({ resolver: zodResolver(LoginRequest) });
+
+  const getRedirectTarget = React.useCallback(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get("redirect");
+      if (redirect && redirect.startsWith("/")) {
+        return redirect;
+      }
+    }
+    return "/app/dashboard";
+  }, []);
 
   // Cooldown countdown timer
   React.useEffect(() => {
@@ -43,6 +55,10 @@ export default function LoginPage() {
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
+      const emailParam = params.get("email");
+      if (emailParam) {
+        setValue("email", emailParam);
+      }
       const err = params.get("error");
       if (err === "google_oauth_cancelled") {
         setFormError("Google sign-in was cancelled. Please try again or log in with your email.");
@@ -58,7 +74,7 @@ export default function LoginPage() {
               setGoogleLoading(true);
               const user = await authApi.firebaseGoogleAuth({ id_token: res.idToken });
               if (user) {
-                window.location.href = "/app/dashboard";
+                window.location.href = getRedirectTarget();
               }
             }
           })
@@ -67,7 +83,7 @@ export default function LoginPage() {
           });
       }
     }
-  }, []);
+  }, [setValue, getRedirectTarget]);
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
@@ -92,7 +108,7 @@ export default function LoginPage() {
 
       const user = await authApi.firebaseGoogleAuth({ id_token: idToken });
       if (user) {
-        window.location.href = "/app/dashboard";
+        window.location.href = getRedirectTarget();
       }
     } catch (err: any) {
       if (err?.code === "auth/popup-closed-by-user") {
@@ -124,7 +140,7 @@ export default function LoginPage() {
         setOtpCode("");
         setOtpError(null);
       } else {
-        window.location.href = "/app/dashboard";
+        window.location.href = getRedirectTarget();
       }
     } catch (err) {
       setFormError(err instanceof ApiClientError ? err.message : "Something went wrong. Please try again.");
@@ -145,7 +161,7 @@ export default function LoginPage() {
         purpose: "login",
         code: otpCode.trim(),
       });
-      window.location.href = "/app/dashboard";
+      window.location.href = getRedirectTarget();
     } catch (err) {
       setOtpError(err instanceof ApiClientError ? err.message : "Invalid code. Please check your email and try again.");
     } finally {

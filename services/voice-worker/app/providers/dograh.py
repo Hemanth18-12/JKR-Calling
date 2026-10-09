@@ -100,6 +100,15 @@ class DograhWorkflowSession:
     def handle_user_utterance(self, text: str) -> Any:
         """Duck-typed helper for compatibility with TurnManager checks."""
         from app.turn_manager import ClassifiedUtterance, InterruptionClassification
+        accidental = self.context.get("accidental_interruption_phrases") or ["hmm", "okay", "అవును"]
+        stripped = text.strip().lower()
+        if stripped in [p.lower() for p in accidental] or (len(stripped.split()) == 1 and stripped in ["hmm", "okay", "అవును", "ha", "yes"]):
+            return ClassifiedUtterance(
+                classification=InterruptionClassification.FALSE_POSITIVE,
+                stop_latency_ms=None,
+                cancelled_sequence_id=None,
+            )
+
         curr_node = self.nodes.get(self.current_node_id, {})
         allow_interrupt = curr_node.get("data", {}).get("allow_interrupt", True)
         
@@ -142,21 +151,74 @@ class DograhWorkflowSession:
         tools_executed: list[dict[str, Any]] = []
         user_lower = customer_text.lower()
 
-        # Check for tool triggers based on Dograh 7-step script logic
-        # 1. Book Appointment trigger: availability mentioned / booking requested
-        is_booking_intent = any(
-            kw in user_lower for kw in [
-                "repu", "repu morning", "tomorrow", " రేపు", "morning", "సాయంత్రం", "evening",
-                "10", "11", "12", "appointment", "book", "అపాయింట్", "కుదురుతుంది", "వస్తాను"
-            ]
+        # Track known fields for objective progression
+        known_fields = state.setdefault("known_fields", {})
+        awaiting_field = state.get("awaiting_field", "reason_for_visit")
+
+        # Detect if caller's utterance is a question or inquiry (Case 1, 2, or 3)
+        is_question = (
+            "?" in customer_text
+            or any(
+                qw in user_lower
+                for qw in [
+                    "what", "why", "how", "where", "when", "who", "which", "whose",
+                    "can you", "could you", "do you", "does it", "is it", "are you",
+                    "tell me", "explain", "cost", "fee", "price", "safe", "difference",
+                    "hackathon", "ai", "center", "clinic", "work", "timings", "timing", "hours",
+                    "open", "rate", "charges", "specialist", "qualification", "degree",
+                    "ఎంత", "ఎలా", "ఏమిటి", "ఎప్పుడు", "ఎక్కడ", "చెప్పండి", "వివరాలు", "ఉంటుందా", "సేఫా",
+                    "కదా", "డాక్టర్లతో", "మాట్లాడొచ్చా", "ఉన్నాయా", "ఖర్చు",
+                    "क्या", "कैसे", "कितना", "कब", "कहाँ", "बताइए", "सुरक्षित", "कहाँ है", "कौन", "खुला"
+                ]
+            )
         )
-        
-        # 2. Rejection / Not Interested trigger
+
+        # Detect booking affirmation
+        explicit_booking_kw = [
+            "బుక్ చేయండి", "కన్ఫర్మ్ చేయండి", "కుదురుతుంది", "వస్తాను", "బుక్ చెయ్యండి",
+            "बुक कर दीजिए", "कन्फर्म कर दीजिए", "स्लॉट बुक", "बुक करो",
+            "book it", "schedule it", "confirm it", "confirm my appointment",
+            "yes please", "sure book", "fix it", "book an appointment"
+        ]
+        has_booking_kw = any(kw in user_lower for kw in explicit_booking_kw)
+        has_slot_confirmation = (
+            not is_question
+            and any(
+                kw in user_lower
+                for kw in [
+                    "repu 11", "రేపు 11", "कल 11", "tomorrow at 11", "tomorrow 11",
+                    "tomorrow morning 11", "రేపు ఉదయం 11", "कल सुबह 11", "11:00 am", "11 am"
+                ]
+            )
+        )
+        is_booking_intent = (has_booking_kw or has_slot_confirmation) and not is_question
+
+        # Rejection / Not Interested trigger
         is_decline_intent = any(
-            kw in user_lower for kw in [
+            kw in user_lower
+            for kw in [
                 "not interested", "vaddu", "వద్దు", "నాకు వద్దు", "no thanks", "don't want", "cancel"
             ]
         )
+
+        # Language detection of caller
+        user_has_telugu = any('\u0c00' <= ch <= '\u0c7f' for ch in customer_text) or any(
+            w in user_lower for w in ["enti", "ela", "kadha", "undi", "cheyandi", "repu", "namaskaram", "avunu", "meeru"]
+        )
+        user_has_hindi = any('\u0900' <= ch <= '\u097f' for ch in customer_text) or any(
+            w in user_lower for w in ["kya", "kaise", "kab", "kahan", "theek", "hai", "namaste", "dhanyawad", "aap", "mera"]
+        )
+
+        if awaiting_field and awaiting_field not in known_fields and not is_decline_intent and not is_question:
+            known_fields[awaiting_field] = customer_text
+            state["asked_count"] = state.get("asked_count", 0) + 1
+            if awaiting_field == "reason_for_visit":
+                state["awaiting_field"] = "preferred_date"
+            elif awaiting_field == "preferred_date":
+                state["awaiting_field"] = "preferred_time"
+            elif awaiting_field == "preferred_time":
+                state["awaiting_field"] = None
+                state["objective_status"] = "completed"
 
         agent_reply = ""
 
@@ -168,7 +230,7 @@ class DograhWorkflowSession:
             agent_reply = goodbyes.get(self.language, "సరే అండి, మీ సమయానికి చాలా ధన్యవాదాలు! ఉంటానండి.")
         elif is_booking_intent and self.current_node_id == "agent-conversation":
             # 7-Step Script Step 6: Book appointment tool + WhatsApp tool
-            preferred_date = "tomorrow" if ("tomorrow" in user_lower or "repu" in user_lower or "రేపు" in user_lower) else "upcoming slot"
+            preferred_date = "tomorrow" if ("tomorrow" in user_lower or "repu" in user_lower or "రేపు" in user_lower or "कल" in user_lower) else "upcoming slot"
             preferred_time = "11:00 AM" if "11" in user_lower else ("10:00 AM" if "10" in user_lower else "11:00 AM")
             
             # Execute book_appointment tool via Dograh HTTP endpoint
@@ -196,22 +258,83 @@ class DograhWorkflowSession:
             )
             tools_executed.append({"tool": "send_whatsapp", "result": wa_tool_res})
 
-            if "te" in self.language:
-                agent_reply = f"చాలా సంతోషం అండి! {preferred_date} నాడు ఉదయం {preferred_time} గంటలకు మీ అపాయింట్‌మెంట్ కన్ఫర్మ్ చేశాము. పూర్తి వివరాలు వాట్సాప్‌లో పంపాము. ధన్యవాదాలు అండి!"
-            elif "hi" in self.language:
-                agent_reply = f"बहुत बढ़िया! आपकी अपॉइंटमेंट {preferred_date} को {preferred_time} के लिए कन्फर्म कर दी गई है। विवरण व्हाट्सएप पर भेज दिए गए हैं। धन्यवाद!"
+            state["objective_status"] = "completed"
+
+            if user_has_telugu or ("te" in self.language and not user_has_hindi):
+                agent_reply = f"చాలా సంతోషం అండి! {preferred_date} నాడు ఉదయం {preferred_time} గంటలకు మీ అపాయింట్‌మెంట్ కన్ఫర్మ్ చేశాము. పూర్తి వివరాలు మీ వాట్సాప్‌కి పంపాము. ధన్యవాదాలు అండి!"
+            elif user_has_hindi or "hi" in self.language:
+                agent_reply = f"बहुत बढ़िया! आपकी अपॉइंटमेंट {preferred_date} को {preferred_time} के लिए कन्फर्म कर दी गई है। विवरण आपके व्हाट्सएप पर भेज दिए गए हैं। धन्यवाद!"
             else:
                 agent_reply = f"Wonderful! Your appointment is confirmed for {preferred_date} at {preferred_time}. We have sent confirmation details to your WhatsApp number. Have a great day!"
 
             self.current_node_id = "end-call"
         else:
-            # Step 3, 4, 5: Conversational assistance or asking availability
-            if "te" in self.language:
-                agent_reply = "తప్పకుండా అండి, ఆహా డెంటల్ కేర్‌లో డాక్టర్లు అందుబాటులో ఉన్నారు. మీరు ఏ రోజు లేదా ఏ సమయానికి రావాలనుకుంటున్నారో తెలియజేస్తారా?"
+            # Step 3, 4, 5: Dynamic LLM conversational assistance & out-of-scope question answering
+            from jkr_conversation.llm_client import get_default_client
+            client = get_default_client()
+
+            if user_has_telugu:
+                target_lang = "Telugu (te-IN) with natural everyday English words (Telugu-English code switching)"
+            elif user_has_hindi:
+                target_lang = "Hindi (hi-IN)"
+            elif "te" in self.language:
+                target_lang = "Telugu (te-IN) with natural conversational English code-switching (or Hindi/English if caller spoke those)"
             elif "hi" in self.language:
-                agent_reply = "बिल्कुल, आहा डेंटल केयर में हमारे विशेषज्ञ डॉक्टर उपलब्ध हैं। क्या आप बता सकते हैं कि आप किस दिन या समय आना चाहेंगे?"
+                target_lang = "Hindi (hi-IN)"
             else:
-                agent_reply = "Certainly! Our specialist dentists are available at Aaha Dental Care. Could you please share your preferred day and time for the consultation?"
+                target_lang = "Indian English (en-IN)"
+
+            system_prompt = f"""IDENTITY & PERSONA
+You are Kelly, the professional AI voice assistant for Aaha Dental Care speaking live on a phone call with a customer.
+Clinic details & approved knowledge base:
+- Location: MG Road, Vijayawada (Landmark: near City Center) and Road No 12, Banjara Hills, Hyderabad.
+- Services: Dental Implants, Root Canal Treatment (₹2,500 to ₹4,500), Teeth Cleaning & Scaling (₹800 to ₹1,500), Teeth Whitening.
+- Timings: Monday to Saturday, 9:30 AM to 8:30 PM. Sunday: Emergency appointments 10:00 AM to 2:00 PM.
+- Consultation fee: ₹300 for general consultation and dental checkup.
+- Payment Methods: Cash, UPI (GPay/PhonePe), Credit/Debit cards. 0% EMI available via Bajaj Finserv for treatments over ₹10,000.
+- Doctors: Senior specialist endodontists and implantologists available every day.
+
+CRITICAL 3-CASE QUESTION HANDLING:
+Case 1: Business fact in knowledge base (clinic timings, location, services, root canal pricing, teeth cleaning, consultation fee, payment options)
+-> Answer accurately and concisely from the knowledge base in 1 to 2 spoken sentences.
+
+Case 2: General knowledge, small talk, AI curiosity, or product-adjacent questions (e.g. "What is a hackathon?", "How does this AI work?", "Is my data safe?", "How are you different from a normal call center?", greetings, pleasantries, random off-topic questions)
+-> Answer directly, intelligently, and truthfully from your own knowledge in 1 to 3 short spoken sentences. Never say you don't know, never give a canned fallback, and never defer to the team for general knowledge or small talk.
+
+Case 3: Business-specific fact NOT in knowledge base (unlisted surgical package price, specific doctor's personal phone number, custom corporate insurance policy, specialized laser cosmetic contouring cost)
+-> Say plainly and politely that you don't have that specific detail on hand and offer that our clinic team will confirm it with them. Never invent or hallucinate unlisted business facts.
+
+COMMUNICATION & BRIDGING RULES:
+- Language: Reply in {target_lang}. Always match the caller's language naturally.
+- Spoken-friendly: Keep answers short (1-3 sentences) suitable for a phone call. Never use markdown, bullet points, asterisks (*), hashtags (#), or emojis.
+- Bridge back to appointment: After answering any question or small talk, smoothly bridge back to scheduling or confirming their appointment. Vary your bridging line naturally every turn so you NEVER repeat the same line verbatim (e.g., 'మీకు రేపు ఏదైనా సమయం వీలవుతుందా?', 'Would you like to book a quick checkup for tomorrow?', 'क्या मैं कल 11 बजे के लिए आपकी अपॉइंटमेंट शेड्यूल कर दूँ?', 'రేపు మార్నింగ్ లేదా ఈవెనింగ్ ఎప్పుడు అనుకూలంగా ఉంటుంది?', 'Would you like to visit us this week?').
+- If the caller stays off-topic repeatedly: Answer their question politely, then gently steer back to the visit. If they want to end the call, respect it gracefully.
+- AI Identity: Never claim to be human. Confirm you are the AI assistant for Aaha Dental Care.
+- Safety: Do not provide medical prescriptions or formal legal advice beyond general dental care information.
+"""
+            user_prompt = f"Customer said: \"{customer_text}\"\n\nGenerate your spoken response now."
+
+            llm_text = None
+            if client:
+                try:
+                    llm_text = await client.complete_text(
+                        system=system_prompt,
+                        user=user_prompt,
+                        max_tokens=250,
+                    )
+                except Exception as e:
+                    logger.warning(f"Dograh LLM turn generation failed: {e}")
+
+            if llm_text and llm_text.strip():
+                agent_reply = llm_text.strip().replace("*", "").replace("#", "")
+            else:
+                # Safe conversational fallback if LLM is offline/mock
+                if user_has_telugu or ("te" in self.language and not user_has_hindi):
+                    agent_reply = "తప్పకుండా అండి, ఆహా డెంటల్ కేర్‌లో మా స్పెషలిస్ట్ డాక్టర్లు అందుబాటులో ఉన్నారు. మీకు రేపు ఏదైనా సమయం వీలవుతుందా?"
+                elif user_has_hindi or "hi" in self.language:
+                    agent_reply = "बिल्कुल, आहा डेंटल केयर में हमारे विशेषज्ञ डॉक्टर उपलब्ध हैं। क्या कल आपके लिए कोई समय सही रहेगा?"
+                else:
+                    agent_reply = "Certainly! Our specialist doctors are available at Aaha Dental Care. Would tomorrow work well for your visit?"
 
         trace = DograhTurnTrace(
             engine="dograh",

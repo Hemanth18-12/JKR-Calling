@@ -54,6 +54,33 @@ export function TeamMembers({ workspaceId, members }: { workspaceId: string; mem
     router.refresh();
   };
 
+  const handleResend = async (m: MemberOut) => {
+    try {
+      const invId = m.invitation_id || m.id;
+      const res = await workspacesApi.resendInvitation(workspaceId, invId);
+      if (res?.invite_url) {
+        await navigator.clipboard.writeText(res.invite_url);
+        toast({ title: "Link Copied & Email Resent", description: `Dispatched email and copied invite link for ${m.email}`, variant: "success" });
+      } else {
+        toast({ title: "Resent", description: `Invitation resent to ${m.email}`, variant: "success" });
+      }
+      router.refresh();
+    } catch (err) {
+      toast({ title: "Resend failed", description: err instanceof ApiClientError ? err.message : "Could not resend", variant: "danger" });
+    }
+  };
+
+  const handleRevoke = async (m: MemberOut) => {
+    try {
+      const invId = m.invitation_id || m.id;
+      await workspacesApi.revokeInvitation(workspaceId, invId);
+      toast({ title: "Revoked", description: `Invitation for ${m.email} cancelled`, variant: "success" });
+      router.refresh();
+    } catch (err) {
+      toast({ title: "Revoke failed", description: err instanceof ApiClientError ? err.message : "Could not revoke", variant: "danger" });
+    }
+  };
+
   return (
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="lg:col-span-2">
@@ -71,11 +98,18 @@ export function TeamMembers({ workspaceId, members }: { workspaceId: string; mem
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">{m.role_key.replace(/_/g, " ")}</Badge>
-                  <Badge variant={STATUS_VARIANT[m.status] ?? "secondary"}>{m.status}</Badge>
+                  <Badge variant={STATUS_VARIANT[m.status] ?? "secondary"}>
+                    {m.status === "invited" ? "Invited / Pending" : m.status}
+                  </Badge>
                   {m.status === "invited" ? (
-                    <Button size="sm" variant="secondary" onClick={() => setStatus(m.id, "active")}>
-                      Activate
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <Button size="sm" variant="outline" onClick={() => handleResend(m)}>
+                        Resend
+                      </Button>
+                      <Button size="sm" variant="ghost" className="text-danger hover:text-danger" onClick={() => handleRevoke(m)}>
+                        Revoke
+                      </Button>
+                    </div>
                   ) : m.status === "active" ? (
                     <Button size="sm" variant="ghost" onClick={() => setStatus(m.id, "suspended")}>
                       Suspend

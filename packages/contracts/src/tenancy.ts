@@ -68,6 +68,7 @@ export const MemberOut = z.object({
   invited_at: z.string().nullable().optional(),
   joined_at: z.string().nullable().optional(),
   invitation_id: z.string().uuid().nullable().optional(),
+  invite_url: z.string().optional(),
 });
 export type MemberOut = z.infer<typeof MemberOut>;
 

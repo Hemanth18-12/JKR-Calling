@@ -24,14 +24,18 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Activity,
+  AlertTriangle,
   ArrowRightLeft,
   Building2,
+  Check,
   CheckCircle2,
   Coins,
+  Copy,
   Edit2,
   PhoneCall,
   Plus,
   RefreshCw,
+  Share2,
   ShieldCheck,
   Tag,
   UserCheck,
@@ -79,6 +83,13 @@ export function OrganizationManagement({
   const [transferTargetEmail, setTransferTargetEmail] = React.useState("");
   const [isTransferring, setIsTransferring] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = React.useState<{
+    email: string;
+    inviteUrl: string | null;
+    copied: boolean;
+  } | null>(null);
+  const [inviteLinks, setInviteLinks] = React.useState<Record<string, string>>({});
+  const [copyingId, setCopyingId] = React.useState<string | null>(null);
 
   // Concurrency limit for standard workspace tier
   const maxConcurrency = 5;
@@ -111,14 +122,26 @@ export function OrganizationManagement({
   const onInvite = async (data: MemberInvite) => {
     setFormError(null);
     try {
-      await workspacesApi.inviteMember(workspace.id, data);
+      const res = await workspacesApi.inviteMember(workspace.id, data);
+      if (res?.invite_url) {
+        setInviteLinks((prev) => ({
+          ...prev,
+          [res.id]: res.invite_url!,
+          ...(res.invitation_id ? { [res.invitation_id]: res.invite_url! } : {}),
+        }));
+      }
+      setShowInviteModal(false);
+      setInviteSuccess({
+        email: data.email,
+        inviteUrl: res?.invite_url || null,
+        copied: false,
+      });
       toast({
-        title: "Invitation sent! ✉️",
-        description: `A secure 7-day invitation link has been emailed to ${data.email}.`,
+        title: "Invitation created! ✉️",
+        description: `Invite generated for ${data.email}. Direct link available for WhatsApp.`,
         variant: "success",
       });
       reset({ email: "", role_key: "agent_operator" });
-      setShowInviteModal(false);
       onRefresh();
     } catch (err) {
       setFormError(err instanceof ApiClientError ? err.message : "Could not invite member.");
@@ -132,7 +155,14 @@ export function OrganizationManagement({
     const invId = m.invitation_id || m.id;
     setResendingId(m.id);
     try {
-      await workspacesApi.resendInvitation(workspace.id, invId);
+      const res = await workspacesApi.resendInvitation(workspace.id, invId);
+      if (res?.invite_url) {
+        setInviteLinks((prev) => ({
+          ...prev,
+          [m.id]: res.invite_url!,
+          ...(m.invitation_id ? { [m.invitation_id]: res.invite_url! } : {}),
+        }));
+      }
       toast({
         title: "Invitation resent! ✉️",
         description: `A fresh invitation email was dispatched to ${m.email}.`,
@@ -147,6 +177,47 @@ export function OrganizationManagement({
       });
     } finally {
       setResendingId(null);
+    }
+  };
+
+  const handleCopyInviteLink = async (m: MemberOut) => {
+    setCopyingId(m.id);
+    try {
+      let url = inviteLinks[m.id] || (m.invitation_id ? inviteLinks[m.invitation_id] : null) || m.invite_url;
+      if (!url) {
+        const invId = m.invitation_id || m.id;
+        const res = await workspacesApi.resendInvitation(workspace.id, invId);
+        url = res?.invite_url || undefined;
+        if (url) {
+          setInviteLinks((prev) => ({
+            ...prev,
+            [m.id]: url!,
+            ...(m.invitation_id ? { [m.invitation_id]: url! } : {}),
+          }));
+        }
+      }
+      if (url) {
+        await navigator.clipboard.writeText(url);
+        toast({
+          title: "Link Copied! 📋",
+          description: `Direct invite link for ${m.email} copied to clipboard for WhatsApp.`,
+          variant: "success",
+        });
+      } else {
+        toast({
+          title: "Copy link",
+          description: "Could not generate link. Please try Resend.",
+          variant: "default",
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Copy failed",
+        description: err instanceof ApiClientError ? err.message : "Could not copy link.",
+        variant: "danger",
+      });
+    } finally {
+      setCopyingId(null);
     }
   };
 
@@ -433,11 +504,13 @@ export function OrganizationManagement({
                                 m.status === "active"
                                   ? "bg-emerald-400"
                                   : m.status === "invited"
-                                  ? "bg-amber-400"
+                                  ? "bg-amber-400 animate-pulse"
                                   : "bg-muted-foreground"
                               }`}
                             />
-                            <span className="capitalize text-muted-foreground">{m.status}</span>
+                            <span className="capitalize text-muted-foreground">
+                              {m.status === "invited" ? "Invited / Pending" : m.status}
+                            </span>
                           </div>
                         </td>
 
@@ -459,12 +532,23 @@ export function OrganizationManagement({
                                   Suspend
                                 </button>
                               ) : m.status === "invited" ? (
-                                <>
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyInviteLink(m)}
+                                    disabled={copyingId === m.id}
+                                    className="text-xs text-primary hover:underline font-medium disabled:opacity-50 flex items-center gap-1"
+                                    title="Copy secure WhatsApp invite link"
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                    {copyingId === m.id ? "Copying..." : "Copy Link"}
+                                  </button>
+                                  <span className="text-border">|</span>
                                   <button
                                     type="button"
                                     onClick={() => handleResend(m)}
                                     disabled={resendingId === m.id}
-                                    className="text-xs text-primary hover:underline font-medium disabled:opacity-50"
+                                    className="text-xs text-muted-foreground hover:text-foreground font-medium disabled:opacity-50"
                                   >
                                     {resendingId === m.id ? "Resending..." : "Resend"}
                                   </button>
@@ -477,7 +561,7 @@ export function OrganizationManagement({
                                   >
                                     {revokingId === m.id ? "Revoking..." : "Revoke"}
                                   </button>
-                                </>
+                                </div>
                               ) : (
                                 <button
                                   type="button"
@@ -613,17 +697,99 @@ export function OrganizationManagement({
                 <FieldError>{errors.role_key?.message}</FieldError>
               </div>
 
-              {formError && <p className="text-xs text-danger">{formError}</p>}
+              {formError && (
+                <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-xs text-danger flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span className="font-medium">{formError}</span>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="secondary" type="button" onClick={() => setShowInviteModal(false)}>
+                <Button variant="secondary" type="button" onClick={() => setShowInviteModal(false)} disabled={isSubmitting}>
                   Cancel
                 </Button>
-                <Button variant="gradient" type="submit" loading={isSubmitting}>
-                  Send Invite
+                <Button variant="gradient" type="submit" loading={isSubmitting} disabled={isSubmitting} className="min-w-[120px] font-bold">
+                  {isSubmitting ? "Sending..." : "Send Invite"}
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Invite Success & Copy WhatsApp Link */}
+      {inviteSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-emerald-500/40 bg-surface-raised p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-foreground">Invitation Sent!</h3>
+                  <p className="text-xs text-muted-foreground">Dispatched to {inviteSuccess.email}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInviteSuccess(null)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <p className="text-muted-foreground leading-relaxed">
+                An invitation email was sent via Brevo. If the invitee&apos;s email blocks external mail or lands in spam, share this direct single-use link on WhatsApp:
+              </p>
+
+              {inviteSuccess.inviteUrl ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={inviteSuccess.inviteUrl}
+                      className="w-full rounded-md border border-border bg-surface px-3 py-2 text-xs font-mono text-muted-foreground select-all focus:outline-none"
+                    />
+                    <Button
+                      size="sm"
+                      variant="gradient"
+                      className="shrink-0 h-9 font-bold flex items-center gap-1.5"
+                      onClick={async () => {
+                        if (inviteSuccess.inviteUrl) {
+                          await navigator.clipboard.writeText(inviteSuccess.inviteUrl);
+                          setInviteSuccess((prev) => (prev ? { ...prev, copied: true } : null));
+                          toast({
+                            title: "Copied! 📋",
+                            description: "Invite link copied to clipboard. Ready to paste in WhatsApp.",
+                            variant: "success",
+                          });
+                        }
+                      }}
+                    >
+                      {inviteSuccess.copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                      {inviteSuccess.copied ? "Copied" : "Copy Link"}
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground/80 italic">
+                    * Valid for 7 days. Single-use token securely hashed in database.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-amber-400">
+                  Note: Invitation email was dispatched. Use &quot;Copy Link&quot; in the members table anytime if needed.
+                </p>
+              )}
+
+              <div className="pt-2 flex justify-end">
+                <Button variant="outline" size="sm" onClick={() => setInviteSuccess(null)}>
+                  Done
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

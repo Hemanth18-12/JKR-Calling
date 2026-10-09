@@ -65,6 +65,7 @@ class MemberOut(BaseModel):
     invited_at: datetime | None = None
     joined_at: datetime | None = None
     invitation_id: uuid.UUID | None = None
+    invite_url: str | None = None
 
 
 class InvitationOut(BaseModel):

@@ -34,6 +34,8 @@ services:
         value: "https://jkr-api.onrender.com"
       - key: PUBLIC_WEBHOOK_BASE_URL
         value: "https://jkr-api.onrender.com"
+      - key: APP_BASE_URL
+        value: "https://jkr-calling.vercel.app"
       - key: AUTHORIZED_TEST_NUMBERS
         value: "+916301567773,+918074634178,+919742682839,+918019101606,+919100664228,+919704917948,*"
       - key: TWILIO_ACCOUNT_SID
