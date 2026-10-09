@@ -373,6 +373,7 @@ async def authenticate_with_google(
 
     email: str | None = None
     full_name: str | None = None
+    google_sub: str | None = None
 
     # Path 1: Real Firebase ID Token (Primary recommended path, Spark plan, 0 secrets needed)
     if id_token and id_token.strip():
@@ -385,6 +386,7 @@ async def authenticate_with_google(
         verified_data = await verify_firebase_id_token(id_token.strip(), project_id=firebase_project)
         email = verified_data["email"]
         full_name = verified_data["name"]
+        google_sub = verified_data.get("uid")
 
     # Path 2: Standard Google OAuth Authorization Code exchange (if live credentials configured)
     elif code and code.strip():
@@ -431,6 +433,7 @@ async def authenticate_with_google(
                 raise HTTPException(status.HTTP_400_BAD_REQUEST, "Failed to retrieve Google profile information.")
             userinfo = userinfo_resp.json()
             email = userinfo.get("email")
+            google_sub = userinfo.get("sub")
             full_name = (
                 userinfo.get("name")
                 or userinfo.get("given_name")
@@ -460,11 +463,47 @@ async def authenticate_with_google(
 
         db.add(PasswordCredential(user_id=user.id, password_hash=hash_password(secrets.token_urlsafe(32))))
         await db.flush()
-    elif clean_email == "jkrcalling4@gmail.com" and not user.is_platform_super_admin:
-        user.is_platform_super_admin = True
+    else:
+        if clean_email == "jkrcalling4@gmail.com" and not user.is_platform_super_admin:
+            user.is_platform_super_admin = True
+        if full_name and (not user.full_name or user.full_name == "User"):
+            user.full_name = full_name
 
     user.last_login_at = datetime.now(UTC)
     await db.flush()
+
+    # Link OAuthIdentity to store google_sub and support account linking
+    if google_sub:
+        from jkr_db.models.identity import OAuthIdentity
+
+        ident_res = await db.execute(
+            select(OAuthIdentity).where(
+                OAuthIdentity.provider == "google",
+                OAuthIdentity.provider_user_id == str(google_sub),
+            )
+        )
+        existing_ident = ident_res.scalar_one_or_none()
+        if existing_ident is None:
+            user_ident_res = await db.execute(
+                select(OAuthIdentity).where(
+                    OAuthIdentity.provider == "google",
+                    OAuthIdentity.user_id == user.id,
+                )
+            )
+            user_ident = user_ident_res.scalar_one_or_none()
+            if user_ident is not None:
+                user_ident.provider_user_id = str(google_sub)
+                user_ident.email = clean_email
+            else:
+                db.add(
+                    OAuthIdentity(
+                        user_id=user.id,
+                        provider="google",
+                        provider_user_id=str(google_sub),
+                        email=clean_email,
+                    )
+                )
+            await db.flush()
 
     # Set user context on session so RLS allows workspace & member creation
     if db.bind and db.bind.dialect.name == "postgresql":

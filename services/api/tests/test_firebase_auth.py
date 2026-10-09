@@ -16,7 +16,7 @@ from sqlalchemy import select
 from app.config import Settings
 from app.modules.identity.firebase_auth import verify_firebase_id_token
 from app.modules.identity import service as identity_service
-from jkr_db.models.identity import User, PasswordCredential, Session as SessionModel
+from jkr_db.models.identity import User, PasswordCredential, Session as SessionModel, OAuthIdentity
 from jkr_db.models.tenancy import Organization, Workspace, WorkspaceMember, Role
 
 
@@ -30,6 +30,7 @@ async def memory_db():
                 User.__table__,
                 PasswordCredential.__table__,
                 SessionModel.__table__,
+                OAuthIdentity.__table__,
                 Organization.__table__,
                 Workspace.__table__,
                 WorkspaceMember.__table__,
@@ -206,6 +207,16 @@ async def test_authenticate_with_google_creates_and_links(memory_db: AsyncSessio
         membership = res.scalar_one_or_none()
         assert membership is not None
 
+        # Check OAuthIdentity row created with google_sub
+        oauth_res = await memory_db.execute(
+            select(OAuthIdentity).where(OAuthIdentity.user_id == user1.id)
+        )
+        oauth_id = oauth_res.scalar_one_or_none()
+        assert oauth_id is not None
+        assert oauth_id.provider == "google"
+        assert oauth_id.provider_user_id == "firebase-uid-9988"
+        assert oauth_id.email == "new.google.signup@example.com"
+
         # 2. Re-login with the same Google token returns identical user account (idempotent / linking)
         user2 = await identity_service.authenticate_with_google(
             memory_db,
@@ -214,6 +225,37 @@ async def test_authenticate_with_google_creates_and_links(memory_db: AsyncSessio
         )
         assert user2.id == user1.id
         assert user2.email == user1.email
+
+        # 3. Existing user created previously via OTP/password: logs in via Google without duplicate
+        existing_otp_user = User(
+            email="existing.otp@example.com",
+            full_name="Existing OTP User",
+            is_platform_super_admin=False,
+        )
+        memory_db.add(existing_otp_user)
+        await memory_db.flush()
+
+        otp_token = make_firebase_token(
+            rsa_test_keys,
+            project_id=project_id,
+            email="existing.otp@example.com",
+            name="Existing OTP User",
+            sub="google-sub-otp-user",
+        )
+        linked_user = await identity_service.authenticate_with_google(
+            memory_db,
+            id_token=otp_token,
+            settings=test_settings,
+        )
+        assert linked_user.id == existing_otp_user.id
+        # Verify OAuthIdentity linked to the existing user
+        linked_oauth = (
+            await memory_db.execute(
+                select(OAuthIdentity).where(OAuthIdentity.user_id == existing_otp_user.id)
+            )
+        ).scalar_one_or_none()
+        assert linked_oauth is not None
+        assert linked_oauth.provider_user_id == "google-sub-otp-user"
 
 
 @pytest.mark.asyncio

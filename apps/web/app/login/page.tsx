@@ -72,7 +72,7 @@ export default function LoginPage() {
           .then(async (res) => {
             if (res?.idToken) {
               setGoogleLoading(true);
-              const user = await authApi.firebaseGoogleAuth({ id_token: res.idToken });
+              const user = await authApi.googleAuth({ id_token: res.idToken });
               if (user) {
                 window.location.href = getRedirectTarget();
               }
@@ -106,17 +106,20 @@ export default function LoginPage() {
       const { idToken } = await signInWithGoogle();
       if (!idToken) return;
 
-      const user = await authApi.firebaseGoogleAuth({ id_token: idToken });
+      const user = await authApi.googleAuth({ id_token: idToken });
       if (user) {
         window.location.href = getRedirectTarget();
       }
     } catch (err: any) {
       if (err?.code === "auth/popup-closed-by-user") {
-        setFormError("Google sign-in was cancelled (popup closed).");
+        // User closed the popup - clean dismiss without scary error
+        setFormError(null);
       } else if (err?.code === "auth/cancelled-popup-request") {
         // Ignored duplicate
+      } else if (err?.code === "auth/popup-blocked") {
+        setFormError("The Google sign-in pop-up was blocked by your browser. Please allow pop-ups for this site and try again.");
       } else if (err?.code === "auth/network-request-failed") {
-        setFormError("Network error connecting to Google. Please check your connection.");
+        setFormError("Network error connecting to Google. Please check your internet connection.");
       } else {
         setFormError(
           err instanceof ApiClientError

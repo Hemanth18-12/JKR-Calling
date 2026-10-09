@@ -16,6 +16,7 @@ from app.modules.identity import service
 from app.modules.identity.schemas import (
     GoogleOAuthCallbackRequest,
     GoogleOAuthUrlResponse,
+    FirebaseAuthRequest,
     LoginRequest,
     MeResponse,
     OtpRequiredResponse,
@@ -370,7 +371,7 @@ async def google_oauth_callback(
     return UserOut.model_validate(user)
 
 
-@router.post("/firebase/google", response_model=UserOut)
+@router.post("/firebase/google", response_model=UserOut, dependencies=[Depends(_auth_rate_limit)])
 async def firebase_google_auth(
     payload: FirebaseAuthRequest,
     response: Response,
@@ -391,7 +392,26 @@ async def firebase_google_auth(
         ip_address=request.client.host if request.client else None,
     )
     _set_session_cookie(response, raw_token=raw_token, settings=settings)
+    logger.info("Google authentication successful for user_id=%s, email=%s", user.id, user.email)
     return UserOut.model_validate(user)
+
+
+@router.post("/google", response_model=UserOut, dependencies=[Depends(_auth_rate_limit)])
+async def google_auth_endpoint(
+    payload: FirebaseAuthRequest,
+    response: Response,
+    request: Request,
+    db: AsyncSession = Depends(platform_db),
+    settings: Settings = Depends(get_settings),
+) -> UserOut:
+    return await firebase_google_auth(
+        payload=payload,
+        response=response,
+        request=request,
+        db=db,
+        settings=settings,
+    )
+
 
 
 @router.get("/oauth/google/callback")
