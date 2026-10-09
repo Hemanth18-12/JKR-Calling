@@ -74,4 +74,20 @@ export const agentsApi = {
       ...opts,
       method: "POST",
     }),
+  delete: (workspaceId: string, agentId: string, opts?: ApiFetchOptions) =>
+    apiFetch<{ status: string; action: string; message: string }>(`/agents/${agentId}${qs(workspaceId)}`, {
+      ...opts,
+      method: "DELETE",
+    }),
+  regeneratePersona: (
+    workspaceId: string,
+    agentId: string,
+    data?: { language?: string; template_key?: string },
+    opts?: ApiFetchOptions
+  ) =>
+    apiFetch<AgentVersionOut>(`/agents/${agentId}/regenerate-persona${qs(workspaceId)}`, {
+      ...opts,
+      method: "POST",
+      body: data,
+    }),
 };

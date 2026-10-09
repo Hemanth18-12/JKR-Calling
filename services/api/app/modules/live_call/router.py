@@ -33,7 +33,13 @@ async def start_live_test_call(
     db: AsyncSession = Depends(workspace_db_for("calls:test")),
 ) -> LiveTestCallStarted:
     result = await service.start_live_test_call(
-        db, get_redis(), settings=settings, workspace_id=auth.workspace_id, agent_id=payload.agent_id, to_number=payload.to_number
+        db,
+        get_redis(),
+        settings=settings,
+        workspace_id=auth.workspace_id,
+        agent_id=payload.agent_id,
+        to_number=payload.to_number,
+        customer_name=payload.customer_name,
     )
     return LiveTestCallStarted(**result)
 

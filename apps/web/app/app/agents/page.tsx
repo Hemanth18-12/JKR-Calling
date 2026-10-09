@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { getServerSession } from "@/lib/session";
 import { AgentPromptCreator } from "@/components/agent-prompt-creator";
+import { AgentCardList } from "@/components/agent-card-list";
 
 const STATUS_VARIANT: Record<string, "success" | "secondary" | "warning"> = {
   active: "success",
@@ -65,23 +66,7 @@ export default async function AgentsPage() {
           }
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {agents.map((agent) => (
-            <Link key={agent.id} href={`/app/agents/${agent.id}`}>
-              <Card className="h-full transition-colors hover:border-primary/50">
-                <CardContent className="p-5">
-                  <div className="mb-2 flex items-center justify-between">
-                    <Bot className="h-5 w-5 text-primary" />
-                    <Badge variant={STATUS_VARIANT[agent.status] ?? "secondary"}>{agent.status}</Badge>
-                  </div>
-                  <h3 className="font-semibold">{agent.name}</h3>
-                  <p className="text-sm text-muted-foreground">{agent.business_identity}</p>
-                  <p className="mt-2 font-mono text-xs text-muted-foreground">{agent.primary_language}</p>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
+        <AgentCardList workspaceId={active.id} initialAgents={agents} />
       )}
       </div>
     </div>

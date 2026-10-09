@@ -17,6 +17,9 @@ export const AgentUpdate = z.object({
   business_identity: z.string().min(1).max(200).optional(),
   description: z.string().nullable().optional(),
   primary_language: z.string().optional(),
+  persona_template: z.string().optional(),
+  status: z.string().optional(),
+  regenerate_persona_flag: z.boolean().optional(),
 });
 export type AgentUpdate = z.infer<typeof AgentUpdate>;
 
@@ -165,9 +168,9 @@ export const PersonaTemplateOut = z.object({ key: z.string(), label: z.string() 
 export type PersonaTemplateOut = z.infer<typeof PersonaTemplateOut>;
 
 export const LANGUAGE_OPTIONS = [
-  { value: "te-IN", label: "Telugu" },
-  { value: "hi-IN", label: "Hindi" },
-  { value: "en-IN", label: "English (India)" },
-  { value: "te-en-IN", label: "Telugu-English" },
-  { value: "hi-en-IN", label: "Hindi-English" },
+  { value: "en-IN", label: "English", code: "en-IN" },
+  { value: "hi-IN", label: "Hindi", code: "hi-IN" },
+  { value: "te-IN", label: "Telugu", code: "te-IN" },
+  { value: "te-en-IN", label: "Telugu + English", code: "te-en-IN" },
+  { value: "hi-en-IN", label: "Hindi + English", code: "hi-en-IN" },
 ] as const;

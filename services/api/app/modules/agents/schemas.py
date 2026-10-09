@@ -19,6 +19,20 @@ class AgentUpdate(BaseModel):
     business_identity: str | None = None
     description: str | None = None
     primary_language: str | None = None
+    persona_template: str | None = None
+    status: str | None = None
+    regenerate_persona_flag: bool | None = None
+
+
+class AgentDeleteResponse(BaseModel):
+    status: str
+    action: str
+    message: str
+
+
+class RegeneratePersonaRequest(BaseModel):
+    language: str | None = None
+    template_key: str | None = None
 
 
 class AgentOut(BaseModel):

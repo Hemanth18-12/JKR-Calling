@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import AuthContext, require_permission, workspace_db_for
@@ -10,6 +10,7 @@ from app.modules.agents import service
 from app.modules.agents.persona_templates import TEMPLATES
 from app.modules.agents.schemas import (
     AgentCreate,
+    AgentDeleteResponse,
     AgentDetail,
     AgentOut,
     AgentUpdate,
@@ -21,6 +22,7 @@ from app.modules.agents.schemas import (
     PersonaTemplateOut,
     PronunciationEntryCreate,
     PronunciationEntryOut,
+    RegeneratePersonaRequest,
     VoicePersonaOut,
     VoicePersonaUpdate,
 )
@@ -54,10 +56,11 @@ async def create_agent(
 
 @router.get("", response_model=list[AgentOut])
 async def list_agents(
+    include_archived: bool = Query(default=False),
     auth: AuthContext = Depends(require_permission("agents:view")),
     db: AsyncSession = Depends(workspace_db_for("agents:view")),
 ) -> list[AgentOut]:
-    agents = await service.list_agents(db, workspace_id=auth.workspace_id)
+    agents = await service.list_agents(db, workspace_id=auth.workspace_id, include_archived=include_archived)
     return [AgentOut.model_validate(a) for a in agents]
 
 
@@ -78,8 +81,37 @@ async def update_agent(
     auth: AuthContext = Depends(require_permission("agents:edit")),
     db: AsyncSession = Depends(workspace_db_for("agents:edit")),
 ) -> AgentOut:
-    agent = await service.update_agent(db, workspace_id=auth.workspace_id, agent_id=agent_id, **payload.model_dump(exclude_unset=True))
+    data = payload.model_dump(exclude_unset=True)
+    regen = data.pop("regenerate_persona_flag", False)
+    agent = await service.update_agent(db, workspace_id=auth.workspace_id, agent_id=agent_id, regenerate_persona_flag=bool(regen), **data)
     return AgentOut.model_validate(agent)
+
+
+@router.delete("/{agent_id}", response_model=AgentDeleteResponse)
+async def delete_agent(
+    agent_id: uuid.UUID,
+    auth: AuthContext = Depends(require_permission("agents:delete")),
+    db: AsyncSession = Depends(workspace_db_for("agents:delete")),
+) -> AgentDeleteResponse:
+    result = await service.delete_agent(db, workspace_id=auth.workspace_id, agent_id=agent_id)
+    return AgentDeleteResponse(**result)
+
+
+@router.post("/{agent_id}/regenerate-persona", response_model=AgentVersionOut)
+async def regenerate_persona(
+    agent_id: uuid.UUID,
+    payload: RegeneratePersonaRequest | None = None,
+    auth: AuthContext = Depends(require_permission("agents:edit")),
+    db: AsyncSession = Depends(workspace_db_for("agents:edit")),
+) -> AgentVersionOut:
+    version = await service.regenerate_persona(
+        db,
+        workspace_id=auth.workspace_id,
+        agent_id=agent_id,
+        language=payload.language if payload else None,
+        template_key=payload.template_key if payload else None,
+    )
+    return AgentVersionOut.model_validate(version)
 
 
 @router.post("/{agent_id}/versions", response_model=AgentVersionOut, status_code=201)

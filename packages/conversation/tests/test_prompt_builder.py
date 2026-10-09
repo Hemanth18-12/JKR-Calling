@@ -543,3 +543,57 @@ async def test_prompt_builder_includes_customer_utterance_and_persona():
     assert "Cheerful Assistant" in fake.last_system
     assert "JKR Auto" in fake.last_system
     assert "CONVERSATIONAL RULES & KNOWLEDGE GROUNDING" in fake.last_system
+
+
+class _SequencedLLMClient:
+    def __init__(self, responses: list[str]):
+        self._responses = list(responses)
+        self.call_count = 0
+        self.last_user: str | None = None
+
+    async def complete_json(self, *, system, user, max_tokens=300):
+        return None
+
+    async def complete_text(self, *, system, user, max_tokens=150):
+        self.call_count += 1
+        self.last_user = user
+        if self._responses:
+            return self._responses.pop(0)
+        return "Default response"
+
+
+async def test_repetition_guard_detects_and_retries_repetitive_llm_response():
+    decision = PlannerDecision(action="ASK_FIELD", reason="missing_required_field", target_field="preferred_date")
+    state = new_conversation_state(objective="book_appointment", language="en-IN")
+    previous_agent_turn = "I'm calling to follow up on your inquiry and confirm your appointment."
+    recent_turns = [
+        {"speaker": "agent", "text": previous_agent_turn},
+        {"speaker": "customer", "text": "What do you have?"},
+    ]
+    repetitive_candidate = "I'm calling to follow up on your inquiry and confirm your appointment. What time works?"
+    fresh_candidate = "We have wonderful shirts and pants. What sizes or styles are you looking for?"
+
+    fake = _SequencedLLMClient([repetitive_candidate, fresh_candidate])
+    text = await prompt_builder.generate(
+        decision=decision, extraction=_extraction(), state=state, rag_chunks=[], conversation_policy=_POLICY,
+        business_identity="Crazy Cloths", language="en-IN", recent_turns=recent_turns, llm_client=fake,
+    )
+    assert fake.call_count == 2
+    assert text == fresh_candidate
+    assert "CRITICAL ANTI-REPETITION CONSTRAINT" in fake.last_user
+
+
+def test_is_repetition_helper():
+    assert prompt_builder._is_repetition(
+        "I'm calling to follow up on your inquiry and confirm your appointment.",
+        "I'm calling to follow up on your inquiry and confirm your appointment.",
+    )
+    assert prompt_builder._is_repetition(
+        "I'm calling to follow up on your inquiry and confirm your appointment. When would you be free?",
+        "I'm calling to follow up on your inquiry and confirm your appointment.",
+    )
+    assert not prompt_builder._is_repetition(
+        "Got it! What styles or sizes are you looking for today?",
+        "I'm calling to follow up on your inquiry and confirm your appointment.",
+    )
+

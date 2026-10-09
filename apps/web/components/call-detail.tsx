@@ -18,16 +18,11 @@ import {
 
 function SpeakerBubble({
   turn,
-  index,
 }: {
   turn: CallDetailType["turns"][number];
   index: number;
 }) {
   const isAgent = turn.speaker === "agent";
-  // Simulated turn-by-turn pipeline latency metrics
-  const sttMs = isAgent ? null : 120 + (index * 15) % 80;
-  const llmMs = isAgent ? 240 + (index * 25) % 110 : null;
-  const ttsMs = isAgent ? 110 + (index * 12) % 60 : null;
 
   return (
     <div className={`flex flex-col ${isAgent ? "items-start" : "items-end"} space-y-1`}>
@@ -41,13 +36,6 @@ function SpeakerBubble({
           ) : null}
         </div>
         <p className="leading-relaxed">{turn.text}</p>
-      </div>
-
-      {/* Latency breakdown tag */}
-      <div className="flex items-center gap-2 px-1 text-[10px] text-muted-foreground/80">
-        {sttMs ? <span>STT: <strong className="text-foreground">{sttMs}ms</strong></span> : null}
-        {llmMs ? <span>LLM: <strong className="text-foreground">{llmMs}ms</strong></span> : null}
-        {ttsMs ? <span>TTS: <strong className="text-foreground">{ttsMs}ms</strong></span> : null}
       </div>
     </div>
   );
@@ -358,31 +346,56 @@ export function CallDetail({ call, toolExecutions }: { call: CallDetailType; too
           ) : null}
 
           {/* Latency Summary Card */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
-                <Gauge className="h-4 w-4 text-secondary" /> Telephony Latency Profile
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-xs text-muted-foreground">
-              <div className="flex justify-between">
-                <span>STT Latency (Sarvam Saarika):</span>
-                <strong className="text-foreground">~135ms</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>LLM Time-to-First-Token:</span>
-                <strong className="text-foreground">~260ms</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>TTS First Audio Frame (Bulbul):</span>
-                <strong className="text-foreground">~120ms</strong>
-              </div>
-              <div className="border-t border-border pt-1 flex justify-between font-semibold text-foreground">
-                <span>Total Round-Trip Voice Latency:</span>
-                <span className="text-emerald-400">~515ms (Fast)</span>
-              </div>
-            </CardContent>
-          </Card>
+          {(() => {
+            const sttMetrics = call.latency_metrics?.filter((m) => m.stage === "stt_transcribe" || m.stage.includes("stt")) ?? [];
+            const llmMetrics = call.latency_metrics?.filter((m) => m.stage.startsWith("engine_") || m.stage.includes("llm")) ?? [];
+            const ttsMetrics = call.latency_metrics?.filter((m) => m.stage === "tts_synthesize" || m.stage.includes("tts")) ?? [];
+            const totalMetrics = call.latency_metrics?.filter((m) => m.stage === "turn_total_backend") ?? [];
+
+            const avgStt = sttMetrics.length ? Math.round(sttMetrics.reduce((a, b) => a + b.duration_ms, 0) / sttMetrics.length) : null;
+            const avgLlm = llmMetrics.length ? Math.round(llmMetrics.reduce((a, b) => a + b.duration_ms, 0) / llmMetrics.length) : null;
+            const avgTts = ttsMetrics.length ? Math.round(ttsMetrics.reduce((a, b) => a + b.duration_ms, 0) / ttsMetrics.length) : null;
+            const avgTotal = totalMetrics.length
+              ? Math.round(totalMetrics.reduce((a, b) => a + b.duration_ms, 0) / totalMetrics.length)
+              : (avgStt !== null && avgLlm !== null && avgTts !== null ? avgStt + avgLlm + avgTts : null);
+
+            const hasLiveMetrics = call.latency_metrics?.some((m) => !m.is_simulated) ?? false;
+
+            return (
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+                      <Gauge className="h-4 w-4 text-secondary" /> Telephony Latency Profile
+                    </CardTitle>
+                    <Badge variant={hasLiveMetrics ? "success" : "secondary"} className="text-[10px]">
+                      {hasLiveMetrics ? "Live Telephony" : call.latency_metrics?.length ? "Measured" : "Target Profile"}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2 text-xs text-muted-foreground">
+                  <div className="flex justify-between">
+                    <span>STT Latency (Sarvam Saarika):</span>
+                    <strong className="text-foreground">{avgStt !== null ? `${avgStt}ms` : "~135ms"}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>LLM Processing Time:</span>
+                    <strong className="text-foreground">{avgLlm !== null ? `${avgLlm}ms` : "~260ms"}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>TTS Latency (Bulbul/Sarvam):</span>
+                    <strong className="text-foreground">{avgTts !== null ? `${avgTts}ms` : "~120ms"}</strong>
+                  </div>
+                  <div className="border-t border-border pt-1 flex justify-between font-semibold text-foreground">
+                    <span>Total Round-Trip Latency:</span>
+                    <span className={avgTotal !== null && avgTotal <= 650 ? "text-emerald-400" : "text-amber-400"}>
+                      {avgTotal !== null ? `${avgTotal}ms` : "~515ms"} {avgTotal !== null && avgTotal <= 650 ? "(Fast)" : ""}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </div>
       </div>
     </div>

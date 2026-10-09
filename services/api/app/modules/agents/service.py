@@ -15,7 +15,7 @@ from jkr_db.models.agents import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.agents.persona_templates import DEFAULT_TEMPLATE, TEMPLATES
+from app.modules.agents.persona_templates import DEFAULT_TEMPLATE, TEMPLATES, get_template_content
 from app.modules.agents.safety import validate_and_sanitize_persona_field
 from app.modules.tools import service as tools_service
 
@@ -68,16 +68,12 @@ async def create_agent(
     db.add(agent)
     await db.flush()
 
-    def fill(text: str) -> str:
-        biz = (business_identity or "").strip()
-        if any(p in biz.lower() for p in ["hackathon", "test biz"]):
-            biz = "Aaha Dental Care"
-        return (
-            text.replace("{business}", biz)
-            .replace("India 's hackathon", biz)
-            .replace("India's hackathon", biz)
-            .replace("AI assistantని", "AI అసిస్టెంట్‌ని")
-        )
+    persona_texts = get_template_content(
+        persona_template,
+        primary_language,
+        business_identity,
+        description or "",
+    )
 
     version = AgentVersion(
         workspace_id=workspace_id,
@@ -85,9 +81,9 @@ async def create_agent(
         version_number=1,
         status="draft",
         primary_objective=template["primary_objective"],
-        ai_disclosure_text=fill(template["ai_disclosure_text"]),
-        greeting_text=fill(template["greeting_text"]),
-        closing_text=template["closing_text"],
+        ai_disclosure_text=persona_texts["ai_disclosure_text"],
+        greeting_text=persona_texts["greeting_text"],
+        closing_text=persona_texts["closing_text"],
         personality=template["personality"],
         formality=template["formality"],
         energy=template["energy"],
@@ -98,7 +94,21 @@ async def create_agent(
     db.add(version)
     await db.flush()
 
-    db.add(VoicePersona(workspace_id=workspace_id, agent_version_id=version.id, language=primary_language))
+    # Select speaker matching language
+    lang_lower = primary_language.lower()
+    if "te" in lang_lower:
+        default_voice = "priya"
+    elif "hi" in lang_lower:
+        default_voice = "meera"
+    else:
+        default_voice = "aravind"
+
+    db.add(VoicePersona(
+        workspace_id=workspace_id,
+        agent_version_id=version.id,
+        language=primary_language,
+        voice_id=default_voice,
+    ))
     db.add(ConversationPolicy(workspace_id=workspace_id, agent_version_id=version.id))
     await db.flush()
     await tools_service.seed_default_agent_tools(db, workspace_id=workspace_id, agent_version_id=version.id)
@@ -106,8 +116,12 @@ async def create_agent(
     return agent
 
 
-async def list_agents(db: AsyncSession, *, workspace_id: uuid.UUID) -> list[Agent]:
-    result = await db.execute(select(Agent).where(Agent.workspace_id == workspace_id).order_by(Agent.name))
+async def list_agents(db: AsyncSession, *, workspace_id: uuid.UUID, include_archived: bool = False) -> list[Agent]:
+    query = select(Agent).where(Agent.workspace_id == workspace_id)
+    if not include_archived:
+        query = query.where(Agent.status != "archived")
+    query = query.order_by(Agent.name)
+    result = await db.execute(query)
     return list(result.scalars().all())
 
 
@@ -123,13 +137,141 @@ async def get_agent_with_versions(
     return agent, list(versions_result.scalars().all())
 
 
-async def update_agent(db: AsyncSession, *, workspace_id: uuid.UUID, agent_id: uuid.UUID, **fields) -> Agent:
+async def update_agent(
+    db: AsyncSession, *, workspace_id: uuid.UUID, agent_id: uuid.UUID, regenerate_persona_flag: bool = False, **fields
+) -> Agent:
     agent = await _get_agent_or_404(db, workspace_id=workspace_id, agent_id=agent_id)
+    old_biz = agent.business_identity
+    old_lang = agent.primary_language
+
     for key, value in fields.items():
-        if value is not None:
+        if value is not None and hasattr(agent, key):
             setattr(agent, key, value)
     await db.flush()
+
+    if regenerate_persona_flag or (
+        (agent.business_identity != old_biz or agent.primary_language != old_lang)
+        and regenerate_persona_flag
+    ):
+        await regenerate_persona(
+            db,
+            workspace_id=workspace_id,
+            agent_id=agent_id,
+            language=agent.primary_language,
+            template_key=agent.persona_template,
+        )
+
     return agent
+
+
+async def delete_agent(db: AsyncSession, *, workspace_id: uuid.UUID, agent_id: uuid.UUID) -> dict[str, str]:
+    agent = await _get_agent_or_404(db, workspace_id=workspace_id, agent_id=agent_id)
+
+    # 1. Block if used by an active campaign
+    from jkr_db.models.campaigns import Campaign
+    active_camp_res = await db.execute(
+        select(Campaign).where(
+            Campaign.workspace_id == workspace_id,
+            Campaign.agent_id == agent_id,
+            Campaign.status.in_(["running", "scheduled", "in_progress", "active"]),
+        )
+    )
+    active_camp = active_camp_res.scalar_one_or_none()
+    if active_camp is not None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Cannot delete agent '{agent.name}': currently assigned to active campaign '{active_camp.name}'. Pause or cancel the campaign first.",
+        )
+
+    # 2. Check if agent has call history or past campaigns (foreign key RESTRICT on call_sessions & campaigns)
+    from jkr_db.models.calls import CallSession
+    call_res = await db.execute(select(CallSession.id).where(CallSession.agent_id == agent_id).limit(1))
+    has_calls = call_res.scalar_one_or_none() is not None
+
+    camp_res = await db.execute(select(Campaign.id).where(Campaign.agent_id == agent_id).limit(1))
+    has_campaigns = camp_res.scalar_one_or_none() is not None
+
+    if has_calls or has_campaigns:
+        # Safe soft-delete / archive to preserve analytics and foreign keys
+        agent.status = "archived"
+        await db.flush()
+        return {
+            "status": "ok",
+            "action": "archived",
+            "message": f"Agent '{agent.name}' has call history and has been safely archived.",
+        }
+    else:
+        # Hard delete if clean
+        await db.delete(agent)
+        await db.flush()
+        return {
+            "status": "ok",
+            "action": "deleted",
+            "message": f"Agent '{agent.name}' deleted successfully.",
+        }
+
+
+async def regenerate_persona(
+    db: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    version_id: uuid.UUID | None = None,
+    language: str | None = None,
+    template_key: str | None = None,
+) -> AgentVersion:
+    agent = await _get_agent_or_404(db, workspace_id=workspace_id, agent_id=agent_id)
+    target_lang = language or agent.primary_language
+    target_tpl = template_key or agent.persona_template or DEFAULT_TEMPLATE
+
+    if version_id:
+        version = await _get_version_or_404(db, workspace_id=workspace_id, agent_id=agent_id, version_id=version_id)
+    else:
+        latest_res = await db.execute(
+            select(AgentVersion)
+            .where(AgentVersion.agent_id == agent_id, AgentVersion.workspace_id == workspace_id)
+            .order_by(AgentVersion.version_number.desc())
+            .limit(1)
+        )
+        version = latest_res.scalar_one_or_none()
+        if version is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "No version found for agent")
+
+    # If the version is published (locked), clone to a new draft version
+    if version.status == "published":
+        version = await create_version(db, workspace_id=workspace_id, agent_id=agent_id, clone_from_version_id=version.id)
+
+    texts = get_template_content(
+        target_tpl,
+        target_lang,
+        agent.business_identity,
+        agent.description or "",
+    )
+
+    version.ai_disclosure_text = texts["ai_disclosure_text"]
+    version.greeting_text = texts["greeting_text"]
+    version.closing_text = texts["closing_text"]
+    version.supported_languages = [target_lang]
+
+    # Update agent primary language if changed
+    if agent.primary_language != target_lang:
+        agent.primary_language = target_lang
+
+    # Update voice persona language & voice
+    voice_res = await db.execute(select(VoicePersona).where(VoicePersona.agent_version_id == version.id))
+    voice = voice_res.scalar_one_or_none()
+    if voice:
+        voice.language = target_lang
+        lang_lower = target_lang.lower()
+        if "te" in lang_lower:
+            voice.voice_id = "priya"
+        elif "hi" in lang_lower:
+            voice.voice_id = "meera"
+        else:
+            voice.voice_id = "aravind"
+
+    await db.flush()
+    return version
 
 
 async def create_version(

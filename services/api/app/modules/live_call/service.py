@@ -257,7 +257,8 @@ async def _get_or_create_contact(db: AsyncSession, *, workspace_id: uuid.UUID, p
 
 
 async def start_live_test_call(
-    db: AsyncSession, redis: Any, *, settings: Settings, workspace_id: uuid.UUID, agent_id: uuid.UUID, to_number: str
+    db: AsyncSession, redis: Any, *, settings: Settings, workspace_id: uuid.UUID, agent_id: uuid.UUID, to_number: str,
+    customer_name: str | None = None,
 ) -> dict:
     if not settings.enable_live_calls:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Live calls are disabled — set ENABLE_LIVE_CALLS=true to enable this")
@@ -302,10 +303,6 @@ async def start_live_test_call(
         else ConversationPolicySnapshot()
     )
 
-    # The agent's configured voice — previously loaded from the DB and then
-    # silently discarded; every real call used SarvamTTS's hardcoded "priya"
-    # default regardless of what was configured (see
-    # docs/REALTIME_VOICE_MIGRATION_AUDIT.md).
     voice_result = await db.execute(select(VoicePersona).where(VoicePersona.agent_version_id == version.id))
     voice = voice_result.scalar_one_or_none()
     tts_speaker = _resolve_tts_speaker(voice)
@@ -331,38 +328,45 @@ async def start_live_test_call(
     except TelephonyNotConfiguredError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
 
-    # No OpenAI fail-fast check here anymore — jkr_conversation degrades
-    # gracefully to deterministic mock-mode responses without a key, same
-    # posture Sarvam TTS already has via its own <Say> fallback. A live call
-    # is placeable either way; it just won't sound as adaptive without a key.
-
     language_code = _sarvam_language_code(agent.primary_language)
 
-    # A fresh, independently-committing session for every write below —
-    # deliberately not the request-scoped `db` (whose session.begin() rolls
-    # back the *entire* request transaction on any exception, including the
-    # Twilio call failing below). Also sidesteps a subtler trap: Postgres
-    # `SET LOCAL app.current_workspace_id` (what RLS checks against) only
-    # lives for one transaction, so manually committing the request-scoped
-    # session mid-request would silently drop RLS on whatever runs after —
-    # every fresh workspace_scoped_session sets it up correctly on its own.
     biz_name = (agent.business_identity or "").strip()
     if not biz_name or any(p in biz_name.lower() for p in ["hackathon", "test biz", "original name"]):
-        biz_name = "Aaha Dental Care"
+        biz_name = agent.name.strip() if agent.name else "Our Business"
 
+    is_clothing = any(k in (biz_name + " " + agent.name).lower() for k in ["cloth", "apparel", "wear", "boutique", "fashion", "garment", "textile"])
+    if is_clothing:
+        service_name = "clothing collections, sizes, and offers"
+        calling_reason = f"following up on your inquiry with {biz_name} regarding our latest clothing collections, offers, and sizing"
+    elif agent.category == "appointment_coordinator" or version.primary_objective == "book_appointment":
+        service_name = "consultation and appointment"
+        calling_reason = f"following up regarding your inquiry with {biz_name} to confirm your appointment"
+    elif agent.category == "retention_specialist" or version.primary_objective == "renewal_reminder":
+        service_name = "account renewal and payment options"
+        calling_reason = f"courtesy call from {biz_name} regarding your account"
+    elif agent.category == "feedback_collector" or version.primary_objective == "collect_feedback":
+        service_name = "customer feedback and support"
+        calling_reason = f"following up with {biz_name} to gather your valuable feedback"
+    else:
+        service_name = f"{biz_name} services and products"
+        calling_reason = f"following up on your inquiry with {biz_name} to assist you"
+
+    resolved_cust_name = (customer_name or "").strip()
     conversation_state = new_conversation_state(objective=version.primary_objective, language=language_code)
     conversation_state["live_real_call"] = True
     conversation_state["business_identity"] = biz_name
-    conversation_state["customer_name"] = "Customer"
-    conversation_state["service_name"] = "appointment and consultation"
-    conversation_state["calling_reason"] = (
-        f"following up regarding your inquiry with {biz_name} to confirm your appointment"
-    )
+    conversation_state["customer_name"] = resolved_cust_name or "Customer"
+    conversation_state["service_name"] = service_name
+    conversation_state["calling_reason"] = calling_reason
 
     async with workspace_scoped_session(workspace_id) as write_db:
         contact = await _get_or_create_contact(write_db, workspace_id=workspace_id, phone_e164=to_e164)
-        if contact and contact.full_name and contact.full_name != "Live test call":
+        if resolved_cust_name:
+            contact.full_name = resolved_cust_name
+            conversation_state["customer_name"] = resolved_cust_name
+        elif contact and contact.full_name and contact.full_name != "Live test call":
             conversation_state["customer_name"] = contact.full_name
+            resolved_cust_name = contact.full_name
         conversation_state["customer_phone"] = contact.phone_e164
         call_session = CallSession(
             workspace_id=workspace_id,
@@ -390,29 +394,53 @@ async def start_live_test_call(
         write_db.add(
             CallParticipant(
                 workspace_id=workspace_id, call_session_id=call_session_id, role="customer",
-                display_name="Live test call", phone_e164=to_e164, joined_at=datetime.now(UTC),
+                display_name=resolved_cust_name or "Live test call", phone_e164=to_e164, joined_at=datetime.now(UTC),
             )
         )
         write_db.add(CallEvent(workspace_id=workspace_id, call_session_id=call_session_id, event_type="call_started", payload={"live_real_call": True}))
 
-    biz_name = (agent.business_identity or "").strip()
-    if not biz_name or any(p in biz_name.lower() for p in ["hackathon", "test biz", "original name"]):
-        biz_name = "Aaha Dental Care"
-    service_name = "అపాయింట్‌మెంట్"
-    greeting_body = (
-        version.greeting_text.replace("{name} ", "").replace("{name}", "")
-        .replace("{business}", biz_name)
-        .replace("{business_identity}", biz_name)
-        .replace("{company}", biz_name)
-        .replace("{service}", service_name)
-        .replace("{service_name}", service_name)
-        .replace("India 's hackathon", biz_name)
-        .replace("India's hackathon", biz_name)
-        .replace("AI assistantని", "AI అసిస్టెంట్‌ని")
-        .strip()
-    )
+    raw_greeting = (version.greeting_text or "").strip()
+    if resolved_cust_name and resolved_cust_name.lower() not in ("customer", "none"):
+        greeting_body = (
+            raw_greeting
+            .replace("{{customer_name}}", resolved_cust_name)
+            .replace("{customer_name}", resolved_cust_name)
+            .replace("{{name}}", resolved_cust_name)
+            .replace("{name}", resolved_cust_name)
+            .replace("{business}", biz_name)
+            .replace("{business_identity}", biz_name)
+            .replace("{company}", biz_name)
+            .replace("{service}", service_name)
+            .replace("{service_name}", service_name)
+            .replace("India 's hackathon", biz_name)
+            .replace("India's hackathon", biz_name)
+            .replace("AI assistantని", "AI అసిస్టెంట్‌ని")
+            .strip()
+        )
+    else:
+        greeting_body = (
+            raw_greeting
+            .replace("{{customer_name}} ", "")
+            .replace("{customer_name} ", "")
+            .replace("{{name}} ", "")
+            .replace("{name} ", "")
+            .replace("{{customer_name}}", "")
+            .replace("{customer_name}", "")
+            .replace("{{name}}", "")
+            .replace("{name}", "")
+            .replace("{business}", biz_name)
+            .replace("{business_identity}", biz_name)
+            .replace("{company}", biz_name)
+            .replace("{service}", service_name)
+            .replace("{service_name}", service_name)
+            .replace("India 's hackathon", biz_name)
+            .replace("India's hackathon", biz_name)
+            .replace("AI assistantని", "AI అసిస్టెంట్‌ని")
+            .strip()
+        )
+
     disclosure = (
-        version.ai_disclosure_text
+        (version.ai_disclosure_text or "")
         .replace("{business}", biz_name)
         .replace("{business_identity}", biz_name)
         .replace("{company}", biz_name)
@@ -423,9 +451,6 @@ async def start_live_test_call(
         .replace("AI assistantని", "AI అసిస్టెంట్‌ని")
         .strip()
     )
-    # Seed/authored greeting text for several personas already opens with the
-    # disclosure sentence verbatim — blindly prepending it again said the same
-    # sentence twice back to back. Only prepend when it isn't already there.
     greeting = greeting_body if (disclosure and disclosure in greeting_body) else (disclosure + " " + greeting_body).strip()
 
     from app.modules.agents.safety import detect_abusive_content
@@ -625,6 +650,89 @@ _TOOL_FAILURE_REPLY = {
 
 def _tool_failure_reply(language_code: str) -> str:
     return _TOOL_FAILURE_REPLY.get(language_code, _TOOL_FAILURE_REPLY["en-IN"])
+
+
+HALLUCINATORY_TRANSCRIPTS = {
+    "you", "you.", "you?", "i", "i.", "i?",
+    "thank you", "thank you.", "thanks", "thanks.",
+    ".", "..", "...", "?", "!",
+    "bye", "bye.", "goodbye", "goodbye.",
+    "subtitles", "subtitles by", "watching",
+    "so", "the", "oh", "um", "uh", "ah"
+}
+
+
+def is_hallucinatory_transcript(text: str) -> bool:
+    cleaned = (text or "").strip().lower()
+    if not cleaned:
+        return True
+    if cleaned in HALLUCINATORY_TRANSCRIPTS:
+        return True
+    stripped = cleaned.strip(".?!, ")
+    if stripped in {"you", "i", "thank you", "thanks", "so", "the", "oh", "um", "uh", "ah", ""}:
+        return True
+    return False
+
+
+def analyze_audio_vad(audio_bytes: bytes) -> tuple[bool, float]:
+    """Returns (has_speech, rms_energy). If audio is below silence threshold, returns (False, rms)."""
+    try:
+        import io
+        import math
+        import struct
+        import wave
+
+        with wave.open(io.BytesIO(audio_bytes), "rb") as wf:
+            sampwidth = wf.getsampwidth()
+            n_frames = wf.getnframes()
+            frames = wf.readframes(n_frames)
+
+            if sampwidth == 2:
+                num_samples = len(frames) // 2
+                if num_samples == 0:
+                    return False, 0.0
+                samples = struct.unpack(f"<{num_samples}h", frames)
+                sum_sq = sum(s * s for s in samples)
+                rms = math.sqrt(sum_sq / num_samples)
+                return (rms >= 180.0), rms
+            elif sampwidth == 1:
+                num_samples = len(frames)
+                if num_samples == 0:
+                    return False, 0.0
+                samples = [b - 128 for b in frames]
+                sum_sq = sum(s * s for s in samples)
+                rms = math.sqrt(sum_sq / num_samples)
+                return (rms >= 50.0), rms
+            else:
+                return True, 1000.0
+    except Exception:
+        return True, 999.0
+
+
+def ensure_16k_wav(audio_bytes: bytes) -> bytes:
+    """Upsamples 8kHz telephony WAV audio to 16kHz for higher Sarvam STT accuracy."""
+    try:
+        import io
+        import wave
+
+        with wave.open(io.BytesIO(audio_bytes), "rb") as wf:
+            framerate = wf.getframerate()
+            n_channels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
+            if framerate == 8000 and sampwidth == 2:
+                frames = wf.readframes(wf.getnframes())
+                # For 16-bit PCM, each sample is 2 bytes. Double each sample to 2x sample rate:
+                upsampled = b"".join(frames[i : i + 2] * 2 for i in range(0, len(frames), 2))
+                out_buf = io.BytesIO()
+                with wave.open(out_buf, "wb") as out_wf:
+                    out_wf.setnchannels(n_channels)
+                    out_wf.setsampwidth(sampwidth)
+                    out_wf.setframerate(16000)
+                    out_wf.writeframes(upsampled)
+                return out_buf.getvalue()
+    except Exception:
+        pass
+    return audio_bytes
 
 
 def _silence_reprompt(language_code: str, attempt: int) -> str:
@@ -922,16 +1030,40 @@ async def handle_recording_webhook(*, token: str, form: dict[str, str], signatur
                 account_sid=settings.twilio_account_sid, auth_token=settings.twilio_auth_token, recording_url=twilio_recording_url
             )
             fetch_recording_ms = int((time.perf_counter() - t0) * 1000)
-            stt = SarvamSTT(api_key=settings.sarvam_api_key or settings.sarvam_tts_api_key)
-            t0 = time.perf_counter()
-            transcript = await stt.transcribe(audio_bytes=audio_bytes, language_code=language_code)
-            stt_transcribe_ms = int((time.perf_counter() - t0) * 1000)
-            speech_result = transcript.text.strip()
-            stt_metadata = {
-                "stt_detected_language_code": transcript.detected_language_code,
-                "stt_language_probability": transcript.language_probability,
-                "stt_requested_language_code": language_code,
-            }
+
+            # 1. Voice activity energy check (VAD)
+            has_speech_vad, audio_rms = analyze_audio_vad(audio_bytes)
+            if not has_speech_vad:
+                logger.info(
+                    "VAD detected silence on call %s (rms=%.1f, duration=%ds). Treating as silence.",
+                    call_session_id, audio_rms, recording_duration,
+                )
+                speech_result = ""
+            else:
+                # 2. Ensure optimal 16kHz audio sample rate for Sarvam STT
+                stt_audio = ensure_16k_wav(audio_bytes)
+                stt = SarvamSTT(api_key=settings.sarvam_api_key or settings.sarvam_tts_api_key)
+                t0 = time.perf_counter()
+                transcript = await stt.transcribe(audio_bytes=stt_audio, language_code=language_code)
+                stt_transcribe_ms = int((time.perf_counter() - t0) * 1000)
+                raw_text = transcript.text.strip()
+
+                # 3. Filter STT hallucinations on silence / noise
+                if is_hallucinatory_transcript(raw_text):
+                    logger.info(
+                        "Filtered STT hallucination artifact '%s' for call %s (treated as silence)",
+                        raw_text, call_session_id,
+                    )
+                    speech_result = ""
+                else:
+                    speech_result = raw_text
+
+                stt_metadata = {
+                    "stt_detected_language_code": transcript.detected_language_code,
+                    "stt_language_probability": transcript.language_probability,
+                    "stt_requested_language_code": language_code,
+                    "stt_audio_rms": audio_rms,
+                }
         except Exception as exc:  # noqa: BLE001 — log error, fall back to re-prompt or graceful closing
             logger.exception("Error during Twilio recording fetch or STT transcription for call %s: %s", call_session_id, exc)
             speech_result = ""
@@ -1099,14 +1231,23 @@ async def handle_closing_grace_webhook(*, token: str, form: dict[str, str], sign
             audio_bytes = await fetch_recording(
                 account_sid=settings.twilio_account_sid, auth_token=settings.twilio_auth_token, recording_url=twilio_recording_url
             )
-            stt = SarvamSTT(api_key=settings.sarvam_api_key or settings.sarvam_tts_api_key)
-            transcript = await stt.transcribe(audio_bytes=audio_bytes, language_code=language_code)
-            speech_result = transcript.text.strip()
-            stt_metadata = {
-                "stt_detected_language_code": transcript.detected_language_code,
-                "stt_language_probability": transcript.language_probability,
-                "stt_requested_language_code": language_code,
-            }
+            has_speech_vad, audio_rms = analyze_audio_vad(audio_bytes)
+            if not has_speech_vad:
+                speech_result = ""
+            else:
+                stt_audio = ensure_16k_wav(audio_bytes)
+                stt = SarvamSTT(api_key=settings.sarvam_api_key or settings.sarvam_tts_api_key)
+                transcript = await stt.transcribe(audio_bytes=stt_audio, language_code=language_code)
+                raw_text = transcript.text.strip()
+                if is_hallucinatory_transcript(raw_text):
+                    speech_result = ""
+                else:
+                    speech_result = raw_text
+                stt_metadata = {
+                    "stt_detected_language_code": transcript.detected_language_code,
+                    "stt_language_probability": transcript.language_probability,
+                    "stt_requested_language_code": language_code,
+                }
         except Exception as exc:  # noqa: BLE001 — log error, never kill the call over a transcription hiccup
             logger.exception("Error during closing grace recording fetch or STT for call %s: %s", call_session_id, exc)
             speech_result = ""

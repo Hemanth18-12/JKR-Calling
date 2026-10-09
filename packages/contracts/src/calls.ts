@@ -19,6 +19,7 @@ export type TestCallStarted = z.infer<typeof TestCallStarted>;
 export const LiveTestCallCreate = z.object({
   agent_id: z.string().uuid(),
   to_number: z.string().min(6).max(20),
+  customer_name: z.string().max(100).nullable().optional(),
 });
 export type LiveTestCallCreate = z.infer<typeof LiveTestCallCreate>;
 

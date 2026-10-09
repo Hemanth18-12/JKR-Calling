@@ -3,6 +3,7 @@ import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle } from
 import { notFound } from "next/navigation";
 
 import { PublishButton } from "@/components/publish-button";
+import { AgentOverviewControls } from "@/components/agent-overview-controls";
 import { getActiveWorkspaceContext } from "@/lib/session";
 
 export default async function AgentOverviewPage({ params }: { params: { agentId: string } }) {
@@ -13,14 +14,10 @@ export default async function AgentOverviewPage({ params }: { params: { agentId:
   const latest = agent.versions[0];
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Primary language</CardDescription>
-          </CardHeader>
-          <CardContent className="font-mono text-lg">{agent.primary_language}</CardContent>
-        </Card>
+    <div className="max-w-4xl space-y-6">
+      <AgentOverviewControls workspaceId={workspace.id} agent={agent} />
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Published version</CardDescription>
