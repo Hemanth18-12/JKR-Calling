@@ -3,14 +3,32 @@
 import * as React from "react";
 import { motion, useSpring, useTransform } from "framer-motion";
 import { Card, CardContent } from "@jkr/ui";
-import type { LucideIcon } from "lucide-react";
+import {
+  Calendar,
+  PhoneIncoming,
+  CheckCircle2,
+  Coins,
+  type LucideIcon,
+} from "lucide-react";
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  calendar: Calendar,
+  appointments_booked: Calendar,
+  phone: PhoneIncoming,
+  connect_rate: PhoneIncoming,
+  check: CheckCircle2,
+  revenue_event_count: CheckCircle2,
+  coins: Coins,
+  revenue_paise: Coins,
+};
 
 export interface StatItem {
   key: string;
   label: string;
   rawValue: number;
   formattedValue?: string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
+  iconName?: "calendar" | "phone" | "check" | "coins" | string;
   accent: "primary" | "amber" | "emerald" | "danger";
   isPct?: boolean;
   isRevenue?: boolean;
@@ -33,7 +51,7 @@ export function DashboardStatCards({ items }: { items: StatItem[] }) {
   return (
     <div id="tour-kpi-cards" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {items.map((item, idx) => {
-        const Icon = item.icon;
+        const Icon = item.icon || (item.iconName ? ICON_MAP[item.iconName] : null) || ICON_MAP[item.key] || Calendar;
         const accentColors = {
           primary: "text-primary border-primary/30 bg-primary/10",
           amber: "text-amber-400 border-amber-500/30 bg-amber-500/10",
