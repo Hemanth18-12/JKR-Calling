@@ -6,13 +6,13 @@
    Deep near-black base (#0A0A0A), charcoal cards (#141414), confident primary yellow
    (#FFD400), telemetry amber (#F59E0B), and crisp off-white text (#F4F4F0). */
 :root {
-  --background: 0 0% 4%; /* #0A0A0A Deep Near-Black */
-  --surface: 0 0% 7.8%; /* #141414 Surface */
-  --surface-raised: 0 0% 11%; /* #1C1C1C Raised Surface */
-  --border: 0 0% 16%; /* #292929 Crisp Subtle Border */
+  --background: 224 45% 4%; /* #06080D Cosmic Midnight Obsidian */
+  --surface: 224 35% 7.5%; /* #0D111A Frosted Surface */
+  --surface-raised: 224 30% 11%; /* #141A26 Raised Surface */
+  --border: 224 20% 18%; /* #222938 Crisp Subtle Border */
   --foreground: 60 4% 96%; /* #F5F5F0 Crisp Off-White */
-  --muted: 0 0% 13%; /* #212121 */
-  --muted-foreground: 60 2% 62%; /* #9E9E96 Legible Muted Body */
+  --muted: 224 25% 13%; /* #18202F */
+  --muted-foreground: 220 15% 65%; /* #9CA6B8 Legible Muted Body */
   --primary: 49 100% 50%; /* #FFD400 Confident Vibrant Yellow */
   --primary-foreground: 0 0% 4%; /* #0A0A0A Near Black on Yellow */
   --secondary: 38 92% 50%; /* #F59E0B Telemetry Amber */
@@ -28,14 +28,14 @@
 }
 
 [data-theme="light"] {
-  --background: 60 5% 97%; /* #F8F8F5 Warm Off-White */
+  --background: 225 35% 97.5%; /* #F4F6FC Luminous Pearl Canvas */
   --surface: 0 0% 100%; /* #FFFFFF Crisp Pure White */
-  --surface-raised: 60 4% 94%; /* #F0F0EB Slightly Elevated */
-  --border: 60 3% 86%; /* #DDDCD5 Warm Border */
-  --foreground: 0 0% 8%; /* #141414 Charcoal Near-Black */
-  --muted: 60 4% 92%;
-  --muted-foreground: 0 0% 42%;
-  --primary: 48 100% 45%;
+  --surface-raised: 225 25% 94%; /* #ECF0F8 Slightly Elevated */
+  --border: 224 25% 88%; /* #D9DFEE Warm Modern Border */
+  --foreground: 224 50% 8%; /* #0B1120 Charcoal Navy */
+  --muted: 225 25% 92%;
+  --muted-foreground: 224 20% 42%;
+  --primary: 46 100% 46%; /* Rich Golden Solar Primary */
   --primary-foreground: 0 0% 4%;
   --secondary: 38 92% 48%;
   --secondary-foreground: 0 0% 100%;
@@ -43,13 +43,32 @@
   --success: 142 71% 38%;
   --warning: 38 92% 48%;
   --danger: 0 84% 54%;
-  --ring: 48 100% 45%;
+  --ring: 46 100% 46%;
 }
 
 body {
   background-color: hsl(var(--background));
+  background-image: 
+    radial-gradient(at 8% 12%, rgba(255, 193, 7, 0.14) 0px, transparent 48%),
+    radial-gradient(at 92% 8%, rgba(99, 102, 241, 0.15) 0px, transparent 52%),
+    radial-gradient(at 55% 85%, rgba(236, 72, 153, 0.10) 0px, transparent 50%),
+    radial-gradient(at 15% 85%, rgba(6, 182, 212, 0.11) 0px, transparent 50%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   color: hsl(var(--foreground));
   font-family: var(--font-sans);
+  min-height: 100vh;
+}
+
+[data-theme="dark"] body, :root:not([data-theme="light"]) body {
+  background-color: hsl(var(--background));
+  background-image: 
+    radial-gradient(at 10% 12%, rgba(255, 212, 0, 0.11) 0px, transparent 48%),
+    radial-gradient(at 90% 10%, rgba(139, 92, 246, 0.16) 0px, transparent 55%),
+    radial-gradient(at 50% 65%, rgba(6, 182, 212, 0.10) 0px, transparent 50%),
+    radial-gradient(at 85% 90%, rgba(244, 63, 94, 0.10) 0px, transparent 50%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
 }
 
 h1, h2, h3, .font-display {
