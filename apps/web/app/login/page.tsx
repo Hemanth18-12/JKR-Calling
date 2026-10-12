@@ -209,29 +209,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 perspective-1000">
-      {/* 3D Ambient background lighting */}
-      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        <div className="absolute left-1/4 top-0 h-96 w-96 -translate-x-1/2 rounded-full bg-primary/10 blur-[120px] animate-ambient-glow" />
-        <div className="absolute bottom-0 right-1/4 h-80 w-80 rounded-full bg-secondary/8 blur-[100px]" />
-        <div className="absolute inset-0 bg-[radial-gradient(#ffffff05_1px,transparent_1px)] [background-size:24px_24px]" />
-      </div>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4">
+      {/* Subtle background grid pattern */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(#ffffff08_1px,transparent_1px)] [background-size:24px_24px]" aria-hidden="true" />
 
-      <div
-        ref={cardRef}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        className={`relative w-full max-w-sm preserve-3d transition-transform duration-200 ease-out ${!tilt.active ? "animate-float-3d" : ""}`}
-        style={{
-          transform: tilt.active
-            ? `perspective(1000px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) scale3d(1.02, 1.02, 1.02)`
-            : undefined,
-        }}
-      >
+      <div className="relative w-full max-w-sm">
         {/* Logo Header */}
-        <div className="mb-6 flex flex-col items-center gap-2.5 preserve-3d" style={{ transform: "translateZ(20px)" }}>
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-[#FFA000] shadow-lg shadow-primary/30 transition-transform duration-300 hover:scale-110">
-            <Zap className="h-6 w-6 text-black fill-black" />
+        <div className="mb-6 flex flex-col items-center gap-2.5">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-black font-bold shadow-sm">
+            <Zap className="h-5 w-5 fill-black" />
           </div>
           <div className="text-center">
             <h1 className="font-display text-xl font-bold tracking-tight text-foreground">JKR AI Calling</h1>
@@ -239,8 +225,8 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* 3D Glass Surface Card */}
-        <Card className="relative border-border/60 bg-surface/90 shadow-card-raised backdrop-blur-xl overflow-hidden card-3d transition-all duration-300 hover:border-primary/50 hover:shadow-2xl">
+        {/* Clean Surface Card */}
+        <Card className="relative border-border/80 bg-surface shadow-sm overflow-hidden">
           {/* Specular glare reflection moving in 3D */}
           <div
             className="pointer-events-none absolute inset-0 z-20 transition-opacity duration-200"

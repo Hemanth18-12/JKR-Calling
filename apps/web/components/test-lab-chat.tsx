@@ -197,7 +197,7 @@ export function TestLabChat({ workspaceId, agentId }: { workspaceId: string; age
               <Button
                 onClick={startCall}
                 loading={starting}
-                variant="gradient"
+                variant="default"
                 className="w-full sm:w-auto font-bold"
                 disabled={coinBalance !== null && coinBalance <= 0}
               >
@@ -264,7 +264,7 @@ export function TestLabChat({ workspaceId, agentId }: { workspaceId: string; age
               <>
                 <div>
                   <p className="text-xs uppercase text-muted-foreground">Objective</p>
-                  <p>{String(state.objective)} — <Badge variant="outline">{String(state.objective_status)}</Badge></p>
+                  <p className="flex items-center gap-2 font-medium">{String(state.objective)} <Badge variant="outline">{String(state.objective_status)}</Badge></p>
                 </div>
                 <div>
                   <p className="text-xs uppercase text-muted-foreground">Extracted fields</p>

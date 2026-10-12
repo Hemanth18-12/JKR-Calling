@@ -97,7 +97,7 @@ function SuppressForm({ workspaceId }: { workspaceId: string }) {
     setFormError(null);
     try {
       await contactsApi.suppress(workspaceId, data);
-      toast({ title: "Number suppressed", description: "Takes effect immediately — no campaign can call it.", variant: "success" });
+      toast({ title: "Number suppressed", description: "Takes effect immediately. No campaign can call it.", variant: "success" });
       reset({ reason: "customer_opt_out" });
       router.refresh();
     } catch (err) {
@@ -270,7 +270,7 @@ export function ContactsPage({
         </CardHeader>
         <CardContent>
           {contacts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No contacts yet — add your first one.</p>
+            <p className="text-sm text-muted-foreground">No contacts yet: add your first one.</p>
           ) : (
             contacts.map((c) => <ConsentRow key={c.id} workspaceId={workspaceId} contact={c} />)
           )}

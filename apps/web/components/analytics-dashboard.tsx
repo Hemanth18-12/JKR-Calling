@@ -40,7 +40,7 @@ function Bar({ label, count, max, color = "bg-primary" }: { label: string; count
 }
 
 function formatPct(value: number | null): string {
-  return value === null ? "—" : `${Math.round(value * 100)}%`;
+  return value === null ? "N/A" : `${Math.round(value * 100)}%`;
 }
 
 export function AnalyticsDashboard({
@@ -51,7 +51,7 @@ export function AnalyticsDashboard({
   const maxFunnel = Math.max(1, ...calls.funnel.map((f) => f.count));
   const maxOutcome = Math.max(1, ...calls.outcome_breakdown.map((o) => o.count));
 
-  // Unique Feature #6: Regional Performance Breakdown Data
+  // Regional Performance Breakdown Data
   const regionalData = [
     { state: "Telangana (Hyderabad/Secunderabad)", volume: Math.round(overview.total_calls * 0.45) || 18, answerRate: "72%", language: "Telugu / Code-switch", conversion: "34%" },
     { state: "Andhra Pradesh (Vizag/Vijayawada)", volume: Math.round(overview.total_calls * 0.30) || 12, answerRate: "68%", language: "Telugu", conversion: "28%" },
@@ -60,9 +60,9 @@ export function AnalyticsDashboard({
   ];
 
   const languageBreakdown = [
-    { lang: "Telugu (te-IN / Code-Switched)", count: 24, max: 40, color: "bg-primary" },
-    { lang: "Hindi (hi-IN / Hinglish)", count: 12, max: 40, color: "bg-amber-400" },
-    { lang: "Indian English (en-IN)", count: 6, max: 40, color: "bg-secondary" },
+    { lang: "Telugu (Bilingual Code-Switch)", count: 24, max: 40, color: "bg-primary" },
+    { lang: "Hindi (Bilingual Hinglish)", count: 12, max: 40, color: "bg-amber-400" },
+    { lang: "Indian English", count: 6, max: 40, color: "bg-secondary" },
   ];
 
   const objectionThemes = [
@@ -82,7 +82,7 @@ export function AnalyticsDashboard({
         <Stat label="Contacts reached" value={overview.contacts_reached} />
         <Stat label="Active campaigns" value={overview.active_campaigns} />
         <Stat label="Pending handoffs" value={overview.pending_handoffs} />
-        <Stat label="Avg call duration" value={calls.avg_duration_seconds !== null ? `${calls.avg_duration_seconds}s` : "—"} />
+        <Stat label="Avg call duration" value={calls.avg_duration_seconds !== null ? `${calls.avg_duration_seconds}s` : "N/A"} />
         <Stat label="Revenue" value={`₹${(overview.revenue_paise / 100).toLocaleString("en-IN")}`} />
       </div>
 

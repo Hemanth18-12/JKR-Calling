@@ -37,7 +37,7 @@ export default async function CallsPage({
         <div>
           <h1 className="font-display text-2xl font-bold text-foreground">Calls</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Every call this workspace has run — mock or otherwise.
+            Every call this workspace has run: mock or otherwise.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-xl border border-secondary/30 bg-secondary/5 px-4 py-2 text-xs text-secondary">

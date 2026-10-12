@@ -19,24 +19,19 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "relative flex flex-col items-center justify-center gap-4 overflow-hidden rounded-xl border border-dashed border-border/80 bg-surface/40 p-12 text-center",
+        "relative flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border/80 bg-surface/30 p-10 text-center",
         className
       )}
     >
-      {/* Ambient glow background */}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <div className="h-44 w-44 rounded-full bg-primary/8 blur-3xl" />
-      </div>
-
       {Icon ? (
-        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10 shadow-lg shadow-primary/5">
-          <Icon className="h-6 w-6 text-primary" />
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-border/80 bg-surface-raised text-foreground/80">
+          <Icon className="h-5 w-5" />
         </div>
       ) : null}
 
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         <p className="font-display text-base font-semibold text-foreground">{title}</p>
-        {description ? <p className="max-w-xs text-sm text-muted-foreground">{description}</p> : null}
+        {description ? <p className="max-w-sm text-xs sm:text-sm text-muted-foreground">{description}</p> : null}
       </div>
       {action}
     </div>

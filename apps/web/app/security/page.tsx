@@ -4,11 +4,11 @@ import Link from "next/link";
 const PRINCIPLES = [
   {
     title: "No real call by default",
-    body: "Every workspace defaults every provider to a mock adapter. A real telephony dial requires an explicit environment flag and an authorized destination number — never on by default.",
+    body: "Every workspace defaults every provider to a mock adapter. A real telephony dial requires an explicit environment flag and an authorized destination number: never on by default.",
   },
   {
     title: "Consent and suppression before every dial",
-    body: "A ten-check safety gate — consent, suppression, calling-hours, attempt limits, duplicate-dispatch locks, budget and rate limits — runs before any outbound attempt, mock or real.",
+    body: "A ten-check safety gate (covering consent, suppression, calling-hours, attempt limits, duplicate-dispatch locks, budget and rate limits) runs before any outbound attempt, mock or real.",
   },
   {
     title: "Immediate, unconditional opt-out",
@@ -16,7 +16,7 @@ const PRINCIPLES = [
   },
   {
     title: "Tenant isolation at two layers",
-    body: "Application-layer filtering and Postgres row-level security both scope every query to the active workspace — a bug in one layer doesn't expose another client's data.",
+    body: "Application-layer filtering and Postgres row-level security both scope every query to the active workspace: a bug in one layer doesn't expose another client's data.",
   },
   {
     title: "AI disclosure is enforced, not just written",

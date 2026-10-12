@@ -520,9 +520,9 @@ export function IntegrationsPage({
 
                   <p className="text-xs text-muted-foreground line-clamp-2">
                     {item.type === "google_calendar"
-                      ? "Every confirmed appointment includes a downloadable .ics calendar invite and 1-tap Google/Apple/Outlook links — zero OAuth, zero billing required."
+                      ? "Every confirmed appointment includes a downloadable .ics calendar invite and 1-tap Google/Apple/Outlook links: zero OAuth, zero billing required."
                       : item.type === "google_sheets"
-                      ? "Export confirmed appointments, qualified leads, and caller data as CSV anytime — zero OAuth or Google Cloud billing required."
+                      ? "Export confirmed appointments, qualified leads, and caller data as CSV anytime: zero OAuth or Google Cloud billing required."
                       : item.description || (isConnected ? "Active external connection." : "Not connected yet.")}
                   </p>
                 </div>

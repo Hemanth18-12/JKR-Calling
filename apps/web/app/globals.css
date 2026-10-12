@@ -59,57 +59,23 @@ h1, h2, h3, .font-display {
   }
 }
 
-/* 3D Perspective and Transform Utilities */
-.perspective-1000 {
-  perspective: 1000px;
+/* Refined layout and surface utilities */
+.card-doppelrand {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: hsl(var(--surface));
+  border-radius: 0.875rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+  transition: border-color 0.15s ease, transform 0.15s ease;
 }
-.preserve-3d {
-  transform-style: preserve-3d;
-}
-.backface-hidden {
-  backface-visibility: hidden;
-}
-
-.card-3d {
-  transform-style: preserve-3d;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
-  will-change: transform;
+.card-doppelrand:hover {
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
-/* 3D Gentle Floating Animation */
-@keyframes float-3d {
-  0%, 100% {
-    transform: translateY(0px) rotateX(0deg) rotateY(0deg);
-  }
-  25% {
-    transform: translateY(-5px) rotateX(1.5deg) rotateY(-1deg);
-  }
-  50% {
-    transform: translateY(-8px) rotateX(-0.5deg) rotateY(1deg);
-  }
-  75% {
-    transform: translateY(-3px) rotateX(1deg) rotateY(0.5deg);
-  }
+.active-press {
+  transition: transform 0.1s ease;
 }
-
-.animate-float-3d {
-  animation: float-3d 8s ease-in-out infinite;
-}
-
-/* Ambient glow pulsation */
-@keyframes ambient-glow {
-  0%, 100% {
-    opacity: 0.45;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.75;
-    transform: scale(1.08);
-  }
-}
-
-.animate-ambient-glow {
-  animation: ambient-glow 7s ease-in-out infinite;
+.active-press:active {
+  transform: scale(0.98);
 }
 
 /* Reduced motion support */

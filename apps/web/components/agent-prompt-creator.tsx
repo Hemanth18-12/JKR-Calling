@@ -170,7 +170,7 @@ export function AgentPromptCreator({ workspaceId }: AgentPromptCreatorProps) {
           <span>Create a new voice AI assistant</span>
         </h2>
         <p className="text-xs text-muted-foreground sm:text-sm">
-          Describe the type of voice AI assistant you want to create — our model configures persona, greeting, and Telugu-English voice parameters instantly.
+          Describe the type of voice AI assistant you want to create: our model configures persona, greeting, and Telugu-English voice parameters instantly.
         </p>
       </div>
 
@@ -247,7 +247,7 @@ export function AgentPromptCreator({ workspaceId }: AgentPromptCreatorProps) {
           onClick={handleCreateAgent}
           loading={isSubmitting}
           disabled={!prompt.trim()}
-          variant="gradient"
+          variant="default"
           className="w-full sm:w-auto font-bold px-6"
         >
           <Bot className="mr-1.5 h-4 w-4" />

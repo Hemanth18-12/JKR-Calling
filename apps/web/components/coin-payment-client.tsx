@@ -398,8 +398,8 @@ export function CoinPaymentClient({
               {/* Submit button with double-submission protection */}
               <Button
                 type="button"
-                variant="gradient"
-                className="w-full h-11 font-bold text-sm shadow-md"
+                variant="default"
+                className="w-full h-11 font-bold text-sm shadow-sm"
                 disabled={!screenshotBase64 || uploading}
                 loading={uploading}
                 onClick={handleSubmitProof}
@@ -407,7 +407,7 @@ export function CoinPaymentClient({
                 <Upload className="h-4 w-4 mr-2" />
                 {uploading
                   ? "Submitting Payment Proof..."
-                  : `I've Paid ₹${selectedTier.price_inr} — Submit for Review`}
+                  : `I've Paid ₹${selectedTier.price_inr}: Submit for Review`}
               </Button>
 
               <div className="rounded-xl border border-border/60 bg-surface-raised/40 p-3.5 text-xs text-muted-foreground space-y-1">

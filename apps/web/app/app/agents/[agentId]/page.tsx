@@ -41,7 +41,7 @@ export default async function AgentOverviewPage({ params }: { params: { agentId:
         <Card>
           <CardHeader>
             <CardTitle>Latest version summary</CardTitle>
-            <CardDescription>Edit under Persona / Voice — publishing locks this version.</CardDescription>
+            <CardDescription>Edit under Persona / Voice. Publishing locks this version.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div>

@@ -48,7 +48,7 @@ export default async function AnalyticsPage() {
     <div className="space-y-6 p-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Analytics</h1>
-        <p className="text-muted-foreground">Computed directly from calls, outcomes, and quality evaluations — never a separate, driftable copy.</p>
+        <p className="text-muted-foreground">Computed directly from calls, outcomes, and quality evaluations: never a separate, driftable copy.</p>
       </div>
       <AnalyticsDashboard overview={overview} calls={calls} quality={quality} providers={providers} />
     </div>

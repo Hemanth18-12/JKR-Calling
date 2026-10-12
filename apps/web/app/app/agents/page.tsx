@@ -60,7 +60,7 @@ export default async function AgentsPage() {
           title="No agents yet"
           description="Create your first agent from a persona template."
           action={
-            <Link href="/app/agents/new" className={buttonVariants({ variant: "gradient" })}>
+            <Link href="/app/agents/new" className={buttonVariants({ variant: "default" })}>
               <Plus className="h-4 w-4" /> New agent
             </Link>
           }

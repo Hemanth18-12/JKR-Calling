@@ -91,8 +91,8 @@ export function NewAgentForm({
         </CardTitle>
         <CardDescription>
           {initialPrompt
-            ? "Pre-populated from your prompt description — customize any fields below before creating."
-            : "Starts from a persona template with a disclosure-compliant greeting already filled in — you can edit everything after."}
+            ? "Pre-populated from your prompt description: customize any fields below before creating."
+            : "Starts from a persona template with a disclosure-compliant greeting already filled in. You can edit everything after."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -145,7 +145,7 @@ export function NewAgentForm({
             />
           </div>
           {formError ? <p className="text-sm text-danger">{formError}</p> : null}
-          <Button type="submit" variant="gradient" className="w-full font-bold" loading={isSubmitting}>
+          <Button type="submit" variant="default" className="w-full font-bold" loading={isSubmitting}>
             Create Agent
           </Button>
         </form>

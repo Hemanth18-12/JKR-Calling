@@ -50,7 +50,7 @@ export function CreateWorkspaceForm() {
       <CardHeader>
         <CardTitle>Create your workspace</CardTitle>
         <CardDescription>
-          A workspace is one client business — its own agents, contacts, knowledge base and phone
+          A workspace is one client business: its own agents, contacts, knowledge base and phone
           numbers, fully isolated from every other workspace.
         </CardDescription>
       </CardHeader>

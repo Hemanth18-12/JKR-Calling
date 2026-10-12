@@ -62,7 +62,7 @@ const TIER_FEATURES: Record<string, string[]> = {
     "Instant UPI QR code payment activation",
   ],
   tier_250: [
-    "850 Coins (14.2 Minutes — Includes +50 Bonus Coins)",
+    "850 Coins (14.2 Minutes, Includes +50 Bonus Coins)",
     "Exact per-second billing with zero minute rounding",
     "Priority telephony routing via Twilio & Dograh",
     "Telugu, Hindi, and English conversational models",
@@ -260,8 +260,8 @@ export function CoinsWallet({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/60 pb-3">
           <div>
             <h2 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              <span>Recharge Tiers — Clean INR Pricing</span>
+              <Sparkles className="h-4 w-4 text-primary" />
+              <span>Recharge Tiers: Clean INR Pricing</span>
             </h2>
             <p className="text-xs text-muted-foreground">
               Transparent, rounded pricing packages. No awkward decimals or hidden transaction fees.
@@ -473,7 +473,7 @@ export function CoinsWallet({
                           <span className="font-mono text-foreground font-medium">
                             {tx.dialed_at
                               ? new Date(tx.dialed_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: true })
-                              : "—"}
+                              : "N/A"}
                           </span>
                         </div>
                         <div>
@@ -481,7 +481,7 @@ export function CoinsWallet({
                           <span className="font-mono text-emerald-400 font-medium">
                             {tx.answered_at
                               ? new Date(tx.answered_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: true })
-                              : "—"}
+                              : "N/A"}
                           </span>
                         </div>
                         <div>
@@ -489,7 +489,7 @@ export function CoinsWallet({
                           <span className="font-mono text-foreground font-medium">
                             {tx.ended_at
                               ? new Date(tx.ended_at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour12: true })
-                              : "—"}
+                              : "N/A"}
                           </span>
                         </div>
                         <div>

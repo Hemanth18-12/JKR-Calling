@@ -111,7 +111,7 @@ export function FollowUpsList({
               </button>
             </div>
             <p className="text-xs text-muted-foreground max-w-3xl leading-relaxed">
-              <strong>Follow-ups</strong> are automated tasks created immediately after a phone or widget call finishes — such as sending a WhatsApp appointment confirmation, dispatching a clinic brochure, scheduling a callback at a better time, or sending an SMS reminder.
+              <strong>Follow-ups</strong> are automated tasks created immediately after a phone or widget call finishes, such as sending a WhatsApp appointment confirmation, dispatching a clinic brochure, scheduling a callback at a better time, or sending an SMS reminder.
             </p>
           </div>
 

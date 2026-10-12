@@ -17,7 +17,7 @@ export default async function ContactsRoutePage() {
     <div className="space-y-6 p-6">
       <div>
         <h1 className="text-xl font-semibold">Contacts</h1>
-        <p className="text-sm text-muted-foreground">Leads and customers campaigns can call — subject to consent and suppression.</p>
+        <p className="text-sm text-muted-foreground">Leads and customers campaigns can call: subject to consent and suppression.</p>
       </div>
       <ContactsPage workspaceId={workspace.id} contacts={contacts} suppressionEntries={suppressionEntries} />
     </div>

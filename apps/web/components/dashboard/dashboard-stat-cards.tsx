@@ -3,17 +3,19 @@
 import * as React from "react";
 import { motion, useSpring, useTransform } from "framer-motion";
 import { Card, CardContent } from "@jkr/ui";
+import type { LucideIcon } from "lucide-react";
 
-interface StatItem {
+export interface StatItem {
   key: string;
   label: string;
   rawValue: number;
   formattedValue?: string;
-  icon: string;
-  accent: "primary" | "amber" | "danger";
+  icon: LucideIcon;
+  accent: "primary" | "amber" | "emerald" | "danger";
   isPct?: boolean;
   isRevenue?: boolean;
-  stagger: number;
+  badge?: string;
+  subtext?: string;
 }
 
 function AnimatedNumber({ value }: { value: number }) {
@@ -24,82 +26,61 @@ function AnimatedNumber({ value }: { value: number }) {
     spring.set(value);
   }, [spring, value]);
 
-  return <motion.span>{display}</motion.span>;
-}
-
-function InteractiveStatCard({ item }: { item: StatItem }) {
-  const cardRef = React.useRef<HTMLDivElement>(null);
-  const [mousePos, setMousePos] = React.useState({ x: 50, y: 50, active: false });
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!cardRef.current) return;
-    const rect = cardRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    setMousePos({ x, y, active: true });
-  };
-
-  const handleMouseLeave = () => {
-    setMousePos((prev) => ({ ...prev, active: false }));
-  };
-
-  const accentClasses = {
-    primary: "text-primary border-primary/30 bg-primary/10 shadow-sm shadow-primary/10",
-    amber: "text-amber-400 border-amber-500/30 bg-amber-500/10 shadow-sm shadow-amber-500/10",
-    danger: "text-danger border-danger/30 bg-danger/10 shadow-sm shadow-danger/10",
-  }[item.accent];
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35, delay: item.stagger * 0.05, ease: [0.16, 1, 0.3, 1] }}
-      whileHover={{ y: -4, transition: { duration: 0.2 } }}
-      className="perspective-1000"
-    >
-      <Card
-        ref={cardRef}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        className="relative overflow-hidden border-border/80 bg-surface/90 shadow-card-raised transition-all duration-300 hover:border-primary/40 hover:shadow-2xl"
-      >
-        {/* Specular Spotlight Glare following cursor */}
-        <div
-          className="pointer-events-none absolute inset-0 z-10 transition-opacity duration-300"
-          style={{
-            opacity: mousePos.active ? 0.35 : 0,
-            background: `radial-gradient(circle at ${mousePos.x}% ${mousePos.y}%, rgba(255, 212, 0, 0.22) 0%, transparent 65%)`,
-          }}
-          aria-hidden="true"
-        />
-
-        <CardContent className="p-5 relative z-20">
-          <div className="mb-3 flex items-center justify-between">
-            <span className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm ${accentClasses}`}>
-              {item.icon}
-            </span>
-          </div>
-          <p className="font-display text-2xl font-bold tabular-nums text-foreground flex items-center gap-1">
-            {item.isRevenue && <span className="text-amber-400">₹</span>}
-            {item.isPct ? (
-              <span>{Math.round(item.rawValue * 100)}%</span>
-            ) : (
-              <AnimatedNumber value={item.rawValue} />
-            )}
-          </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{item.label}</p>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
+  return <motion.span className="tabular-nums font-mono">{display}</motion.span>;
 }
 
 export function DashboardStatCards({ items }: { items: StatItem[] }) {
   return (
-    <div id="tour-kpi-cards" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {items.map((item) => (
-        <InteractiveStatCard key={item.key} item={item} />
-      ))}
+    <div id="tour-kpi-cards" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {items.map((item, idx) => {
+        const Icon = item.icon;
+        const accentColors = {
+          primary: "text-primary border-primary/30 bg-primary/10",
+          amber: "text-amber-400 border-amber-500/30 bg-amber-500/10",
+          emerald: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+          danger: "text-rose-400 border-rose-500/30 bg-rose-500/10",
+        }[item.accent];
+
+        return (
+          <motion.div
+            key={item.key}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, delay: idx * 0.04, ease: "easeOut" }}
+          >
+            <Card className="border-border/80 bg-surface shadow-subtle hover:border-white/20 transition-colors">
+              <CardContent className="p-4 sm:p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-medium text-muted-foreground">{item.label}</span>
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-lg border ${accentColors}`}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                </div>
+
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="font-display text-2xl font-bold text-foreground flex items-baseline gap-0.5">
+                    {item.isRevenue && <span className="text-base text-amber-400 font-sans mr-0.5">₹</span>}
+                    {item.isPct ? (
+                      <span className="font-mono tabular-nums">{Math.round(item.rawValue * 100)}%</span>
+                    ) : (
+                      <AnimatedNumber value={item.rawValue} />
+                    )}
+                  </p>
+                  {item.badge && (
+                    <span className="text-[10px] font-semibold text-muted-foreground font-mono bg-surface-raised px-1.5 py-0.5 rounded border border-border/60">
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
+
+                {item.subtext && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">{item.subtext}</p>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        );
+      })}
     </div>
   );
 }

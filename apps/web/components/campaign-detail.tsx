@@ -140,7 +140,7 @@ function DryRunPanel({ workspaceId, campaignId }: { workspaceId: string; campaig
     <Card>
       <CardHeader>
         <CardTitle>Dry-run</CardTitle>
-        <CardDescription>Runs the full safety gate for every contact — no side effects, nothing dispatched.</CardDescription>
+        <CardDescription>Runs the full safety gate for every contact: no side effects, nothing dispatched.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <Button onClick={run} loading={loading} variant="secondary">

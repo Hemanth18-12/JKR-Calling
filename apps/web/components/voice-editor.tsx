@@ -56,7 +56,7 @@ export function VoiceEditor({ workspaceId, agentId, version }: { workspaceId: st
             Voice <Badge variant="outline" className="ml-2">v{version.version_number}</Badge>
           </CardTitle>
           <CardDescription>
-            Provider: <span className="font-mono">{voice?.provider ?? "mock"}</span> — real providers (ElevenLabs,
+            Provider: <span className="font-mono">{voice?.provider ?? "mock"}</span>: real providers (ElevenLabs,
             Cartesia, Sarvam) plug in behind this same config once credentials exist (Phase 3).
           </CardDescription>
         </CardHeader>
@@ -80,15 +80,15 @@ export function VoiceEditor({ workspaceId, agentId, version }: { workspaceId: st
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <Label htmlFor="speaking_speed">Speaking speed ({"0.5"}–{"2.0"})</Label>
+                <Label htmlFor="speaking_speed">Speaking speed (0.5 to 2.0)</Label>
                 <Input id="speaking_speed" type="number" step="0.05" min="0.5" max="2.0" {...register("speaking_speed", { valueAsNumber: true })} />
               </div>
               <div>
-                <Label htmlFor="stability">Stability (0–1)</Label>
+                <Label htmlFor="stability">Stability (0 to 1)</Label>
                 <Input id="stability" type="number" step="0.05" min="0" max="1" {...register("stability", { valueAsNumber: true })} />
               </div>
               <div>
-                <Label htmlFor="expressiveness">Expressiveness (0–1)</Label>
+                <Label htmlFor="expressiveness">Expressiveness (0 to 1)</Label>
                 <Input id="expressiveness" type="number" step="0.05" min="0" max="1" {...register("expressiveness", { valueAsNumber: true })} />
               </div>
             </div>
@@ -101,20 +101,20 @@ export function VoiceEditor({ workspaceId, agentId, version }: { workspaceId: st
         </CardContent>
       </Card>
 
-      {/* 3D Voice Orb Acoustic Preview */}
-      <Card className="lg:col-span-2 border-primary/30 bg-surface/95 shadow-card-raised relative overflow-hidden flex flex-col justify-between">
+      {/* Voice Acoustic Preview */}
+      <Card className="lg:col-span-2 border-border/80 bg-surface/95 shadow-sm relative overflow-hidden flex flex-col justify-between">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
               <Sparkles className="h-4 w-4 text-primary" />
-              Live 3D Voice Preview
+              Voice Preview
             </CardTitle>
             <Badge variant={isPlaying ? "success" : "secondary"} className="text-[10px]">
               {isPlaying ? "Streaming Audio" : "Ready"}
             </Badge>
           </div>
           <CardDescription className="text-xs">
-            Real-time acoustic simulation with configured voice harmonics
+            Acoustic simulation with configured voice harmonics
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col items-center justify-center py-4">
@@ -124,7 +124,7 @@ export function VoiceEditor({ workspaceId, agentId, version }: { workspaceId: st
 
           <Button
             type="button"
-            variant={isPlaying ? "outline" : "gradient"}
+            variant={isPlaying ? "outline" : "default"}
             size="sm"
             onClick={() => {
               if (isPlaying) {

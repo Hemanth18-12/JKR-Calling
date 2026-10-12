@@ -1,4 +1,12 @@
-import { analyticsApi, callsApi, contactsApi, workspacesApi } from "@jkr/sdk";
+import {
+  agentsApi,
+  analyticsApi,
+  callsApi,
+  campaignsApi,
+  contactsApi,
+  knowledgeApi,
+  workspacesApi,
+} from "@jkr/sdk";
 import { CALL_STATUS_VARIANT } from "@jkr/contracts";
 import {
   Badge,
@@ -13,13 +21,17 @@ import {
 import {
   BarChart3,
   Bot,
-  CalendarCheck,
+  Calendar,
   CheckCircle2,
+  Clock,
+  Coins,
   ExternalLink,
   Flame,
+  Handshake,
   Megaphone,
   Phone,
   PhoneCall,
+  PhoneIncoming,
   Plus,
   Radio,
   Sparkles,
@@ -36,54 +48,10 @@ import { getServerSession } from "@/lib/session";
 import { StartTourButton } from "@/components/guided-tour";
 import { DashboardStatCards } from "@/components/dashboard/dashboard-stat-cards";
 import { DashboardLiveTicker } from "@/components/dashboard/dashboard-live-ticker";
-
-const STAT_CONFIG = [
-  { key: "total_calls", label: "Total calls", icon: "📞", accent: "primary", stagger: 1 },
-  { key: "connect_rate", label: "Connect rate", icon: "🎯", accent: "amber", stagger: 2, isPct: true },
-  { key: "appointments_booked", label: "Appointments booked", icon: "📅", accent: "amber", stagger: 3 },
-  { key: "contacts_reached", label: "Contacts reached", icon: "👥", accent: "primary", stagger: 4 },
-  { key: "active_campaigns", label: "Active campaigns", icon: "📣", accent: "primary", stagger: 5 },
-  { key: "pending_handoffs", label: "Pending handoffs", icon: "🤝", accent: "danger", stagger: 6 },
-  { key: "revenue_paise", label: "Revenue generated (₹)", icon: "₹", accent: "amber", stagger: 7, isRevenue: true },
-  { key: "revenue_event_count", label: "Revenue events", icon: "⚡", accent: "amber", stagger: 8 },
-] as const;
+import { SetupChecklist } from "@/components/dashboard/dashboard-checklist";
 
 function formatPct(value: number): string {
   return `${Math.round(value * 100)}%`;
-}
-
-function StatCard({
-  label,
-  value,
-  icon,
-  accent,
-  stagger,
-}: {
-  label: string;
-  value: string | number;
-  icon: string;
-  accent: "primary" | "amber" | "danger";
-  stagger: number;
-}) {
-  const accentClasses = {
-    primary: "text-primary border-primary/30 bg-primary/10 shadow-sm shadow-primary/10",
-    amber: "text-amber-400 border-amber-500/30 bg-amber-500/10 shadow-sm shadow-amber-500/10",
-    danger: "text-danger border-danger/30 bg-danger/10 shadow-sm shadow-danger/10",
-  }[accent];
-
-  return (
-    <Card className={`stagger-${stagger} group overflow-hidden card-3d`}>
-      <CardContent className="p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <span className={`flex h-8 w-8 items-center justify-center rounded-lg border text-sm ${accentClasses}`}>
-            {icon}
-          </span>
-        </div>
-        <p className="font-display text-2xl font-bold tabular-nums text-foreground">{value}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
-      </CardContent>
-    </Card>
-  );
 }
 
 export default async function DashboardPage() {
@@ -116,124 +84,243 @@ export default async function DashboardPage() {
     revenue_event_count: 0,
   };
 
-  const [overview, contacts, calls] = await Promise.all([
+  const [overview, contacts, calls, agents, campaigns, docs] = await Promise.all([
     analyticsApi.overview(active.id, { cookieHeader }).catch(() => defaultOverview),
     contactsApi.list(active.id, { cookieHeader }).catch(() => []),
     callsApi.list(active.id, undefined, { cookieHeader }).catch(() => []),
+    agentsApi.list(active.id, { cookieHeader }).catch(() => []),
+    campaignsApi.list(active.id, { cookieHeader }).catch(() => []),
+    knowledgeApi.listDocuments(active.id, { cookieHeader }).catch(() => []),
   ]);
 
-  const statValues: Record<string, string | number> = {
-    total_calls: overview.total_calls,
-    connect_rate: formatPct(overview.connect_rate),
-    appointments_booked: overview.appointments_booked,
-    contacts_reached: overview.contacts_reached,
-    active_campaigns: overview.active_campaigns,
-    pending_handoffs: overview.pending_handoffs,
-    revenue_paise: (overview.revenue_paise / 100).toLocaleString("en-IN"),
-    revenue_event_count: overview.revenue_event_count,
-  };
-
-  // Unique Feature #4: Cost-per-outcome ROI Calculation
+  // Cost-per-outcome ROI Calculation
   const estimatedCostPerCallPaise = 150; // ~₹1.50 per AI call
   const totalSpendRupees = Math.round((overview.total_calls * estimatedCostPerCallPaise) / 100);
   const costPerAppointment =
     overview.appointments_booked > 0
       ? `₹${Math.round(totalSpendRupees / overview.appointments_booked)}`
       : overview.total_calls > 0
-      ? `₹${totalSpendRupees} (0 bookings)`
+      ? `₹${totalSpendRupees}`
       : "₹0";
 
-  const humanCostBenchmark = "₹180–₹250";
+  const humanCostBenchmark = "₹180 to ₹250";
   const recentCalls = calls.slice(0, 8);
 
   return (
-    <div className="space-y-8 p-8">
-      {/* Page header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6 p-4 sm:p-8 max-w-7xl mx-auto">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-5">
         <div>
-          <h1 className="font-display text-2xl font-bold text-foreground">
-            Welcome back,{" "}
-            <span className="bg-gradient-to-r from-primary to-[#FFE066] bg-clip-text text-transparent font-extrabold">
-              {me.user.full_name.split(" ")[0]}
-            </span>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+            Welcome back, {me.user.full_name}
           </h1>
-          <p className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-            {active.name}
-            <Badge variant="outline" className="text-xs">
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{active.name}</span>
+            <span>·</span>
+            <span className="uppercase tracking-wider font-mono text-[11px] bg-surface-raised px-2 py-0.5 rounded border border-border/80">
               {active.role_key}
-            </Badge>
-          </p>
+            </span>
+            <span>·</span>
+            <span className="flex items-center gap-1 text-muted-foreground">
+              <Clock className="h-3 w-3" />
+              <span>IST Calling Hours Active</span>
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <StartTourButton pageId="dashboard" label="Start guided tour" variant="gradient" size="sm" />
-          <Link href="/app/campaigns" className={buttonVariants({ variant: "outline", size: "sm" })}>
-            <Megaphone className="h-3.5 w-3.5" />
-            Launch batch
+
+        <div className="flex flex-wrap items-center gap-2">
+          <StartTourButton pageId="dashboard" label="Guide Tour" variant="outline" size="sm" />
+          <Link href="/app/campaigns/new" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <Megaphone className="h-3.5 w-3.5 mr-1" />
+            New Campaign
           </Link>
-          <Link href="/app/analytics" className={buttonVariants({ variant: "outline", size: "sm" })}>
-            <BarChart3 className="h-3.5 w-3.5" />
-            Full analytics
+          <Link href="/app/agents" className={buttonVariants({ variant: "default", size: "sm" })}>
+            <Bot className="h-3.5 w-3.5 mr-1" />
+            Voice Agents
           </Link>
         </div>
       </div>
 
-      {/* Real-Time Active Ticker & Quick Actions with Live Waveform */}
-      <DashboardLiveTicker />
-
-      {/* Animated Stats Grid with Spring Count-ups and Cursor Spotlight */}
-      <DashboardStatCards
-        items={[
-          { key: "total_calls", label: "Total calls", rawValue: overview.total_calls, icon: "📞", accent: "primary", stagger: 1 },
-          { key: "connect_rate", label: "Connect rate", rawValue: overview.connect_rate, isPct: true, icon: "🎯", accent: "amber", stagger: 2 },
-          { key: "appointments_booked", label: "Appointments booked", rawValue: overview.appointments_booked, icon: "📅", accent: "amber", stagger: 3 },
-          { key: "contacts_reached", label: "Contacts reached", rawValue: overview.contacts_reached, icon: "👥", accent: "primary", stagger: 4 },
-          { key: "active_campaigns", label: "Active campaigns", rawValue: overview.active_campaigns, icon: "📣", accent: "primary", stagger: 5 },
-          { key: "pending_handoffs", label: "Pending handoffs", rawValue: overview.pending_handoffs, icon: "🤝", accent: "danger", stagger: 6 },
-          { key: "revenue_paise", label: "Revenue generated (₹)", rawValue: Math.round(overview.revenue_paise / 100), isRevenue: true, icon: "₹", accent: "amber", stagger: 7 },
-          { key: "revenue_event_count", label: "Revenue events", rawValue: overview.revenue_event_count, icon: "⚡", accent: "amber", stagger: 8 },
-        ]}
+      {/* Setup Checklist for onboarding workspaces */}
+      <SetupChecklist
+        hasAgents={agents.length > 0}
+        hasKnowledge={docs.length > 0}
+        hasCalls={calls.length > 0}
+        hasCampaigns={campaigns.length > 0}
       />
 
-      {/* Unique Feature #4: Cost-per-outcome ROI Ticker */}
-      <Card id="tour-roi-ticker" className="border-border bg-gradient-to-r from-surface to-surface-raised">
+      {/* Real-Time Live Ticker */}
+      <DashboardLiveTicker />
+
+      {/* Top Row: Outcome-First Hero KPI Cards */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="font-display text-sm font-semibold text-foreground">Outcome Performance</h2>
+            <p className="text-xs text-muted-foreground">Key conversion metrics for this workspace</p>
+          </div>
+        </div>
+
+        <DashboardStatCards
+          items={[
+            {
+              key: "appointments_booked",
+              label: "Appointments Booked",
+              rawValue: overview.appointments_booked,
+              icon: Calendar,
+              accent: "primary",
+              badge: "Goal Outcome",
+              subtext: `${costPerAppointment} estimated acquisition cost`,
+            },
+            {
+              key: "connect_rate",
+              label: "Connect Rate",
+              rawValue: overview.connect_rate,
+              isPct: true,
+              icon: PhoneIncoming,
+              accent: "emerald",
+              badge: "Telephony",
+              subtext: `${overview.connected_calls} of ${overview.total_calls} connected`,
+            },
+            {
+              key: "revenue_event_count",
+              label: "Revenue Events",
+              rawValue: overview.revenue_event_count,
+              icon: CheckCircle2,
+              accent: "amber",
+              badge: "Qualified",
+              subtext: "Conversions & verified intents",
+            },
+            {
+              key: "revenue_paise",
+              label: "Revenue Generated",
+              rawValue: Math.round(overview.revenue_paise / 100),
+              isRevenue: true,
+              icon: Coins,
+              accent: "primary",
+              badge: "Attributed",
+              subtext: "Total recorded pipeline value",
+            },
+          ]}
+        />
+      </div>
+
+      {/* Secondary Operational Metrics Grid */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-border/80 bg-surface shadow-subtle">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Total Calls Dialed</p>
+              <p className="font-display text-xl font-bold tabular-nums text-foreground mt-0.5">
+                {overview.total_calls.toLocaleString("en-IN")}
+              </p>
+            </div>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-raised border border-border text-foreground/80">
+              <Phone className="h-4 w-4" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/80 bg-surface shadow-subtle">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Contacts Reached</p>
+              <p className="font-display text-xl font-bold tabular-nums text-foreground mt-0.5">
+                {overview.contacts_reached.toLocaleString("en-IN")}
+              </p>
+            </div>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-raised border border-border text-foreground/80">
+              <Users className="h-4 w-4" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/80 bg-surface shadow-subtle">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Active Campaigns</p>
+              <p className="font-display text-xl font-bold tabular-nums text-foreground mt-0.5">
+                {overview.active_campaigns}
+              </p>
+            </div>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-raised border border-border text-foreground/80">
+              <Megaphone className="h-4 w-4" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/80 bg-surface shadow-subtle">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Pending Handoffs</p>
+              <p className="font-display text-xl font-bold tabular-nums text-foreground mt-0.5">
+                {overview.pending_handoffs}
+              </p>
+            </div>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-raised border border-border text-foreground/80">
+              <Handshake className="h-4 w-4" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Unit Economics Comparison Banner */}
+      <Card id="tour-roi-ticker" className="border-border/80 bg-surface">
         <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5">
           <div className="flex items-center gap-3.5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-400">
-              <Zap className="h-5 w-5" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-primary/20 text-primary">
+              <TrendingUp className="h-5 w-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Cost-Per-Outcome ROI Ticker</span>
-                <Badge variant="outline" className="text-[10px] text-muted-foreground">Real-time unit economics</Badge>
+                <span className="text-xs font-semibold uppercase tracking-wider text-primary">
+                  Unit Acquisition Economics
+                </span>
+                <span className="text-[10px] text-muted-foreground font-mono bg-surface-raised px-1.5 py-0.5 rounded border border-border/60">
+                  Telemetry ROI
+                </span>
               </div>
-              <p className="text-sm font-medium text-foreground">
-                Current AI Acquisition Cost: <span className="text-lg font-bold text-amber-400">{costPerAppointment}</span> / booked appointment
+              <p className="text-sm font-medium text-foreground mt-0.5">
+                AI Acquisition Cost: <strong className="text-foreground">{costPerAppointment}</strong> per booked appointment
               </p>
             </div>
           </div>
-          <div className="rounded-lg border border-border/60 bg-surface/80 px-3 py-2 text-xs text-muted-foreground">
-            <p>vs. Human BDR Cost: <strong className="text-foreground">{humanCostBenchmark}</strong></p>
-            <p className="text-[11px] text-emerald-400 font-medium">✨ Saving ~75–85% per qualified booking</p>
+          <div className="rounded-lg border border-border/80 bg-surface-raised px-3.5 py-2 text-xs text-muted-foreground">
+            <p>Human SDR Cost: <strong className="text-foreground">{humanCostBenchmark}</strong></p>
+            <p className="text-[11px] text-emerald-400 font-medium mt-0.5">Estimated 75% to 85% savings per qualified lead</p>
           </div>
         </CardContent>
       </Card>
 
-      {/* Recent Outcomes Table */}
-      <Card id="tour-recent-calls">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
+      {/* Recent Call Outcomes Table */}
+      <Card id="tour-recent-calls" className="border-border/80 bg-surface shadow-subtle">
+        <CardHeader className="flex flex-row items-center justify-between pb-3 border-b border-border/60">
           <div>
             <CardTitle className="text-base font-semibold">Recent Call Outcomes</CardTitle>
-            <CardDescription>Latest calls and real-time agent dispositions</CardDescription>
+            <CardDescription className="text-xs">Latest conversation recordings and caller dispositions</CardDescription>
           </div>
-          <Link href="/app/calls" className="text-xs font-medium text-primary hover:underline flex items-center gap-1">
-            View all calls <ExternalLink className="h-3 w-3" />
+          <Link href="/app/calls" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
+            <span>View all calls</span>
+            <ExternalLink className="h-3 w-3" />
           </Link>
         </CardHeader>
         <CardContent className="p-0">
           {recentCalls.length === 0 ? (
-            <p className="p-6 text-center text-sm text-muted-foreground">No call outcomes recorded yet.</p>
+            <div className="p-8">
+              <EmptyState
+                icon={Phone}
+                title="No call outcomes recorded yet"
+                description="Place a test call or launch a campaign to generate call dispositions."
+                action={
+                  <Link href="/app/agents" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                    <Bot className="h-3.5 w-3.5 mr-1" />
+                    Open Test Lab
+                  </Link>
+                }
+              />
+            </div>
           ) : (
-            <div className="divide-y divide-border">
+            <div className="divide-y divide-border/60">
               {recentCalls.map((c) => (
                 <Link
                   key={c.call_id}
@@ -242,36 +329,45 @@ export default async function DashboardPage() {
                 >
                   <div className="flex items-center gap-3">
                     <div
-                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
                         c.campaign_id
-                          ? "border border-primary/20 bg-primary/10 text-primary"
-                          : "border border-border bg-surface text-muted-foreground"
+                          ? "border-primary/20 bg-primary/10 text-primary"
+                          : "border-border bg-surface-raised text-muted-foreground"
                       }`}
                     >
                       {c.campaign_id ? <Megaphone className="h-3.5 w-3.5" /> : <Phone className="h-3.5 w-3.5" />}
                     </div>
                     <div>
-                      <p className="font-medium text-foreground">{c.contact_name ?? "Direct Test Call"}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {c.started_at
-                          ? new Date(c.started_at).toLocaleTimeString("en-IN", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              timeZone: "Asia/Kolkata",
-                            })
-                          : "recently"}{" "}
-                        {c.duration_seconds != null ? `· ${c.duration_seconds}s` : ""}
+                      <p className="font-medium text-foreground text-xs sm:text-sm">
+                        {c.contact_name ?? "Direct Test Call"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                        <span>
+                          {c.started_at
+                            ? new Date(c.started_at).toLocaleTimeString("en-IN", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                timeZone: "Asia/Kolkata",
+                              })
+                            : "Recently"}
+                        </span>
+                        {c.duration_seconds != null ? (
+                          <>
+                            <span>·</span>
+                            <span className="font-mono tabular-nums">{c.duration_seconds}s</span>
+                          </>
+                        ) : null}
                       </p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
                     {c.outcome_category ? (
-                      <Badge variant="outline" className="text-xs capitalize">
+                      <Badge variant="outline" className="text-[11px] capitalize">
                         {c.outcome_category.replace(/_/g, " ")}
                       </Badge>
                     ) : null}
-                    <Badge variant={CALL_STATUS_VARIANT[c.status] ?? "secondary"} className="text-xs">
+                    <Badge variant={CALL_STATUS_VARIANT[c.status] ?? "secondary"} className="text-[11px]">
                       {c.status.replace(/_/g, " ")}
                     </Badge>
                   </div>
@@ -284,4 +380,3 @@ export default async function DashboardPage() {
     </div>
   );
 }
-

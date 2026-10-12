@@ -192,7 +192,7 @@ function SearchTester({ workspaceId }: { workspaceId: string }) {
     <Card>
       <CardHeader>
         <CardTitle>Test retrieval</CardTitle>
-        <CardDescription>What an agent would find for a given customer question — approved chunks only.</CardDescription>
+        <CardDescription>What an agent would find for a given customer question: approved chunks only.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex gap-2">
@@ -205,7 +205,7 @@ function SearchTester({ workspaceId }: { workspaceId: string }) {
           results.length === 0 ? (
             <p className="text-sm text-muted-foreground">No approved knowledge yet.</p>
           ) : !aboveThreshold ? (
-            <p className="text-sm text-warning">Best match is below the confidence threshold — the agent would ask a clarifying question or offer a human callback instead of answering.</p>
+            <p className="text-sm text-warning">Best match is below the confidence threshold: the agent would ask a clarifying question or offer a human callback instead of answering.</p>
           ) : (
             <ul className="space-y-2">
               {results.map((r, i) => (
@@ -292,7 +292,7 @@ function KnowledgeGapQueue({ workspaceId }: { workspaceId: string }) {
               Knowledge Gap Auto-Tickets
             </CardTitle>
             <CardDescription className="text-xs">
-              Questions asked during calls where RAG confidence was below threshold — convert into approved answers.
+              Questions asked during calls where RAG confidence was below threshold: convert into approved answers.
             </CardDescription>
           </div>
           <Badge variant="outline" className="text-amber-400 border-amber-500/30">
@@ -303,7 +303,7 @@ function KnowledgeGapQueue({ workspaceId }: { workspaceId: string }) {
       <CardContent className="space-y-3">
         {gaps.length === 0 ? (
           <p className="p-4 text-center text-xs text-muted-foreground">
-            🎉 Zero knowledge gaps! Your AI agents are successfully answering customer questions with high confidence.
+            Zero knowledge gaps! Your AI agents are successfully answering customer questions with high confidence.
           </p>
         ) : (
           gaps.map((g) => (
@@ -341,12 +341,12 @@ function KnowledgeGapQueue({ workspaceId }: { workspaceId: string }) {
                 </Button>
                 <Button
                   size="sm"
-                  variant="gradient"
-                  className="text-xs h-7"
+                  variant="default"
+                  className="text-xs h-7 font-bold"
                   onClick={() => handleConvertToFaq(g)}
                   loading={convertingId === g.id}
                 >
-                  ✨ Convert to Approved FAQ
+                  Convert to Approved FAQ
                 </Button>
               </div>
             </div>
@@ -371,7 +371,7 @@ export function KnowledgeDocuments({ workspaceId, documents }: { workspaceId: st
           </CardHeader>
           <CardContent>
             {documents.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No knowledge yet — add your first document.</p>
+              <p className="text-sm text-muted-foreground">No knowledge yet: add your first document.</p>
             ) : (
               documents.map((d) => <DocumentRow key={d.id} workspaceId={workspaceId} document={d} />)
             )}

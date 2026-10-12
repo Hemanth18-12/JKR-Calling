@@ -126,7 +126,7 @@ export function PersonaEditor({
           <CardDescription>
             {readOnly
               ? "Published versions are immutable for auditing compliance."
-              : "Draft version — customize dialogue opening, tone, and conversation rules."}
+              : "Draft version: customize dialogue opening, tone, and conversation rules."}
           </CardDescription>
         </div>
         {readOnly ? (
@@ -350,7 +350,7 @@ export function PersonaEditor({
                 type="button"
                 loading={isSubmitting}
                 disabled={!isDirty && !hasToggleChanged}
-                variant="gradient"
+                variant="default"
                 className="font-bold"
               >
                 Save Persona &amp; Greeting Settings

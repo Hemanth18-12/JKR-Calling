@@ -19,7 +19,7 @@ export default async function AgentKnowledgeTabPage() {
         <CardHeader>
           <CardTitle>Workspace knowledge</CardTitle>
           <CardDescription>
-            Retrieval isn&apos;t scoped per agent in this pass — every agent in this workspace can draw from all approved
+            Retrieval isn&apos;t scoped per agent in this pass: every agent in this workspace can draw from all approved
             documents below. Manage content from{" "}
             <Link href="/app/knowledge/documents" className="text-primary underline-offset-4 hover:underline">
               Knowledge
