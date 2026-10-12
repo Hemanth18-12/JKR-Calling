@@ -35,7 +35,7 @@ export function UsageSummaryView({ usage }: { usage: UsageSummary }) {
       <Card>
         <CardHeader>
           <CardTitle>Usage by type</CardTitle>
-          <CardDescription>Real events logged as calls complete — see conversation_engine.py::end_session.</CardDescription>
+          <CardDescription>Verified telemetry events recorded as calls complete.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           {usage.usage_by_type.length === 0 ? (

@@ -38,7 +38,7 @@ export function NewCampaignForm({ workspaceId, agents }: { workspaceId: string; 
       </CardHeader>
       <CardContent>
         {agents.length === 0 ? (
-          <p className="text-sm text-warning">No published agent yet — publish an agent version before creating a campaign.</p>
+          <p className="text-sm text-warning">No published agent yet: publish an agent version before creating a campaign.</p>
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
@@ -96,7 +96,7 @@ export function NewCampaignForm({ workspaceId, agents }: { workspaceId: string; 
             </div>
 
             {formError ? <p className="text-sm text-danger">{formError}</p> : null}
-            <Button type="submit" className="w-full" variant="gradient" loading={isSubmitting}>
+            <Button type="submit" className="w-full font-bold" variant="default" loading={isSubmitting}>
               Create campaign
             </Button>
           </form>

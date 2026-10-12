@@ -118,7 +118,7 @@ function LiveTranscript({ workspaceId, callId }: { workspaceId: string; callId: 
             <CallPulse active={!ended} isMock={false} size="md" />
             <div className="flex flex-col">
               <span className={`text-sm font-semibold ${ended ? "text-muted-foreground" : "text-secondary"}`}>
-                {ended ? "Call ended" : "Live — streaming"}
+                {ended ? "Call ended" : "Live: streaming"}
               </span>
               {!ended && (
                 <span className="text-xs text-muted-foreground">Real-time SSE event stream</span>
@@ -138,7 +138,7 @@ function LiveTranscript({ workspaceId, callId }: { workspaceId: string; callId: 
         {isBargedIn ? (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-300 flex items-center gap-2">
             <UserCheck className="h-4 w-4 shrink-0" />
-            <span>Human Supervisor Barged In — AI agent is muted. Audio channeled to your desk.</span>
+            <span>Human Supervisor Barged In: AI agent is muted. Audio channeled to your desk.</span>
           </div>
         ) : null}
 
@@ -341,7 +341,7 @@ export function LiveCallConsole({ workspaceId, initialCalls }: { workspaceId: st
       <EmptyState
         icon={Radio}
         title="No calls currently running"
-        description="Start a Test Lab call or launch a campaign — calls will appear here automatically."
+        description="Start a Test Lab call or launch a campaign: calls will appear here automatically."
       />
     );
   }

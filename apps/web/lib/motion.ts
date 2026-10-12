@@ -1,5 +1,5 @@
 /**
- * Unified Motion System Tokens — JKR AI Calling (Prompt B)
+ * Unified Motion System Tokens: JKR AI Calling
  * Single source of truth for physical animations, durations, easing curves,
  * springs, and choreography presets across marketing and operational screens.
  */

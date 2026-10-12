@@ -39,7 +39,7 @@ function AcceptInvitationContent() {
           const me = await authApi.me();
           if (isMounted) setCurrentUser(me.user);
         } catch {
-          // Not logged in — will prompt user to log in
+          // Not logged in: will prompt user to log in
         }
       } catch (err: any) {
         if (!isMounted) return;

@@ -314,7 +314,7 @@ export default function RootLayout({ children }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <HelpCircle className="h-5 w-5 text-primary" />
-              <h3 className="font-bold text-foreground text-sm">Website Widget Studio — Frequently Asked Questions</h3>
+              <h3 className="font-bold text-foreground text-sm">Website Widget Studio: Frequently Asked Questions</h3>
             </div>
             <button
               type="button"

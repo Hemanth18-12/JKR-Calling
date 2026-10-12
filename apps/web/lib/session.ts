@@ -4,12 +4,12 @@ import { cookies } from "next/headers";
 
 /**
  * Server-side session read. Next.js server-side `fetch` does not forward the
- * browser's cookies automatically — we have to read them from the incoming
+ * browser's cookies automatically: we have to read them from the incoming
  * request via `cookies()` and pass them along explicitly. See
  * packages/sdk/src/client.ts's module docstring for the cross-port cookie
  * note (this only works because browsers scope cookies by domain, not port,
  * so a cookie `services/api` sets on :8000 is still sent by the browser to
- * :3000 — a deliberate local-dev simplification, not a production posture).
+ * :3000: a deliberate local-dev simplification, not a production posture).
  */
 export async function getServerSession() {
   const cookieHeader = cookies().toString();

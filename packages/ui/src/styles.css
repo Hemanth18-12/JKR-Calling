@@ -2,47 +2,47 @@
    (apps/web) owns the actual Tailwind build; this file just defines the CSS
    variables the shared preset (packages/config/tailwind-preset.js) reads.
 
-   JKR AI Calling design tokens — Yellow & Black 3D Redesign.
-   True deep black base (#0A0A0A), charcoal cards (#161616), vivid primary yellow
-   (#FFD400), live-only amber (#FF9F1C), and crisp off-white text (#F5F5F0). */
+   JKR AI Calling design tokens — Taste Redesign.
+   Deep near-black base (#0A0A0A), charcoal cards (#141414), confident primary yellow
+   (#FFD400), telemetry amber (#F59E0B), and crisp off-white text (#F4F4F0). */
 :root {
-  --background: 0 0% 4%; /* #0A0A0A True Deep Black */
-  --surface: 0 0% 8.6%; /* #161616 Charcoal Card Surface */
-  --surface-raised: 0 0% 12.5%; /* #202020 Raised Card / Dropdown */
-  --border: 0 0% 16%; /* #292929 Subtle Dark Border */
-  --foreground: 60 9% 96%; /* #F5F5F0 Bright Crisp Off-White */
-  --muted: 0 0% 14%; /* #242424 */
-  --muted-foreground: 60 3% 62%; /* #9E9E96 Readable Muted Body */
-  --primary: 49 100% 50%; /* #FFD400 Electric Vibrant Yellow */
-  --primary-foreground: 0 0% 4%; /* #0A0A0A Deep Black on Yellow */
-  --secondary: 35 100% 55%; /* #FF9F1C Vivid Amber (Exclusively for Live Calls / Streaming) */
+  --background: 0 0% 4%; /* #0A0A0A Deep Near-Black */
+  --surface: 0 0% 7.8%; /* #141414 Surface */
+  --surface-raised: 0 0% 11%; /* #1C1C1C Raised Surface */
+  --border: 0 0% 16%; /* #292929 Crisp Subtle Border */
+  --foreground: 60 4% 96%; /* #F5F5F0 Crisp Off-White */
+  --muted: 0 0% 13%; /* #212121 */
+  --muted-foreground: 60 2% 62%; /* #9E9E96 Legible Muted Body */
+  --primary: 49 100% 50%; /* #FFD400 Confident Vibrant Yellow */
+  --primary-foreground: 0 0% 4%; /* #0A0A0A Near Black on Yellow */
+  --secondary: 38 92% 50%; /* #F59E0B Telemetry Amber */
   --secondary-foreground: 0 0% 4%;
-  --amber: 42 100% 50%; /* #FFAA00 Warm Yellow-Amber */
-  --success: 145 65% 45%; /* #22C55E Crisp Green */
-  --warning: 42 100% 50%;
-  --danger: 355 100% 60%; /* #FF334B Vivid Danger Red */
-  --ring: 49 100% 50%; /* #FFD400 Yellow Focus Ring */
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Outfit", "Inter", sans-serif;
-  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --amber: 38 92% 50%;
+  --success: 142 71% 45%; /* #22C55E Crisp Green */
+  --warning: 38 92% 50%;
+  --danger: 0 84% 60%; /* #EF4444 Clear Danger Red */
+  --ring: 49 100% 50%; /* #FFD400 Focus Ring */
+  --font-sans: "Plus Jakarta Sans", var(--font-telugu, inherit), var(--font-devanagari, inherit), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Outfit", "Plus Jakarta Sans", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, Menlo, monospace;
 }
 
 [data-theme="light"] {
-  --background: 0 0% 98%;
-  --surface: 0 0% 100%;
-  --surface-raised: 0 0% 95%;
-  --border: 0 0% 88%;
-  --foreground: 0 0% 9%;
-  --muted: 0 0% 92%;
-  --muted-foreground: 0 0% 40%;
+  --background: 60 5% 97%; /* #F8F8F5 Warm Off-White */
+  --surface: 0 0% 100%; /* #FFFFFF Crisp Pure White */
+  --surface-raised: 60 4% 94%; /* #F0F0EB Slightly Elevated */
+  --border: 60 3% 86%; /* #DDDCD5 Warm Border */
+  --foreground: 0 0% 8%; /* #141414 Charcoal Near-Black */
+  --muted: 60 4% 92%;
+  --muted-foreground: 0 0% 42%;
   --primary: 48 100% 45%;
   --primary-foreground: 0 0% 4%;
-  --secondary: 35 100% 50%;
+  --secondary: 38 92% 48%;
   --secondary-foreground: 0 0% 100%;
-  --amber: 42 100% 48%;
-  --success: 145 65% 38%;
-  --warning: 42 100% 48%;
-  --danger: 355 90% 52%;
+  --amber: 38 92% 48%;
+  --success: 142 71% 38%;
+  --warning: 38 92% 48%;
+  --danger: 0 84% 54%;
   --ring: 48 100% 45%;
 }
 
@@ -56,47 +56,43 @@ h1, h2, h3, .font-display {
   font-family: var(--font-display);
 }
 
-/* 3D Glassmorphism & Depth Utilities */
-.card-3d {
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04);
-}
-.card-3d:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 14px 30px -4px rgba(0, 0, 0, 0.85), 0 0 20px -2px rgba(255, 212, 0, 0.15), 0 0 0 1px rgba(255, 212, 0, 0.3);
+/* Tabular numerals for money, coins, durations, numbers */
+.tabular-nums, .num, td, [data-tabular="true"] {
+  font-variant-numeric: tabular-nums;
 }
 
-.glow-yellow-sm {
-  box-shadow: 0 0 12px rgba(255, 212, 0, 0.25);
+/* Subtle Card Surfaces & Doppelrand Nesting */
+.card-doppelrand {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: hsl(var(--surface));
+  border-radius: 0.875rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
+  transition: border-color 0.15s ease;
 }
-.glow-yellow-md {
-  box-shadow: 0 0 24px rgba(255, 212, 0, 0.35);
-}
-.glow-amber-live {
-  box-shadow: 0 0 16px rgba(255, 159, 28, 0.45);
+.card-doppelrand:hover {
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
-/* Audio Waveform & Pulse Keyframes */
+/* Subtle focus ring */
+:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
+/* Audio Waveform Animations */
 @keyframes wave-bounce {
-  0%, 100% { height: 6px; }
-  50% { height: 24px; }
+  0%, 100% { height: 4px; }
+  50% { height: 20px; }
 }
 
-@keyframes pulse-ring {
-  0% { transform: scale(0.95); opacity: 0.85; }
-  50% { transform: scale(1.2); opacity: 0.2; }
-  100% { transform: scale(0.95); opacity: 0.85; }
-}
-
-@keyframes float-glow {
-  0%, 100% { transform: translateY(0px); opacity: 0.7; }
-  50% { transform: translateY(-8px); opacity: 1; }
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 .animate-wave-1 { animation: wave-bounce 1.1s ease-in-out infinite; }
 .animate-wave-2 { animation: wave-bounce 0.85s ease-in-out infinite 0.15s; }
 .animate-wave-3 { animation: wave-bounce 1.3s ease-in-out infinite 0.3s; }
 .animate-wave-4 { animation: wave-bounce 0.95s ease-in-out infinite 0.45s; }
-.animate-pulse-ring { animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
-.animate-float-glow { animation: float-glow 4s ease-in-out infinite; }
+.animate-pulse-subtle { animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 

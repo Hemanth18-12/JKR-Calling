@@ -27,10 +27,10 @@ export default async function CampaignsPage() {
         <div id="tour-campaigns-header">
           <h1 className="font-display text-2xl font-bold text-foreground">Campaigns</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Every dispatch runs the 10-check safety gate — see docs/SECURITY_AND_COMPLIANCE.md.
+            Every dispatch runs the 10-check safety compliance gate before dialing.
           </p>
         </div>
-        <Link id="tour-new-campaign-btn" href="/app/campaigns/new" className={buttonVariants({ variant: "gradient" })}>
+        <Link id="tour-new-campaign-btn" href="/app/campaigns/new" className={buttonVariants({ variant: "default", className: "font-bold" })}>
           <Plus className="h-4 w-4" /> New campaign
         </Link>
       </div>

@@ -18,7 +18,7 @@ export default async function CompliancePage() {
     <div className="space-y-6 p-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Compliance</h1>
-        <p className="text-muted-foreground">Consent, suppression, calling-hours policy, and the audit trail — see docs/SECURITY_AND_COMPLIANCE.md.</p>
+        <p className="text-muted-foreground">Consent, suppression, calling-hours policy, and immutable audit trails.</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -28,7 +28,7 @@ export default async function CompliancePage() {
           </CardHeader>
           <CardContent>
             <p className="text-lg font-semibold">
-              {overview.calling_window_start.slice(0, 5)}–{overview.calling_window_end.slice(0, 5)}
+              {overview.calling_window_start.slice(0, 5)} to {overview.calling_window_end.slice(0, 5)}
             </p>
             <p className="text-xs text-muted-foreground">{overview.timezone} · edit in Settings</p>
           </CardContent>

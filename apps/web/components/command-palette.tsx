@@ -155,7 +155,7 @@ export function CommandPalette() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: -10 }}
               transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-              className="relative w-full max-w-lg rounded-2xl border border-primary/30 bg-surface/95 p-3 shadow-2xl backdrop-blur-xl z-10 overflow-hidden"
+              className="relative w-full max-w-lg rounded-xl border border-border bg-surface p-3 shadow-dropdown z-10 overflow-hidden"
               onKeyDown={handleKeyDown}
             >
               {/* Search input header */}

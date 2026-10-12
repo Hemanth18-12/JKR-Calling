@@ -40,7 +40,7 @@ export default async function UsagePage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Usage &amp; Telemetry</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Real metered telemetry from actual voice calls — exact per-second billing with zero rounding padding.
+          Real metered telemetry from actual voice calls: exact per-second billing with zero rounding padding.
         </p>
       </div>
 

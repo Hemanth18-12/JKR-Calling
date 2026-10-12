@@ -9,11 +9,11 @@ export default function PricingPage() {
       </Link>
       <h1 className="mt-6 text-3xl font-semibold tracking-tight">Pricing</h1>
       <p className="mt-3 text-muted-foreground">
-        Usage-based pricing tied to telephony seconds, STT/LLM/TTS usage and messages — see{" "}
+        Usage-based pricing tied to telephony seconds, STT/LLM/TTS usage and messages: see{" "}
         <span className="font-mono text-sm">/app/billing</span> once inside a workspace for a live
         breakdown. Talk to us for a plan tailored to your call volume.
       </p>
-      <Link href="/signup" className={buttonVariants({ variant: "gradient", className: "mt-6" })}>
+      <Link href="/signup" className={buttonVariants({ variant: "default", className: "mt-6 font-bold" })}>
         Start free
       </Link>
     </div>
