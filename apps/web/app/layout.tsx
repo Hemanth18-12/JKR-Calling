@@ -55,8 +55,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${outfit.variable} ${plusJakarta.variable} ${notoTelugu.variable} ${notoDevanagari.variable} ${jetBrainsMono.variable}`}
+      data-theme="dark"
+      className={`dark ${outfit.variable} ${plusJakarta.variable} ${notoTelugu.variable} ${notoDevanagari.variable} ${jetBrainsMono.variable}`}
+      suppressHydrationWarning
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('jkr_theme');if(!t){t='dark';localStorage.setItem('jkr_theme','dark');}document.documentElement.setAttribute('data-theme',t);if(t==='dark'){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <Providers>{children}</Providers>
       </body>

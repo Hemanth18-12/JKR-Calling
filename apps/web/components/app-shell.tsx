@@ -181,18 +181,18 @@ export function AppShell({
   return (
     <GuidedTourProvider>
       <div className="relative flex min-h-screen bg-background overflow-x-hidden">
-        {/* Luminous Multi-Color Aurora Mesh Lighting Backdrop */}
+        {/* Sleek Dark Obsidian Ambient Lighting Backdrop */}
         <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden select-none" aria-hidden="true">
-          {/* Solar Gold/Amber Luminous Bloom (Top-Left) */}
-          <div className="absolute -top-[12%] -left-[8%] h-[640px] w-[640px] rounded-full bg-gradient-to-br from-amber-400/25 via-yellow-500/15 to-transparent blur-[120px] dark:from-amber-400/18 dark:via-yellow-500/10 animate-aurora-1" />
-          {/* Cyber Violet / Electric Indigo Bloom (Top-Right) */}
-          <div className="absolute -top-[10%] -right-[8%] h-[700px] w-[700px] rounded-full bg-gradient-to-bl from-indigo-500/22 via-purple-500/18 to-transparent blur-[130px] dark:from-indigo-500/18 dark:via-purple-600/12 animate-aurora-2" />
-          {/* Cyan / Aqua Emerald Aurora Glow (Center-Left) */}
-          <div className="absolute top-[38%] left-[20%] h-[580px] w-[580px] rounded-full bg-gradient-to-tr from-cyan-400/18 via-teal-400/12 to-transparent blur-[140px] dark:from-cyan-500/12 dark:via-emerald-500/08 animate-aurora-3" />
-          {/* Sunset Rose / Coral Radiant Orb (Bottom-Right) */}
-          <div className="absolute -bottom-[12%] right-[10%] h-[620px] w-[620px] rounded-full bg-gradient-to-tl from-rose-500/18 via-pink-500/12 to-transparent blur-[140px] dark:from-rose-500/12 dark:via-amber-500/08 animate-aurora-1" />
-          {/* Precision Micro-Dot Matrix */}
-          <div className="absolute inset-0 bg-[radial-gradient(rgba(100,116,139,0.14)_1px,transparent_1px)] dark:bg-[radial-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_40%,#000_70%,transparent_100%)] opacity-70" />
+          {/* Electric Indigo & Violet Ambient Nebula (Top-Right) */}
+          <div className="absolute -top-[15%] -right-[8%] h-[720px] w-[720px] rounded-full bg-gradient-to-bl from-indigo-500/18 via-purple-600/10 to-transparent blur-[140px] animate-aurora-2" />
+          {/* Subtle Golden Solar Shimmer (Top-Left) - refined telemetry highlight */}
+          <div className="absolute -top-[12%] -left-[8%] h-[560px] w-[560px] rounded-full bg-gradient-to-br from-amber-400/10 via-yellow-500/04 to-transparent blur-[140px] animate-aurora-1" />
+          {/* Cyber Cyan / Deep Space Horizon (Center-Left) */}
+          <div className="absolute top-[40%] left-[6%] h-[560px] w-[560px] rounded-full bg-gradient-to-tr from-cyan-500/08 via-teal-500/04 to-transparent blur-[150px] animate-aurora-3" />
+          {/* Deep Twilight Magenta Shimmer (Bottom-Right) */}
+          <div className="absolute -bottom-[12%] right-[6%] h-[620px] w-[620px] rounded-full bg-gradient-to-tl from-purple-800/12 via-indigo-600/06 to-transparent blur-[150px] animate-aurora-1" />
+          {/* High-Tech Precision Dot Matrix */}
+          <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_70%_60%_at_50%_35%,#000_65%,transparent_100%)] opacity-60" />
         </div>
 
         {/* Desktop Sidebar */}

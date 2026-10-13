@@ -10,14 +10,13 @@ export function ThemeToggle({ className }: { className?: string }) {
   React.useEffect(() => {
     setMounted(true);
     const saved = localStorage.getItem("jkr_theme");
-    if (saved === "light" || saved === "dark") {
-      setTheme(saved);
-      document.documentElement.setAttribute("data-theme", saved);
+    const current = saved === "light" || saved === "dark" ? saved : "dark";
+    setTheme(current);
+    document.documentElement.setAttribute("data-theme", current);
+    if (current === "dark") {
+      document.documentElement.classList.add("dark");
     } else {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const initial = prefersDark ? "dark" : "light";
-      setTheme(initial);
-      document.documentElement.setAttribute("data-theme", initial);
+      document.documentElement.classList.remove("dark");
     }
   }, []);
 
@@ -26,6 +25,11 @@ export function ThemeToggle({ className }: { className?: string }) {
     setTheme(next);
     localStorage.setItem("jkr_theme", next);
     document.documentElement.setAttribute("data-theme", next);
+    if (next === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
   };
 
   if (!mounted) {
