@@ -251,14 +251,18 @@ async def create_session(
         # lookup rather than widening what `db` itself is allowed to touch.
         async with user_scoped_session(user.id) as scoped:
             first_membership = await scoped.execute(
-                select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id).limit(1)
+                select(WorkspaceMember.workspace_id)
+                .where(WorkspaceMember.user_id == user.id, WorkspaceMember.status == "active")
+                .limit(1)
             )
             active_workspace_id = first_membership.scalar_one_or_none()
 
     if active_workspace_id is None:
         try:
             membership_in_db = await db.execute(
-                select(WorkspaceMember.workspace_id).where(WorkspaceMember.user_id == user.id).limit(1)
+                select(WorkspaceMember.workspace_id)
+                .where(WorkspaceMember.user_id == user.id, WorkspaceMember.status == "active")
+                .limit(1)
             )
             active_workspace_id = membership_in_db.scalar_one_or_none()
         except Exception:

@@ -11,7 +11,9 @@ import { cookies } from "next/headers";
  * so a cookie `services/api` sets on :8000 is still sent by the browser to
  * :3000: a deliberate local-dev simplification, not a production posture).
  */
-export async function getServerSession() {
+import { cache } from "react";
+
+export const getServerSession = cache(async () => {
   const cookieHeader = cookies().toString();
   if (!cookieHeader) return null;
 
@@ -24,7 +26,7 @@ export async function getServerSession() {
     console.error("Failed to read server session:", err);
     return null;
   }
-}
+});
 
 /** Convenience for every /app/* page that needs "the workspace this request
  * is operating in": resolves the session and its active (or first) workspace

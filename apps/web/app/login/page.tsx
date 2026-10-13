@@ -4,7 +4,7 @@ import { LoginRequest } from "@jkr/contracts";
 import { ApiClientError, authApi } from "@jkr/sdk";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, FieldError, Input, Label } from "@jkr/ui";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, KeyRound, Loader2, RefreshCw, ShieldCheck, User, Zap } from "lucide-react";
+import { ArrowLeft, CheckCircle2, KeyRound, Loader2, RefreshCw, ShieldCheck, User, Zap } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -51,10 +51,14 @@ export default function LoginPage() {
   }, [resendCooldown]);
 
   const [googleLoading, setGoogleLoading] = React.useState(false);
+  const [googleSuccess, setGoogleSuccess] = React.useState(false);
   const [googleLoadingText, setGoogleLoadingText] = React.useState("Connecting to Google...");
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
+      // Pre-warm backend API to mitigate Render free-tier cold-start while user views page
+      fetch("/api/v1/auth/oauth/google/url").catch(() => {});
+
       const params = new URLSearchParams(window.location.search);
       const emailParam = params.get("email");
       if (emailParam) {
@@ -76,8 +80,11 @@ export default function LoginPage() {
               setGoogleLoadingText("Authenticating session with server...");
               const user = await authApi.googleAuth({ id_token: res.idToken });
               if (user) {
-                setGoogleLoadingText("Success! Redirecting to workspace...");
-                window.location.href = getRedirectTarget();
+                setGoogleSuccess(true);
+                setGoogleLoadingText("Success! Opening workspace...");
+                setTimeout(() => {
+                  window.location.href = getRedirectTarget();
+                }, 300);
               }
             }
           })
@@ -90,10 +97,11 @@ export default function LoginPage() {
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
+    setGoogleSuccess(false);
     setGoogleLoadingText("Opening Google sign-in...");
     setFormError(null);
 
-    let wakeTimer: NodeJS.Timeout | null = null;
+    const timers: NodeJS.Timeout[] = [];
     try {
       if (!isFirebaseConfigured()) {
         const redirectUri = window.location.origin + "/auth/oauth/google/callback";
@@ -115,20 +123,33 @@ export default function LoginPage() {
         return;
       }
 
-      setGoogleLoadingText("Authenticating session with server...");
-      wakeTimer = setTimeout(() => {
-        setGoogleLoadingText("Server waking up (free tier cold-start), please hold on...");
-      }, 3500);
+      setGoogleLoadingText("Verifying session with server...");
+
+      timers.push(
+        setTimeout(() => {
+          setGoogleLoadingText("Connecting to workspace server...");
+        }, 3000)
+      );
+
+      timers.push(
+        setTimeout(() => {
+          setGoogleLoadingText("Waking up server, please hold on...");
+        }, 8000)
+      );
 
       const user = await authApi.googleAuth({ id_token: idToken });
-      if (wakeTimer) clearTimeout(wakeTimer);
+      timers.forEach(clearTimeout);
 
       if (user) {
-        setGoogleLoadingText("Success! Redirecting to workspace...");
-        window.location.href = getRedirectTarget();
+        setGoogleSuccess(true);
+        setGoogleLoadingText("Verified! Opening workspace...");
+        setTimeout(() => {
+          window.location.href = getRedirectTarget();
+        }, 300);
       }
     } catch (err: any) {
-      if (wakeTimer) clearTimeout(wakeTimer);
+      timers.forEach(clearTimeout);
+      setGoogleSuccess(false);
       if (err?.code === "auth/popup-closed-by-user") {
         // User closed the popup - clean dismiss without scary error
         setFormError(null);
@@ -151,8 +172,10 @@ export default function LoginPage() {
         );
       }
     } finally {
-      if (wakeTimer) clearTimeout(wakeTimer);
-      setGoogleLoading(false);
+      timers.forEach(clearTimeout);
+      if (!googleSuccess) {
+        setGoogleLoading(false);
+      }
     }
   };
 
@@ -261,6 +284,15 @@ export default function LoginPage() {
             aria-hidden="true"
           />
 
+          {/* Smooth full-card overlay on successful login navigation */}
+          {googleSuccess && (
+            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-background/95 backdrop-blur-sm p-6 text-center animate-in fade-in duration-200">
+              <Loader2 className="h-7 w-7 animate-spin text-primary mb-3" />
+              <p className="font-semibold text-foreground text-sm">Signed In Successfully</p>
+              <p className="text-xs text-muted-foreground mt-1">Opening your workspace...</p>
+            </div>
+          )}
+
           {/* Two-Option Toggle: User Login vs Admin Login */}
           <div className="p-3 pb-0 relative z-10">
             <div className="grid grid-cols-2 p-1 bg-surface-raised border border-border/80 rounded-xl text-xs font-semibold">
@@ -293,10 +325,12 @@ export default function LoginPage() {
                   type="button"
                   variant="outline"
                   onClick={handleGoogleSignIn}
-                  disabled={googleLoading}
+                  disabled={googleLoading || googleSuccess}
                   className="w-full flex items-center justify-center gap-2.5 h-10 border-border/80 bg-background/50 hover:bg-muted font-medium text-foreground transition-all shadow-sm mb-4"
                 >
-                  {googleLoading ? (
+                  {googleSuccess ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500 animate-in fade-in" />
+                  ) : googleLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   ) : (
                     <svg className="h-4 w-4" viewBox="0 0 24 24">
@@ -318,7 +352,7 @@ export default function LoginPage() {
                       />
                     </svg>
                   )}
-                  <span className="text-xs sm:text-sm truncate">
+                  <span className="text-xs sm:text-sm font-medium">
                     {googleLoading ? googleLoadingText : "Continue with Google"}
                   </span>
                 </Button>
