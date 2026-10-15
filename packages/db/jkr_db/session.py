@@ -101,11 +101,17 @@ def get_engine() -> AsyncEngine:
         if "sslmode=" in database_url and "asyncpg" in database_url:
             database_url = database_url.replace("sslmode=", "ssl=")
 
+        pool_size = int(os.environ.get("DATABASE_POOL_SIZE", "15"))
+        max_overflow = int(os.environ.get("DATABASE_MAX_OVERFLOW", "10"))
+        pool_timeout = float(os.environ.get("DATABASE_POOL_TIMEOUT", "8.0"))
+        pool_recycle = int(os.environ.get("DATABASE_POOL_RECYCLE", "300"))
+
         engine_kwargs: dict[str, Any] = {
             "pool_pre_ping": True,
-            "pool_recycle": 60,
-            "pool_size": 10,
-            "max_overflow": 10,
+            "pool_recycle": pool_recycle,
+            "pool_size": pool_size,
+            "max_overflow": max_overflow,
+            "pool_timeout": pool_timeout,
             "echo": bool(os.environ.get("SQL_ECHO")),
         }
         if "asyncpg" in database_url:

@@ -1,0 +1,23 @@
+name: Render Free Tier Keep-Alive
+
+on:
+  schedule:
+    # Trigger every 10 minutes to prevent Render free-tier instance from sleeping (15-min idle timeout)
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping API Health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Keep-Alive Ping to Render API
+        run: |
+          START_TIME=$(date +%s%N)
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 https://jkr-api.onrender.com/health)
+          END_TIME=$(date +%s%N)
+          DURATION_MS=$(( (END_TIME - START_TIME) / 1000000 ))
+          echo "Render /health pinged: HTTP $HTTP_STATUS in ${DURATION_MS}ms"
+          if [ "$HTTP_STATUS" -ne 200 ]; then
+            echo "::warning ::Render API returned non-200 status code: $HTTP_STATUS"
+          fi

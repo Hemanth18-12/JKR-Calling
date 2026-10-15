@@ -16,6 +16,7 @@ import {
   CardTitle,
   FieldError,
   Input,
+  PasswordInput,
   Label,
   useToast,
 } from "@jkr/ui";
@@ -100,7 +101,7 @@ function NewWebhookForm({ workspaceId }: { workspaceId: string }) {
           </div>
           <div>
             <Label htmlFor="webhook-secret" className="text-xs font-medium">Signing Secret</Label>
-            <Input id="webhook-secret" type="password" placeholder="At least 8 characters" className="mt-1" {...register("secret")} />
+            <PasswordInput id="webhook-secret" placeholder="At least 8 characters" className="mt-1" {...register("secret")} />
             <FieldError>{errors.secret?.message}</FieldError>
           </div>
           {formError ? <p className="text-xs text-danger">{formError}</p> : null}
@@ -869,9 +870,8 @@ export function IntegrationsPage({
                   <>
                     <div>
                       <Label htmlFor="hubspot-token" className="text-xs font-medium">HubSpot Private App Access Token</Label>
-                      <Input
+                      <PasswordInput
                         id="hubspot-token"
-                        type="password"
                         placeholder="pat-na1-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                         value={hubspotToken}
                         onChange={(e) => setHubspotToken(e.target.value)}
@@ -970,9 +970,8 @@ export function IntegrationsPage({
                 </div>
                 <div>
                   <Label htmlFor="meta-token" className="text-xs font-medium">Page Access Token</Label>
-                  <Input
+                  <PasswordInput
                     id="meta-token"
-                    type="password"
                     placeholder="EAABwz..."
                     value={metaToken}
                     onChange={(e) => setMetaToken(e.target.value)}
@@ -1045,9 +1044,8 @@ export function IntegrationsPage({
                 </div>
                 <div>
                   <Label htmlFor="wa-token" className="text-xs font-medium">System User Access Token</Label>
-                  <Input
+                  <PasswordInput
                     id="wa-token"
-                    type="password"
                     placeholder="EAABwz..."
                     value={waToken}
                     onChange={(e) => setWaToken(e.target.value)}
@@ -1100,9 +1098,8 @@ export function IntegrationsPage({
                 </div>
                 <div>
                   <Label htmlFor="n8n-key" className="text-xs font-medium">API Key (Optional)</Label>
-                  <Input
+                  <PasswordInput
                     id="n8n-key"
-                    type="password"
                     placeholder="n8n_api_key_..."
                     value={n8nKey}
                     onChange={(e) => setN8nKey(e.target.value)}

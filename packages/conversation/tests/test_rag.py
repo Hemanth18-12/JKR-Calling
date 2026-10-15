@@ -11,9 +11,11 @@ from __future__ import annotations
 import os
 import uuid
 
+from dotenv import find_dotenv, load_dotenv
 import pytest
 import pytest_asyncio
 
+load_dotenv(find_dotenv(usecwd=True), override=True)
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://jkr_app:jkr_app_local_dev@localhost:55432/jkr_ai_calling")
 
 from jkr_conversation.rag import first_sentence, looks_like_a_question  # noqa: E402
@@ -157,3 +159,110 @@ async def test_used_in_response_is_false_on_a_miss():
         assert event.used_in_response is False
     finally:
         await _cleanup_workspace(workspace_id)
+
+
+@pytest.mark.asyncio
+async def test_agent_scoping_isolation():
+    """Requirement: Agent A cannot access Agent B's private knowledge,
+    while workspace-scoped knowledge is accessible to all agents."""
+    from jkr_conversation.rag import search_knowledge
+    from jkr_db.embeddings import embed_text
+    from jkr_db.models.agents import Agent
+    from jkr_db.models.knowledge import (
+        KnowledgeChunk,
+        KnowledgeDocument,
+        KnowledgeDocumentAgent,
+        KnowledgeDocumentVersion,
+    )
+    from jkr_db.models.tenancy import Organization, Workspace
+    from jkr_db.session import get_session, workspace_scoped_session
+
+    workspace_id = uuid.uuid4()
+    agent_a_id = uuid.uuid4()
+    agent_b_id = uuid.uuid4()
+
+    async with get_session() as db:
+        org = Organization(name="Scoping Org")
+        db.add(org)
+        await db.flush()
+        db.add(Workspace(id=workspace_id, organization_id=org.id, name="Scoping WS", slug=f"scoping-ws-{workspace_id}"))
+        await db.flush()
+
+    try:
+        async with workspace_scoped_session(workspace_id) as db:
+            # Create Agent A and Agent B
+            db.add(Agent(id=agent_a_id, workspace_id=workspace_id, name="Agent A (Crazy Cloths)", business_identity="Crazy Cloths"))
+            db.add(Agent(id=agent_b_id, workspace_id=workspace_id, name="Agent B (Dental Clinic)", business_identity="Smile Dental"))
+            await db.flush()
+
+            # 1. Document A: Scoped strictly to Agent A
+            doc_a = KnowledgeDocument(
+                workspace_id=workspace_id, source_type="manual_faq", title="Crazy Cloths Lehengas",
+                approval_state="approved", scope="agent", language="en",
+            )
+            db.add(doc_a)
+            await db.flush()
+            db.add(KnowledgeDocumentAgent(workspace_id=workspace_id, document_id=doc_a.id, agent_id=agent_a_id))
+            ver_a = KnowledgeDocumentVersion(workspace_id=workspace_id, document_id=doc_a.id, version_number=1)
+            db.add(ver_a)
+            await db.flush()
+            text_a = "Crazy Cloths bridal lehenga prices start from 12500 rupees up to 85000 rupees."
+            emb_a = await embed_text(text_a)
+            db.add(KnowledgeChunk(
+                workspace_id=workspace_id, document_id=doc_a.id, document_version_id=ver_a.id,
+                chunk_index=0, text=text_a, embedding=emb_a, approval_state="approved", language="en",
+            ))
+
+            # 2. Document W: Scoped workspace-wide (all agents)
+            doc_w = KnowledgeDocument(
+                workspace_id=workspace_id, source_type="manual_faq", title="General Workspace Policy",
+                approval_state="approved", scope="workspace", language="en",
+            )
+            db.add(doc_w)
+            await db.flush()
+            ver_w = KnowledgeDocumentVersion(workspace_id=workspace_id, document_id=doc_w.id, version_number=1)
+            db.add(ver_w)
+            await db.flush()
+            text_w = "Workspace office address is Plot 42 Road No 36 Jubilee Hills Hyderabad."
+            emb_w = await embed_text(text_w)
+            db.add(KnowledgeChunk(
+                workspace_id=workspace_id, document_id=doc_w.id, document_version_id=ver_w.id,
+                chunk_index=0, text=text_w, embedding=emb_w, approval_state="approved", language="en",
+            ))
+            await db.flush()
+
+            # Proof Step 1: Agent A queries Agent A's private doc -> SUCCESS
+            chunks_a, hit_a = await search_knowledge(
+                db, workspace_id=workspace_id, query=text_a, agent_id=agent_a_id
+            )
+            assert hit_a is True
+            assert chunks_a and "Crazy Cloths" in chunks_a[0].text
+
+            # Proof Step 2: Agent B queries Agent A's private doc -> ISOLATED (CANNOT RETRIEVE)
+            chunks_b, hit_b = await search_knowledge(
+                db, workspace_id=workspace_id, query=text_a, agent_id=agent_b_id
+            )
+            # Agent B must NOT receive Document A!
+            retrieved_titles = [c.document_title for c in chunks_b]
+            assert "Crazy Cloths Lehengas" not in retrieved_titles
+
+            # Proof Step 3: Both Agent A and Agent B can retrieve workspace-wide doc
+            chunks_w_a, hit_w_a = await search_knowledge(
+                db, workspace_id=workspace_id, query=text_w, agent_id=agent_a_id
+            )
+            assert hit_w_a is True
+            assert chunks_w_a and "Jubilee Hills" in chunks_w_a[0].text
+
+            chunks_w_b, hit_w_b = await search_knowledge(
+                db, workspace_id=workspace_id, query=text_w, agent_id=agent_b_id
+            )
+            assert hit_w_b is True
+            assert chunks_w_b and "Jubilee Hills" in chunks_w_b[0].text
+
+    finally:
+        async with workspace_scoped_session(workspace_id) as db:
+            from sqlalchemy import text
+            for table in ("knowledge_document_agents", "retrieval_events", "knowledge_chunks", "knowledge_document_versions", "knowledge_documents", "agents"):
+                await db.execute(text(f"DELETE FROM {table} WHERE workspace_id = :wsid"), {"wsid": str(workspace_id)})
+        await _cleanup_workspace(workspace_id)
+

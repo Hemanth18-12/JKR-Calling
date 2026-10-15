@@ -32,6 +32,7 @@ class KnowledgeDocument(Base, TenantMixin):
     source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     storage_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     approval_state: Mapped[ApprovalState] = mapped_column(String(16), nullable=False, default=ApprovalState.DRAFT)
+    scope: Mapped[str] = mapped_column(String(24), nullable=False, default="workspace")
     language: Mapped[LanguageCode | None] = mapped_column(String(16), nullable=True)
     sensitivity: Mapped[str] = mapped_column(String(24), nullable=False, default="normal")
     expiry_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -45,6 +46,17 @@ class KnowledgeDocument(Base, TenantMixin):
             name="fk_knowledge_documents_current_version",
         ),
         nullable=True,
+    )
+
+
+class KnowledgeDocumentAgent(Base, TenantMixin):
+    __tablename__ = "knowledge_document_agents"
+
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("knowledge_documents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("agents.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
 

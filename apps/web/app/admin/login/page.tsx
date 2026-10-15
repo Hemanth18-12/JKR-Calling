@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
   Input,
+  PasswordInput,
   Label,
 } from "@jkr/ui";
 import {
@@ -253,9 +254,8 @@ function AdminLoginForm() {
                     <Label htmlFor="admin-password" className="text-xs font-medium">
                       Password
                     </Label>
-                    <Input
+                    <PasswordInput
                       id="admin-password"
-                      type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••••••"

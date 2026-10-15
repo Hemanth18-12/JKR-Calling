@@ -154,6 +154,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 @app.get("/health")
+@app.get("/api/v1/health")
 async def health() -> dict:
     has_brevo = bool(os.getenv("BREVO_API_KEY"))
     has_resend = bool(os.getenv("RESEND_API_KEY"))

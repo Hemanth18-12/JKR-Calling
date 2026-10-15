@@ -1,4 +1,4 @@
-import { knowledgeApi } from "@jkr/sdk";
+import { agentsApi, knowledgeApi } from "@jkr/sdk";
 import { notFound } from "next/navigation";
 
 import { KnowledgeDocuments } from "@/components/knowledge-documents";
@@ -8,7 +8,10 @@ export default async function KnowledgeDocumentsPage() {
   const { workspace, cookieHeader } = await getActiveWorkspaceContext();
   if (!workspace) notFound();
 
-  const documents = await knowledgeApi.listDocuments(workspace.id, { cookieHeader });
+  const [documents, agents] = await Promise.all([
+    knowledgeApi.listDocuments(workspace.id, undefined, { cookieHeader }),
+    agentsApi.list(workspace.id, { cookieHeader }),
+  ]);
 
   return (
     <div className="space-y-6 p-6">
@@ -18,7 +21,11 @@ export default async function KnowledgeDocumentsPage() {
           Content agents can draw from during calls. Everything needs review before it&apos;s used in a live conversation.
         </p>
       </div>
-      <KnowledgeDocuments workspaceId={workspace.id} documents={documents} />
+      <KnowledgeDocuments
+        workspaceId={workspace.id}
+        documents={documents}
+        agents={agents}
+      />
     </div>
   );
 }

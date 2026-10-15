@@ -18,6 +18,7 @@ from app.modules.identity.schemas import (
     GoogleOAuthUrlResponse,
     FirebaseAuthRequest,
     LoginRequest,
+    RequestOtpLoginRequest,
     MeResponse,
     OtpRequiredResponse,
     OtpResentResponse,
@@ -398,11 +399,46 @@ async def firebase_google_auth(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.error("[GOOGLE AUTH ERROR] Failure during Google authentication: %s", exc, exc_info=True)
+        ref_id = f"AUTH-{uuid.uuid4().hex[:6].upper()}"
+        logger.error("[GOOGLE AUTH ERROR %s] Failure during Google authentication: %s", ref_id, exc, exc_info=True)
+        # Never leak raw QueuePool or SQL errors to client
+        is_db_err = "QueuePool" in str(exc) or "database" in str(exc).lower() or "connection timed out" in str(exc).lower()
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Google authentication failed: {exc}",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE if is_db_err else status.HTTP_400_BAD_REQUEST,
+            detail=f"Google authentication could not be completed right now. Please try again or log in with Email OTP. (Ref: {ref_id})",
         ) from exc
+
+
+@router.post("/request-otp", response_model=OtpRequiredResponse, dependencies=[Depends(_auth_rate_limit)])
+async def request_otp_login(
+    payload: RequestOtpLoginRequest,
+    db: AsyncSession = Depends(platform_db),
+    settings: Settings = Depends(get_settings),
+) -> OtpRequiredResponse:
+    clean_email = payload.email.lower().strip()
+    result = await db.execute(select(User).where(User.email == clean_email))
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "No account found with this email. Please check your spelling or sign up first.",
+        )
+    if not user.is_active:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account is disabled. Please contact support.")
+
+    await service.issue_verification_otp(
+        db,
+        email=clean_email,
+        purpose="login",
+        settings=settings,
+        metadata={"user_id": str(user.id)},
+    )
+    return OtpRequiredResponse(
+        status="otp_required",
+        email=clean_email,
+        purpose="login",
+        message="A 6-digit verification code has been sent to your email.",
+    )
 
 
 @router.post("/google", response_model=UserOut, dependencies=[Depends(_auth_rate_limit)])

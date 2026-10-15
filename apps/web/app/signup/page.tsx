@@ -2,9 +2,9 @@
 
 import { SignupRequest } from "@jkr/contracts";
 import { ApiClientError, authApi } from "@jkr/sdk";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, FieldError, Input, Label } from "@jkr/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, FieldError, Input, PasswordInput, Label } from "@jkr/ui";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, CheckCircle2, Loader2, MailCheck, RefreshCw, ShieldCheck, Zap } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Loader2, MailCheck, RefreshCw, ShieldCheck, Zap, Clock } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -52,11 +52,49 @@ export default function SignupPage() {
 
   const [googleLoading, setGoogleLoading] = React.useState(false);
   const [googleSuccess, setGoogleSuccess] = React.useState(false);
-  const [googleLoadingText, setGoogleLoadingText] = React.useState("Connecting to Google...");
+  const [timerSeconds, setTimerSeconds] = React.useState(0);
+  const [stepLabel, setStepLabel] = React.useState("Opening Google sign-up...");
+  const [isOverTime, setIsOverTime] = React.useState(false);
+  const timerIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  React.useEffect(() => {
+    if (googleLoading) {
+      setTimerSeconds(0);
+      setIsOverTime(false);
+      setStepLabel("Opening Google sign-up...");
+      timerIntervalRef.current = setInterval(() => {
+        setTimerSeconds((prev) => {
+          const next = prev + 1;
+          if (next >= 10) {
+            setIsOverTime(true);
+            setStepLabel("Almost there...");
+          } else if (next >= 7) {
+            setStepLabel("Almost there...");
+          } else if (next >= 4) {
+            setStepLabel("Setting up your workspace...");
+          } else if (next >= 2) {
+            setStepLabel("Verifying your account...");
+          }
+          return next;
+        });
+      }, 1000);
+    } else {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
+  }, [googleLoading]);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
-      // Pre-warm backend API to mitigate Render free-tier cold-start while user views page
+      fetch("/health", { keepalive: true }).catch(() => {});
+      fetch("/api/v1/health", { keepalive: true }).catch(() => {});
       fetch("/api/v1/auth/oauth/google/url").catch(() => {});
 
       const params = new URLSearchParams(window.location.search);
@@ -77,11 +115,11 @@ export default function SignupPage() {
           .then(async (res) => {
             if (res?.idToken) {
               setGoogleLoading(true);
-              setGoogleLoadingText("Authenticating session with server...");
+              setStepLabel("Authenticating session with server...");
               const user = await authApi.googleAuth({ id_token: res.idToken });
               if (user) {
                 setGoogleSuccess(true);
-                setGoogleLoadingText("Success! Opening workspace...");
+                setStepLabel("Success! Opening workspace...");
                 setTimeout(() => {
                   window.location.href = getRedirectTarget();
                 }, 300);
@@ -98,10 +136,9 @@ export default function SignupPage() {
   const handleGoogleSignUp = async () => {
     setGoogleLoading(true);
     setGoogleSuccess(false);
-    setGoogleLoadingText("Opening Google sign-up...");
+    setIsOverTime(false);
     setFormError(null);
 
-    const timers: NodeJS.Timeout[] = [];
     try {
       if (!isFirebaseConfigured()) {
         const redirectUri = window.location.origin + "/auth/oauth/google/callback";
@@ -123,35 +160,20 @@ export default function SignupPage() {
         return;
       }
 
-      setGoogleLoadingText("Verifying session with server...");
-
-      timers.push(
-        setTimeout(() => {
-          setGoogleLoadingText("Connecting to workspace server...");
-        }, 3000)
-      );
-
-      timers.push(
-        setTimeout(() => {
-          setGoogleLoadingText("Waking up server, please hold on...");
-        }, 8000)
-      );
+      setStepLabel("Verifying session with server...");
 
       const user = await authApi.googleAuth({ id_token: idToken });
-      timers.forEach(clearTimeout);
 
       if (user) {
         setGoogleSuccess(true);
-        setGoogleLoadingText("Verified! Opening workspace...");
+        setStepLabel("Verified! Opening workspace...");
         setTimeout(() => {
           window.location.href = getRedirectTarget();
         }, 300);
       }
     } catch (err: any) {
-      timers.forEach(clearTimeout);
       setGoogleSuccess(false);
       if (err?.code === "auth/popup-closed-by-user") {
-        // User closed the popup - clean dismiss without scary error
         setFormError(null);
       } else if (err?.code === "auth/cancelled-popup-request") {
         // Ignored duplicate
@@ -165,14 +187,14 @@ export default function SignupPage() {
       } else if (err?.code === "auth/network-request-failed") {
         setFormError("Network error connecting to Google. Please check your connection.");
       } else {
-        setFormError(
-          err instanceof ApiClientError
-            ? err.message
-            : (err?.message || "Google authentication failed. Please try again.")
-        );
+        const rawMsg = err instanceof ApiClientError ? err.message : (err?.message || "");
+        if (rawMsg.includes("QueuePool") || rawMsg.includes("timeout") || rawMsg.includes("timed out")) {
+          setFormError("Server is experiencing high traffic. Please try again or sign up with email below.");
+        } else {
+          setFormError(rawMsg || "Google authentication could not be completed. Please try again.");
+        }
       }
     } finally {
-      timers.forEach(clearTimeout);
       if (!googleSuccess) {
         setGoogleLoading(false);
       }
@@ -307,6 +329,63 @@ export default function SignupPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
+                {/* 10-Second Progress Card when signing up */}
+                {googleLoading && (
+                  <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-4 shadow-sm animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        <span className="text-xs font-semibold text-foreground">Setting up your account…</span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                        {timerSeconds}s / 10s
+                      </span>
+                    </div>
+
+                    {/* Live Progress Bar */}
+                    <div className="w-full bg-border/60 h-2 rounded-full overflow-hidden mb-2.5">
+                      <div
+                        className="bg-primary h-full transition-all duration-500 ease-out rounded-full"
+                        style={{
+                          width: `${Math.min(96, Math.max(15, timerSeconds * 10))}%`,
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{stepLabel}</span>
+                      <span className="text-[11px]">Takes up to 10s</span>
+                    </div>
+
+                    {timerSeconds >= 5 && !isOverTime && (
+                      <p className="mt-2 text-[11px] text-amber-500/90 bg-amber-500/10 rounded-md p-1.5 flex items-center gap-1.5 animate-in fade-in">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        Waking up our servers, first login can take a few seconds.
+                      </p>
+                    )}
+
+                    {isOverTime && (
+                      <div className="mt-3 pt-3 border-t border-border/80 text-xs animate-in fade-in">
+                        <p className="text-muted-foreground mb-2">
+                          Signing in is taking longer than usual.
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={handleGoogleSignUp}
+                            className="h-8 text-xs font-medium"
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Try again
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <Button
                   type="button"
                   variant="outline"
@@ -339,7 +418,7 @@ export default function SignupPage() {
                     </svg>
                   )}
                   <span className="text-xs sm:text-sm font-medium">
-                    {googleLoading ? googleLoadingText : "Continue with Google"}
+                    {googleLoading ? stepLabel : "Continue with Google"}
                   </span>
                 </Button>
 
@@ -365,9 +444,8 @@ export default function SignupPage() {
                   </div>
                   <div>
                     <Label htmlFor="password">Password</Label>
-                    <Input
+                    <PasswordInput
                       id="password"
-                      type="password"
                       autoComplete="new-password"
                       className="mt-1.5"
                       {...register("password")}

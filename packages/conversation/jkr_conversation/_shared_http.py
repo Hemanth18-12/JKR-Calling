@@ -16,6 +16,15 @@ _shared_client: httpx.AsyncClient | None = None
 
 def get_shared_http_client(*, timeout: float = 15.0) -> httpx.AsyncClient:
     global _shared_client
-    if _shared_client is None:
+    import asyncio
+
+    loop = None
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+
+    if _shared_client is None or _shared_client.is_closed or getattr(_shared_client, "_loop", None) not in (None, loop):
         _shared_client = httpx.AsyncClient(timeout=timeout)
+        setattr(_shared_client, "_loop", loop)
     return _shared_client

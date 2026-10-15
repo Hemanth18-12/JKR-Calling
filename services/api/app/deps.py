@@ -30,25 +30,35 @@ class AuthContext:
 
 
 async def get_auth_context(
-    db: AsyncSession = Depends(platform_db),
     jkr_session: str | None = Cookie(default=None),
 ) -> AuthContext:
     if not jkr_session:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
     token_hash = hash_session_token(jkr_session)
-    result = await db.execute(select(SessionModel).where(SessionModel.token_hash == token_hash))
-    session_row = result.scalar_one_or_none()
+    async with user_scoped_session(uuid.UUID("00000000-0000-0000-0000-000000000000")) if False else platform_db() as db:
+        pass
 
-    if session_row is None or session_row.revoked_at is not None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session not found or revoked")
-    if session_row.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired")
+    # Use a short-lived platform session that is closed immediately after lookup
+    from jkr_db.session import get_session
 
-    user_result = await db.execute(select(User).where(User.id == session_row.user_id))
-    user = user_result.scalar_one_or_none()
-    if user is None or not user.is_active:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
+    async with get_session() as db:
+        result = await db.execute(select(SessionModel).where(SessionModel.token_hash == token_hash))
+        session_row = result.scalar_one_or_none()
+
+        if session_row is None or session_row.revoked_at is not None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session not found or revoked")
+        if session_row.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Session expired")
+
+        user_result = await db.execute(select(User).where(User.id == session_row.user_id))
+        user = user_result.scalar_one_or_none()
+        if user is None or not user.is_active:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
+
+        # Expunge user and session so they are safe to use outside this context block
+        db.expunge(session_row)
+        db.expunge(user)
 
     return AuthContext(user=user, session=session_row)
 
@@ -66,7 +76,6 @@ async def user_db(auth: AuthContext = Depends(get_auth_context)) -> AsyncIterato
 async def with_workspace(
     workspace_id: uuid.UUID | None = Query(default=None),
     auth: AuthContext = Depends(get_auth_context),
-    db: AsyncSession = Depends(user_db),
 ) -> AuthContext:
     """Resolves the active workspace (explicit ?workspace_id= query param, or
     the session's remembered active workspace), loads the caller's membership,
@@ -77,26 +86,29 @@ async def with_workspace(
     if resolved_id is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No workspace selected")
 
-    result = await db.execute(
-        select(WorkspaceMember, Role)
-        .join(Role, Role.id == WorkspaceMember.role_id)
-        .where(WorkspaceMember.workspace_id == resolved_id, WorkspaceMember.user_id == auth.user.id)
-    )
-    row = result.first()
-    if row is None:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this workspace")
-    membership, role = row
-    if membership.status != "active":
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Membership is not active")
+    async with user_scoped_session(auth.user.id) as db:
+        result = await db.execute(
+            select(WorkspaceMember, Role)
+            .join(Role, Role.id == WorkspaceMember.role_id)
+            .where(WorkspaceMember.workspace_id == resolved_id, WorkspaceMember.user_id == auth.user.id)
+        )
+        row = result.first()
+        if row is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not a member of this workspace")
+        membership, role = row
+        if membership.status != "active":
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Membership is not active")
 
-    perm_result = await db.execute(
-        select(Permission.key)
-        .join(RolePermission, RolePermission.permission_id == Permission.id)
-        .where(RolePermission.role_id == role.id)
-    )
+        perm_result = await db.execute(
+            select(Permission.key)
+            .join(RolePermission, RolePermission.permission_id == Permission.id)
+            .where(RolePermission.role_id == role.id)
+        )
+        perms = {row[0] for row in perm_result.all()}
+
     auth.workspace_id = resolved_id
     auth.role_key = role.key
-    auth.permissions = {row[0] for row in perm_result.all()}
+    auth.permissions = perms
     return auth
 
 

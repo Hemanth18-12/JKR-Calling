@@ -50,6 +50,15 @@ class LoginRequest(BaseModel):
         return _validate_and_normalize_email(v, check_mx=True)
 
 
+class RequestOtpLoginRequest(BaseModel):
+    email: str = Field(description="User email address")
+
+    @field_validator("email")
+    @classmethod
+    def validate_request_otp_email(cls, v: str) -> str:
+        return _validate_and_normalize_email(v, check_mx=True)
+
+
 class VerifyOtpRequest(BaseModel):
     email: str = Field(description="User email address")
     purpose: str = Field(pattern=r"^(signup|login)$")

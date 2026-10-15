@@ -2,9 +2,9 @@
 
 import { LoginRequest } from "@jkr/contracts";
 import { ApiClientError, authApi } from "@jkr/sdk";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, FieldError, Input, Label } from "@jkr/ui";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, FieldError, Input, PasswordInput, Label } from "@jkr/ui";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeft, CheckCircle2, KeyRound, Loader2, RefreshCw, ShieldCheck, User, Zap } from "lucide-react";
+import { ArrowLeft, CheckCircle2, KeyRound, Loader2, RefreshCw, ShieldCheck, User, Zap, Clock, AlertCircle, Mail } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -15,18 +15,21 @@ import { signInWithGoogle, checkRedirectResult, isFirebaseConfigured } from "@/l
 export default function LoginPage() {
   const router = useRouter();
   const [step, setStep] = React.useState<"form" | "otp">("form");
+  const [loginMode, setLoginMode] = React.useState<"password" | "otp_only">("password");
   const [pendingEmail, setPendingEmail] = React.useState<string>("");
   const [otpCode, setOtpCode] = React.useState("");
   const [otpError, setOtpError] = React.useState<string | null>(null);
   const [otpVerifying, setOtpVerifying] = React.useState(false);
   const [resendCooldown, setResendCooldown] = React.useState(0);
   const [resending, setResending] = React.useState(false);
+  const [otpRequestLoading, setOtpRequestLoading] = React.useState(false);
 
   const [formError, setFormError] = React.useState<string | null>(null);
   const {
     register,
     handleSubmit,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<LoginRequest>({ resolver: zodResolver(LoginRequest) });
 
@@ -50,13 +53,54 @@ export default function LoginPage() {
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
+  // Google Login & Timer state
   const [googleLoading, setGoogleLoading] = React.useState(false);
   const [googleSuccess, setGoogleSuccess] = React.useState(false);
-  const [googleLoadingText, setGoogleLoadingText] = React.useState("Connecting to Google...");
+  const [timerSeconds, setTimerSeconds] = React.useState(0);
+  const [stepLabel, setStepLabel] = React.useState("Opening Google...");
+  const [isOverTime, setIsOverTime] = React.useState(false);
+  const timerIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Live timer tick during Google authentication
+  React.useEffect(() => {
+    if (googleLoading) {
+      setTimerSeconds(0);
+      setIsOverTime(false);
+      setStepLabel("Opening Google...");
+      timerIntervalRef.current = setInterval(() => {
+        setTimerSeconds((prev) => {
+          const next = prev + 1;
+          if (next >= 10) {
+            setIsOverTime(true);
+            setStepLabel("Almost there...");
+          } else if (next >= 7) {
+            setStepLabel("Almost there...");
+          } else if (next >= 4) {
+            setStepLabel("Setting up your workspace...");
+          } else if (next >= 2) {
+            setStepLabel("Verifying your account...");
+          }
+          return next;
+        });
+      }, 1000);
+    } else {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+    };
+  }, [googleLoading]);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
-      // Pre-warm backend API to mitigate Render free-tier cold-start while user views page
+      // Pre-warm backend API to wake up Render free-tier instance silently
+      fetch("/health", { keepalive: true }).catch(() => {});
+      fetch("/api/v1/health", { keepalive: true }).catch(() => {});
       fetch("/api/v1/auth/oauth/google/url").catch(() => {});
 
       const params = new URLSearchParams(window.location.search);
@@ -77,11 +121,11 @@ export default function LoginPage() {
           .then(async (res) => {
             if (res?.idToken) {
               setGoogleLoading(true);
-              setGoogleLoadingText("Authenticating session with server...");
+              setStepLabel("Authenticating session with server...");
               const user = await authApi.googleAuth({ id_token: res.idToken });
               if (user) {
                 setGoogleSuccess(true);
-                setGoogleLoadingText("Success! Opening workspace...");
+                setStepLabel("Success! Opening workspace...");
                 setTimeout(() => {
                   window.location.href = getRedirectTarget();
                 }, 300);
@@ -98,10 +142,9 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     setGoogleSuccess(false);
-    setGoogleLoadingText("Opening Google sign-in...");
+    setIsOverTime(false);
     setFormError(null);
 
-    const timers: NodeJS.Timeout[] = [];
     try {
       if (!isFirebaseConfigured()) {
         const redirectUri = window.location.origin + "/auth/oauth/google/callback";
@@ -123,32 +166,18 @@ export default function LoginPage() {
         return;
       }
 
-      setGoogleLoadingText("Verifying session with server...");
-
-      timers.push(
-        setTimeout(() => {
-          setGoogleLoadingText("Connecting to workspace server...");
-        }, 3000)
-      );
-
-      timers.push(
-        setTimeout(() => {
-          setGoogleLoadingText("Waking up server, please hold on...");
-        }, 8000)
-      );
+      setStepLabel("Verifying session with server...");
 
       const user = await authApi.googleAuth({ id_token: idToken });
-      timers.forEach(clearTimeout);
 
       if (user) {
         setGoogleSuccess(true);
-        setGoogleLoadingText("Verified! Opening workspace...");
+        setStepLabel("Verified! Opening workspace...");
         setTimeout(() => {
           window.location.href = getRedirectTarget();
         }, 300);
       }
     } catch (err: any) {
-      timers.forEach(clearTimeout);
       setGoogleSuccess(false);
       if (err?.code === "auth/popup-closed-by-user") {
         // User closed the popup - clean dismiss without scary error
@@ -165,17 +194,39 @@ export default function LoginPage() {
       } else if (err?.code === "auth/network-request-failed") {
         setFormError("Network error connecting to Google. Please check your internet connection.");
       } else {
-        setFormError(
-          err instanceof ApiClientError
-            ? err.message
-            : (err?.message || "Google authentication failed. Please try again.")
-        );
+        const rawMsg = err instanceof ApiClientError ? err.message : (err?.message || "");
+        if (rawMsg.includes("QueuePool") || rawMsg.includes("timeout") || rawMsg.includes("timed out")) {
+          setFormError("Server is experiencing high traffic. Please try again or use Email OTP below.");
+        } else {
+          setFormError(rawMsg || "Google authentication could not be completed. Please try again.");
+        }
       }
     } finally {
-      timers.forEach(clearTimeout);
       if (!googleSuccess) {
         setGoogleLoading(false);
       }
+    }
+  };
+
+  const handleRequestOtpLogin = async () => {
+    const email = getValues("email")?.trim();
+    if (!email || !email.includes("@")) {
+      setFormError("Please enter a valid email address first.");
+      return;
+    }
+    setFormError(null);
+    setOtpRequestLoading(true);
+    try {
+      const res = await authApi.requestOtp({ email });
+      setPendingEmail(email);
+      setStep("otp");
+      setResendCooldown(60);
+      setOtpCode("");
+      setOtpError(null);
+    } catch (err: any) {
+      setFormError(err instanceof ApiClientError ? err.message : "Could not send verification code. Please check your email and try again.");
+    } finally {
+      setOtpRequestLoading(false);
     }
   };
 
@@ -321,6 +372,76 @@ export default function LoginPage() {
                 <CardDescription>Welcome back to your workspace.</CardDescription>
               </CardHeader>
               <CardContent>
+                {/* 10-Second Progress Card when signing in */}
+                {googleLoading && (
+                  <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-4 shadow-sm animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        <span className="text-xs font-semibold text-foreground">Signing you in…</span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                        {timerSeconds}s / 10s
+                      </span>
+                    </div>
+
+                    {/* Live Progress Bar */}
+                    <div className="w-full bg-border/60 h-2 rounded-full overflow-hidden mb-2.5">
+                      <div
+                        className="bg-primary h-full transition-all duration-500 ease-out rounded-full"
+                        style={{
+                          width: `${Math.min(96, Math.max(15, timerSeconds * 10))}%`,
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{stepLabel}</span>
+                      <span className="text-[11px]">Takes up to 10s</span>
+                    </div>
+
+                    {timerSeconds >= 5 && !isOverTime && (
+                      <p className="mt-2 text-[11px] text-amber-500/90 bg-amber-500/10 rounded-md p-1.5 flex items-center gap-1.5 animate-in fade-in">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        Waking up our servers, first login can take a few seconds.
+                      </p>
+                    )}
+
+                    {isOverTime && (
+                      <div className="mt-3 pt-3 border-t border-border/80 text-xs animate-in fade-in">
+                        <p className="text-muted-foreground mb-2">
+                          Signing in is taking longer than usual.
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={handleGoogleSignIn}
+                            className="h-8 text-xs font-medium"
+                          >
+                            <RefreshCw className="h-3 w-3 mr-1" />
+                            Try again
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              setGoogleLoading(false);
+                              setLoginMode("otp_only");
+                            }}
+                            className="h-8 text-xs font-medium"
+                          >
+                            <Mail className="h-3 w-3 mr-1" />
+                            Email OTP instead
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <Button
                   type="button"
                   variant="outline"
@@ -353,7 +474,7 @@ export default function LoginPage() {
                     </svg>
                   )}
                   <span className="text-xs sm:text-sm font-medium">
-                    {googleLoading ? googleLoadingText : "Continue with Google"}
+                    {googleLoading ? stepLabel : "Continue with Google"}
                   </span>
                 </Button>
 
@@ -366,32 +487,94 @@ export default function LoginPage() {
                   </span>
                 </div>
 
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                  <div>
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" autoComplete="email" className="mt-1.5" {...register("email")} />
-                    <FieldError>{errors.email?.message}</FieldError>
-                  </div>
-                  <div>
-                    <Label htmlFor="password">Password</Label>
-                    <Input
-                      id="password"
-                      type="password"
-                      autoComplete="current-password"
-                      className="mt-1.5"
-                      {...register("password")}
-                    />
-                    <FieldError>{errors.password?.message}</FieldError>
-                  </div>
-                  {formError ? (
-                    <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger animate-in fade-in">
-                      {formError}
+                {loginMode === "password" ? (
+                  <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                    <div>
+                      <Label htmlFor="email">Email</Label>
+                      <Input id="email" type="email" autoComplete="email" className="mt-1.5" {...register("email")} />
+                      <FieldError>{errors.email?.message}</FieldError>
                     </div>
-                  ) : null}
-                  <Button type="submit" className="w-full font-bold shadow-md" variant="gradient" loading={isSubmitting}>
-                    Continue &amp; Send OTP
-                  </Button>
-                </form>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="password">Password</Label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormError(null);
+                            setLoginMode("otp_only");
+                          }}
+                          className="text-xs text-primary hover:underline font-medium"
+                        >
+                          Email OTP instead
+                        </button>
+                      </div>
+                      <PasswordInput
+                        id="password"
+                        autoComplete="current-password"
+                        className="mt-1.5"
+                        {...register("password")}
+                      />
+                      <FieldError>{errors.password?.message}</FieldError>
+                    </div>
+                    {formError ? (
+                      <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger animate-in fade-in">
+                        {formError}
+                      </div>
+                    ) : null}
+                    <Button type="submit" className="w-full font-bold shadow-md" variant="gradient" loading={isSubmitting} disabled={googleLoading}>
+                      Continue &amp; Send OTP
+                    </Button>
+                  </form>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="email-otp-input">Work Email</Label>
+                      <Input
+                        id="email-otp-input"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="you@company.com"
+                        className="mt-1.5"
+                        {...register("email")}
+                      />
+                      <FieldError>{errors.email?.message}</FieldError>
+                      <p className="mt-1.5 text-xs text-muted-foreground">
+                        We&apos;ll send a 6-digit login verification code. No password required.
+                      </p>
+                    </div>
+
+                    {formError ? (
+                      <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger animate-in fade-in">
+                        {formError}
+                      </div>
+                    ) : null}
+
+                    <Button
+                      type="button"
+                      onClick={handleRequestOtpLogin}
+                      className="w-full font-bold shadow-md"
+                      variant="gradient"
+                      loading={otpRequestLoading}
+                      disabled={googleLoading}
+                    >
+                      <Mail className="h-4 w-4 mr-1.5" />
+                      Send 6-Digit Login Code
+                    </Button>
+
+                    <div className="text-center pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormError(null);
+                          setLoginMode("password");
+                        }}
+                        className="text-xs text-muted-foreground hover:text-foreground underline transition-colors"
+                      >
+                        Use password instead
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <p className="mt-5 text-center text-sm text-muted-foreground">
                   No account?{" "}
                   <Link href="/signup" className="font-semibold text-primary hover:underline">

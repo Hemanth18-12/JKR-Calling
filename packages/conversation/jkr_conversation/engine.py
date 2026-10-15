@@ -379,7 +379,7 @@ async def process_turn(
     rag_above_threshold = False
     if decision.rag_query:
         rag_chunks, rag_above_threshold, rag_timing = await rag.search_knowledge_with_timing(
-            db, workspace_id=workspace_id, query=decision.rag_query, call_session_id=call_session_id
+            db, workspace_id=workspace_id, query=decision.rag_query, agent_id=agent_id, call_session_id=call_session_id
         )
         # P3.5 §6: fine-grained breakdown, not one opaque "rag" number — a
         # direct provider probe (docs/CONVERSATION_ENGINE_LATENCY_AUDIT.md

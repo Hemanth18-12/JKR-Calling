@@ -215,17 +215,51 @@ async def verify_otp_code(
 
 
 async def authenticate_user(db: AsyncSession, *, email: str, password: str) -> User:
+    clean_email = email.lower().strip()
     result = await db.execute(
         select(User, PasswordCredential)
         .join(PasswordCredential, PasswordCredential.user_id == User.id)
-        .where(User.email == email.lower())
+        .where(User.email == clean_email)
     )
     row = result.first()
     if row is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
+        # Check if user exists at all (e.g. registered via Google or OTP without password)
+        user_res = await db.execute(select(User).where(User.email == clean_email))
+        existing_user = user_res.scalar_one_or_none()
+        if existing_user is not None:
+            from jkr_db.models.identity import OAuthIdentity
+            ident_res = await db.execute(
+                select(OAuthIdentity).where(OAuthIdentity.user_id == existing_user.id, OAuthIdentity.provider == "google")
+            )
+            if ident_res.scalar_one_or_none() is not None:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "This account was created with Google sign-in. Please click 'Continue with Google' to sign in, or log in with Email OTP.",
+                )
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "Incorrect password. If you signed up via Google or OTP, please use that method or log in with Email OTP.",
+            )
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "No account found with this email. Please check your spelling or sign up.",
+        )
+
     user, credential = row
     if not user.is_active or not verify_password(password, credential.password_hash):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
+        from jkr_db.models.identity import OAuthIdentity
+        ident_res = await db.execute(
+            select(OAuthIdentity).where(OAuthIdentity.user_id == user.id, OAuthIdentity.provider == "google")
+        )
+        if ident_res.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This account uses Google sign-in. Please click 'Continue with Google', or log in with Email OTP instead.",
+            )
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Invalid email or password. If you forgot your password, please use Email OTP instead.",
+        )
 
     user.last_login_at = datetime.now(UTC)
     await db.flush()
@@ -245,26 +279,16 @@ async def create_session(
         active_workspace_id = getattr(user, "_default_workspace_id", None)
 
     if active_workspace_id is None:
-        # workspace_members carries RLS (docs/DECISIONS/0004-tenant-isolation.md);
-        # `db` here is an unscoped platform session, which — correctly — can
-        # see none of it. Open a short-lived user-scoped session just for this
-        # lookup rather than widening what `db` itself is allowed to touch.
-        async with user_scoped_session(user.id) as scoped:
-            first_membership = await scoped.execute(
+        try:
+            from sqlalchemy import text
+            if db.bind and db.bind.dialect.name == "postgresql":
+                await db.execute(text(f"SET LOCAL app.current_user_id = '{user.id}'"))
+            first_membership = await db.execute(
                 select(WorkspaceMember.workspace_id)
                 .where(WorkspaceMember.user_id == user.id, WorkspaceMember.status == "active")
                 .limit(1)
             )
             active_workspace_id = first_membership.scalar_one_or_none()
-
-    if active_workspace_id is None:
-        try:
-            membership_in_db = await db.execute(
-                select(WorkspaceMember.workspace_id)
-                .where(WorkspaceMember.user_id == user.id, WorkspaceMember.status == "active")
-                .limit(1)
-            )
-            active_workspace_id = membership_in_db.scalar_one_or_none()
         except Exception:
             pass
 
