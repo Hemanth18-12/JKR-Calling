@@ -112,19 +112,15 @@ async def login(
     try:
         user = await service.authenticate_user(db, email=payload.email, password=payload.password)
 
-        await service.issue_verification_otp(
+        _session, raw_token = await service.create_session(
             db,
-            email=payload.email,
-            purpose="login",
+            user=user,
             settings=settings,
-            metadata={"user_id": str(user.id)},
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host if request.client else None,
         )
-        return OtpRequiredResponse(
-            status="otp_required",
-            email=payload.email,
-            purpose="login",
-            message="A 6-digit verification code has been sent to your email.",
-        )
+        _set_session_cookie(response, raw_token=raw_token, settings=settings)
+        return UserOut.model_validate(user)
     except HTTPException:
         raise
     except (SQLAlchemyError, OSError, TimeoutError, asyncpg.PostgresError) as exc:
@@ -164,19 +160,15 @@ async def admin_login(
             user.is_platform_super_admin = True
             await db.flush()
 
-        await service.issue_verification_otp(
+        _session, raw_token = await service.create_session(
             db,
-            email=clean_email,
-            purpose="login",
+            user=user,
             settings=settings,
-            metadata={"user_id": str(user.id)},
+            user_agent=request.headers.get("user-agent"),
+            ip_address=request.client.host if request.client else None,
         )
-        return OtpRequiredResponse(
-            status="otp_required",
-            email=clean_email,
-            purpose="login",
-            message="A 6-digit verification code has been sent to your admin email.",
-        )
+        _set_session_cookie(response, raw_token=raw_token, settings=settings)
+        return UserOut.model_validate(user)
     except HTTPException:
         raise
     except Exception as exc:

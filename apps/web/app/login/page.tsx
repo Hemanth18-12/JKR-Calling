@@ -53,35 +53,31 @@ export default function LoginPage() {
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
-  // Google Login & Timer state
+  // Google Login state
   const [googleLoading, setGoogleLoading] = React.useState(false);
   const [googleSuccess, setGoogleSuccess] = React.useState(false);
-  const [timerSeconds, setTimerSeconds] = React.useState(0);
   const [stepLabel, setStepLabel] = React.useState("Opening Google...");
   const [isOverTime, setIsOverTime] = React.useState(false);
   const timerIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Live timer tick during Google authentication
+  // Status progression during Google authentication (without numeric countdown)
   React.useEffect(() => {
     if (googleLoading) {
-      setTimerSeconds(0);
       setIsOverTime(false);
       setStepLabel("Opening Google...");
+      let elapsedSeconds = 0;
       timerIntervalRef.current = setInterval(() => {
-        setTimerSeconds((prev) => {
-          const next = prev + 1;
-          if (next >= 10) {
-            setIsOverTime(true);
-            setStepLabel("Almost there...");
-          } else if (next >= 7) {
-            setStepLabel("Almost there...");
-          } else if (next >= 4) {
-            setStepLabel("Setting up your workspace...");
-          } else if (next >= 2) {
-            setStepLabel("Verifying your account...");
-          }
-          return next;
-        });
+        elapsedSeconds += 1;
+        if (elapsedSeconds >= 15) {
+          setIsOverTime(true);
+          setStepLabel("Almost there...");
+        } else if (elapsedSeconds >= 8) {
+          setStepLabel("Setting up your workspace...");
+        } else if (elapsedSeconds >= 4) {
+          setStepLabel("Verifying your account...");
+        } else if (elapsedSeconds >= 2) {
+          setStepLabel("Connecting to Google...");
+        }
       }, 1000);
     } else {
       if (timerIntervalRef.current) {
@@ -372,7 +368,7 @@ export default function LoginPage() {
                 <CardDescription>Welcome back to your workspace.</CardDescription>
               </CardHeader>
               <CardContent>
-                {/* 10-Second Progress Card when signing in */}
+                {/* Smooth Progress Notification when signing in */}
                 {googleLoading && (
                   <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-4 shadow-sm animate-in fade-in duration-200">
                     <div className="flex items-center justify-between mb-2">
@@ -380,32 +376,17 @@ export default function LoginPage() {
                         <Loader2 className="h-4 w-4 animate-spin text-primary" />
                         <span className="text-xs font-semibold text-foreground">Signing you in…</span>
                       </div>
-                      <span className="text-xs font-mono font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                        {timerSeconds}s / 10s
-                      </span>
+                      <span className="text-[11px] text-muted-foreground font-medium">Please wait</span>
                     </div>
 
-                    {/* Live Progress Bar */}
-                    <div className="w-full bg-border/60 h-2 rounded-full overflow-hidden mb-2.5">
-                      <div
-                        className="bg-primary h-full transition-all duration-500 ease-out rounded-full"
-                        style={{
-                          width: `${Math.min(96, Math.max(15, timerSeconds * 10))}%`,
-                        }}
-                      />
+                    {/* Smooth dynamic progress bar without numeric countdown */}
+                    <div className="w-full bg-border/60 h-1.5 rounded-full overflow-hidden mb-2.5 relative">
+                      <div className="bg-primary h-full rounded-full animate-pulse transition-all duration-500 w-full" />
                     </div>
 
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span className="font-medium text-foreground">{stepLabel}</span>
-                      <span className="text-[11px]">Takes up to 10s</span>
                     </div>
-
-                    {timerSeconds >= 5 && !isOverTime && (
-                      <p className="mt-2 text-[11px] text-amber-500/90 bg-amber-500/10 rounded-md p-1.5 flex items-center gap-1.5 animate-in fade-in">
-                        <Clock className="h-3 w-3 shrink-0" />
-                        Waking up our servers, first login can take a few seconds.
-                      </p>
-                    )}
 
                     {isOverTime && (
                       <div className="mt-3 pt-3 border-t border-border/80 text-xs animate-in fade-in">
@@ -429,12 +410,11 @@ export default function LoginPage() {
                             variant="secondary"
                             onClick={() => {
                               setGoogleLoading(false);
-                              setLoginMode("otp_only");
+                              setIsOverTime(false);
                             }}
                             className="h-8 text-xs font-medium"
                           >
-                            <Mail className="h-3 w-3 mr-1" />
-                            Email OTP instead
+                            Cancel
                           </Button>
                         </div>
                       </div>
@@ -522,7 +502,7 @@ export default function LoginPage() {
                       </div>
                     ) : null}
                     <Button type="submit" className="w-full font-bold shadow-md" variant="gradient" loading={isSubmitting} disabled={googleLoading}>
-                      Continue &amp; Send OTP
+                      Sign In
                     </Button>
                   </form>
                 ) : (
