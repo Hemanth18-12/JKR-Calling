@@ -10,7 +10,13 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useForm } from "react-hook-form";
 
-import { signInWithGoogle, checkRedirectResult, isFirebaseConfigured } from "@/lib/firebase";
+import {
+  signInWithGoogle,
+  signInWithGoogleRedirect,
+  checkRedirectResult,
+  isFirebaseConfigured,
+  getFirebaseAuth,
+} from "@/lib/firebase";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,6 +31,7 @@ export default function LoginPage() {
   const [otpRequestLoading, setOtpRequestLoading] = React.useState(false);
 
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [popupBlocked, setPopupBlocked] = React.useState(false);
   const {
     register,
     handleSubmit,
@@ -94,7 +101,10 @@ export default function LoginPage() {
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
-      // Pre-warm backend API to wake up Render free-tier instance silently
+      // Pre-warm Firebase Auth and backend routes so everything is instantaneous on click
+      try {
+        getFirebaseAuth();
+      } catch {}
       fetch("/health", { keepalive: true }).catch(() => {});
       fetch("/api/v1/health", { keepalive: true }).catch(() => {});
       fetch("/api/v1/auth/oauth/google/url").catch(() => {});
@@ -111,7 +121,7 @@ export default function LoginPage() {
         setFormError("Google authentication failed. Please check your credentials and try again.");
       }
 
-      // Check Firebase redirect result if arriving back from mobile redirect
+      // Check Firebase redirect result if arriving back from mobile or full-page redirect
       if (isFirebaseConfigured()) {
         checkRedirectResult()
           .then(async (res) => {
@@ -140,22 +150,9 @@ export default function LoginPage() {
     setGoogleSuccess(false);
     setIsOverTime(false);
     setFormError(null);
+    setPopupBlocked(false);
 
     try {
-      if (!isFirebaseConfigured()) {
-        const redirectUri = window.location.origin + "/auth/oauth/google/callback";
-        const res = await authApi.getGoogleOAuthUrl({ redirect_uri: redirectUri });
-        if (res.enabled && res.url) {
-          window.location.href = res.url;
-          return;
-        }
-        setFormError(
-          "Google sign-in is not configured yet. Please configure Firebase environment variables or use email login."
-        );
-        setGoogleLoading(false);
-        return;
-      }
-
       const { idToken } = await signInWithGoogle();
       if (!idToken) {
         setGoogleLoading(false);
@@ -175,6 +172,7 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       setGoogleSuccess(false);
+      setGoogleLoading(false);
       if (err?.code === "auth/popup-closed-by-user") {
         // User closed the popup - clean dismiss without scary error
         setFormError(null);
@@ -186,13 +184,16 @@ export default function LoginPage() {
           `Domain "${host}" is not authorized in Firebase. Add "${host}" to Firebase Console > Authentication > Settings > Authorized Domains.`
         );
       } else if (err?.code === "auth/popup-blocked") {
-        setFormError("The Google sign-in pop-up was blocked by your browser. Please allow pop-ups for this site and try again.");
+        setPopupBlocked(true);
+        setFormError(
+          "The Google sign-in pop-up was blocked by your browser. Click 'Open Google Sign-In' below to proceed."
+        );
       } else if (err?.code === "auth/network-request-failed") {
         setFormError("Network error connecting to Google. Please check your internet connection.");
       } else {
         const rawMsg = err instanceof ApiClientError ? err.message : (err?.message || "");
         if (rawMsg.includes("QueuePool") || rawMsg.includes("timeout") || rawMsg.includes("timed out")) {
-          setFormError("Server is experiencing high traffic. Please try again or use Email OTP below.");
+          setFormError("Server is experiencing high traffic. Please try again or use Email login below.");
         } else {
           setFormError(rawMsg || "Google authentication could not be completed. Please try again.");
         }
@@ -201,6 +202,17 @@ export default function LoginPage() {
       if (!googleSuccess) {
         setGoogleLoading(false);
       }
+    }
+  };
+
+  const handleGoogleRedirectSignIn = async () => {
+    try {
+      setGoogleLoading(true);
+      setStepLabel("Redirecting to Google...");
+      await signInWithGoogleRedirect();
+    } catch (err: any) {
+      setGoogleLoading(false);
+      setFormError(err?.message || "Could not redirect to Google. Please check your browser settings.");
     }
   };
 
@@ -457,6 +469,17 @@ export default function LoginPage() {
                     {googleLoading ? stepLabel : "Continue with Google"}
                   </span>
                 </Button>
+
+                {popupBlocked && (
+                  <Button
+                    type="button"
+                    variant="gradient"
+                    onClick={handleGoogleRedirectSignIn}
+                    className="w-full font-bold shadow-md mb-4 animate-in fade-in"
+                  >
+                    Open Google Sign-In (Full Page)
+                  </Button>
+                )}
 
                 <div className="relative my-4 flex items-center justify-center">
                   <div className="absolute inset-0 flex items-center">
