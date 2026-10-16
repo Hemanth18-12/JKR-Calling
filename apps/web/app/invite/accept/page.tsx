@@ -87,7 +87,7 @@ function AcceptInvitationContent() {
         return;
       }
       const { idToken } = await signInWithGoogle();
-      const user = await authApi.firebaseGoogleAuth({ id_token: idToken });
+      const user = await authApi.googleAuth({ id_token: idToken });
       if (user) {
         setCurrentUser(user);
         // Automatically accept after successful login

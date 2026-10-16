@@ -1,4 +1,4 @@
-import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
+import { getApps, getApp, initializeApp, type FirebaseApp } from "firebase/app";
 import {
   getAuth,
   GoogleAuthProvider,
@@ -9,47 +9,33 @@ import {
   type UserCredential,
 } from "firebase/auth";
 
-const FIREBASE_API_KEY =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_FIREBASE_API_KEY) ||
-  "AIzaSyALaBBV9G2t2dfLDRwz1xzJOUKwQkBsrB0";
-
-const FIREBASE_PROJECT_ID =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) || "jkr-calling";
-
-const FIREBASE_AUTH_DOMAIN =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN) ||
-  "jkr-calling.firebaseapp.com";
-
 const firebaseConfig = {
-  apiKey: FIREBASE_API_KEY,
-  authDomain: FIREBASE_AUTH_DOMAIN,
-  projectId: FIREBASE_PROJECT_ID,
-  storageBucket:
-    (typeof process !== "undefined" && process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) ||
-    "jkr-calling.firebasestorage.app",
-  messagingSenderId:
-    (typeof process !== "undefined" && process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID) ||
-    "174011280990",
-  appId:
-    (typeof process !== "undefined" && process.env.NEXT_PUBLIC_FIREBASE_APP_ID) ||
-    "1:174011280990:web:f8796d58288f3bd5b14ecf",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 
 export function isFirebaseConfigured(): boolean {
-  return true;
+  return Boolean(
+    process.env.NEXT_PUBLIC_FIREBASE_API_KEY &&
+      process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID &&
+      process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+  );
 }
 
 export function getFirebaseAuth(): Auth | null {
   if (typeof window === "undefined") return null;
-  if (!isFirebaseConfigured()) return null;
 
   try {
     if (!app) {
-      const existingApps = getApps();
-      app = existingApps.length > 0 && existingApps[0] ? existingApps[0] : initializeApp(firebaseConfig);
+      const activeApps = getApps();
+      app = activeApps.length > 0 ? getApp() : initializeApp(firebaseConfig);
     }
     if (!auth && app) {
       auth = getAuth(app);
@@ -61,16 +47,22 @@ export function getFirebaseAuth(): Auth | null {
   }
 }
 
+function createGoogleProvider(): GoogleAuthProvider {
+  const provider = new GoogleAuthProvider();
+  // Ensure the real Google account chooser always appears
+  provider.setCustomParameters({ prompt: "select_account" });
+  return provider;
+}
+
 export async function signInWithGoogle(): Promise<{ idToken: string; email: string | null }> {
   const authInstance = getFirebaseAuth();
   if (!authInstance) {
     throw new Error(
-      "Firebase configuration is missing or could not be initialized. Please check your network or environment variables."
+      "Firebase Auth is not initialized. Please ensure environment variables are configured."
     );
   }
 
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: "select_account" });
+  const provider = createGoogleProvider();
 
   try {
     const result: UserCredential = await signInWithPopup(authInstance, provider);
@@ -80,7 +72,10 @@ export async function signInWithGoogle(): Promise<{ idToken: string; email: stri
       email: result.user.email,
     };
   } catch (error: any) {
-    console.error("[FIREBASE POPUP ERROR]", error?.code, error?.message);
+    // If popup was blocked, we propagate the error code so the caller can trigger redirect or fallback
+    if (error?.code === "auth/popup-blocked") {
+      console.warn("[FIREBASE] Popup blocked by browser, fallback to redirect available");
+    }
     throw error;
   }
 }
@@ -88,11 +83,10 @@ export async function signInWithGoogle(): Promise<{ idToken: string; email: stri
 export async function signInWithGoogleRedirect(): Promise<void> {
   const authInstance = getFirebaseAuth();
   if (!authInstance) {
-    throw new Error("Firebase configuration is missing.");
+    throw new Error("Firebase Auth is not initialized.");
   }
 
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: "select_account" });
+  const provider = createGoogleProvider();
   await signInWithRedirect(authInstance, provider);
 }
 
@@ -109,7 +103,7 @@ export async function checkRedirectResult(): Promise<{ idToken: string; email: s
       email: result.user.email,
     };
   } catch (error) {
-    console.error("[FIREBASE REDIRECT RESULT ERROR]", error);
+    console.error("[FIREBASE REDIRECT ERROR]", error);
     throw error;
   }
 }

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import hashlib
 import hmac
 import json
@@ -5,6 +7,7 @@ import re
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import HTTPException, status
 from jkr_db.models.identity import EmailVerificationCode, PasswordCredential, User
@@ -355,143 +358,65 @@ async def list_memberships(db: AsyncSession, *, user_id: uuid.UUID) -> list[dict
     ]
 
 
-async def get_google_oauth_url(
-    settings: Settings,
-    state: str | None = None,
-    redirect_uri: str | None = None,
-) -> tuple[str, bool]:
-    import urllib.parse
-    enabled = bool(settings.google_client_id and settings.google_client_secret)
-    effective_redirect = (
-        redirect_uri
-        or settings.google_oauth_redirect_uri
-        or f"{settings.app_base_url}/auth/oauth/google/callback"
-    )
-    params = {
-        "client_id": settings.google_client_id or "demo-google-client-id",
-        "redirect_uri": effective_redirect,
-        "response_type": "code",
-        "scope": "openid email profile",
-        "access_type": "offline",
-        "prompt": "select_account",
-    }
-    if state:
-        params["state"] = state
-    url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
-    return url, enabled
-
-
 async def authenticate_with_google(
     db: AsyncSession,
     *,
-    code: str | None = None,
     id_token: str | None = None,
-    redirect_uri: str | None = None,
+    verified_data: dict[str, Any] | None = None,
     settings: Settings,
 ) -> User:
     import logging
+    import os
     import re
     import secrets
-    import httpx
+    from typing import Any
     from app.modules.tenancy import service as tenancy_service
     from app.modules.identity.firebase_auth import verify_firebase_id_token
     from app.security import hash_password
 
     logger = logging.getLogger("jkr_api.identity.google_auth")
 
-    email: str | None = None
-    full_name: str | None = None
-    google_sub: str | None = None
-
-    # Path 1: Real Firebase ID Token (Primary recommended path, Spark plan, 0 secrets needed)
-    if id_token and id_token.strip():
+    # If verified payload wasn't pre-computed, verify it now
+    if not verified_data:
+        if not id_token or not id_token.strip():
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Firebase ID token is required for Google authentication.",
+            )
         firebase_project = (
             settings.firebase_project_id
             or os.getenv("FIREBASE_PROJECT_ID")
-            or os.getenv("NEXT_PUBLIC_FIREBASE_PROJECT_ID", "")
-            or "jkr-calling"
+            or "jkr-calling-d62f9"
         )
         verified_data = await verify_firebase_id_token(id_token.strip(), project_id=firebase_project)
-        email = verified_data["email"]
-        full_name = verified_data["name"]
-        google_sub = verified_data.get("uid")
 
-    # Path 2: Standard Google OAuth Authorization Code exchange (if live credentials configured)
-    elif code and code.strip():
-        clean_code = code.strip()
-        has_live_creds = bool(settings.google_client_id and settings.google_client_secret)
-        if not has_live_creds:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "Google OAuth credentials (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET) are not configured. Please use Firebase Google Sign-In.",
-            )
-
-        effective_redirect = (
-            redirect_uri
-            or settings.google_oauth_redirect_uri
-            or f"{settings.app_base_url}/auth/oauth/google/callback"
-        )
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            token_resp = await client.post(
-                "https://oauth2.googleapis.com/token",
-                data={
-                    "code": clean_code,
-                    "client_id": settings.google_client_id,
-                    "client_secret": settings.google_client_secret,
-                    "redirect_uri": effective_redirect,
-                    "grant_type": "authorization_code",
-                },
-            )
-            if token_resp.status_code != 200:
-                logger.error("[GOOGLE OAUTH] Token exchange failed: %s %s", token_resp.status_code, token_resp.text)
-                raise HTTPException(
-                    status.HTTP_400_BAD_REQUEST,
-                    "Failed to authenticate with Google. The authorization code may have expired or is invalid.",
-                )
-            token_data = token_resp.json()
-            access_token = token_data.get("access_token")
-            if not access_token:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Google returned no access token.")
-
-            userinfo_resp = await client.get(
-                "https://www.googleapis.com/oauth2/v3/userinfo",
-                headers={"Authorization": f"Bearer {access_token}"},
-            )
-            if userinfo_resp.status_code != 200:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Failed to retrieve Google profile information.")
-            userinfo = userinfo_resp.json()
-            email = userinfo.get("email")
-            google_sub = userinfo.get("sub")
-            full_name = (
-                userinfo.get("name")
-                or userinfo.get("given_name")
-                or (email.split("@")[0].replace(".", " ").title() if email else "User")
-            )
-    else:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Either id_token (Firebase) or code (OAuth) is required for Google authentication.",
-        )
-
+    email = verified_data.get("email")
     if not email:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No verified email address returned from Google.")
+
+    full_name = verified_data.get("name")
+    google_sub = verified_data.get("uid")
 
     clean_email = email.lower().strip()
     result = await db.execute(select(User).where(User.email == clean_email))
     user = result.scalar_one_or_none()
 
     if user is None:
+        # New Google user: create user + random credential + superadmin gate
+        is_admin = (clean_email == "jkrcalling4@gmail.com")
         user = User(
             email=clean_email,
             full_name=full_name or "User",
-            is_platform_super_admin=(clean_email == "jkrcalling4@gmail.com"),
+            is_platform_super_admin=is_admin,
         )
         db.add(user)
         await db.flush()
 
+        # Add random password credential so account remains structurally consistent
         db.add(PasswordCredential(user_id=user.id, password_hash=hash_password(secrets.token_urlsafe(32))))
         await db.flush()
     else:
+        # Existing user (e.g. from OTP flow): link into the SAME account without duplicate
         if clean_email == "jkrcalling4@gmail.com" and not user.is_platform_super_admin:
             user.is_platform_super_admin = True
         if full_name and (not user.full_name or user.full_name == "User"):
@@ -500,7 +425,7 @@ async def authenticate_with_google(
     user.last_login_at = datetime.now(UTC)
     await db.flush()
 
-    # Link OAuthIdentity to store google_sub and support account linking
+    # Link OAuthIdentity to record google_sub
     if google_sub:
         from jkr_db.models.identity import OAuthIdentity
 
@@ -560,3 +485,4 @@ async def authenticate_with_google(
         setattr(user, "_default_workspace_id", new_ws.id)
 
     return user
+

@@ -117,19 +117,11 @@ class MeResponse(BaseModel):
     user: UserOut
     memberships: list[WorkspaceMembershipOut]
     active_workspace_id: uuid.UUID | None
-    google_oauth_enabled: bool
+    google_oauth_enabled: bool = True
 
 
-class GoogleOAuthUrlResponse(BaseModel):
-    url: str
-    enabled: bool
-
-
-class GoogleOAuthCallbackRequest(BaseModel):
-    code: str | None = None
-    id_token: str | None = None
-    redirect_uri: str | None = None
-
-
-class FirebaseAuthRequest(BaseModel):
+class GoogleAuthRequest(BaseModel):
     id_token: str
+
+
+FirebaseAuthRequest = GoogleAuthRequest

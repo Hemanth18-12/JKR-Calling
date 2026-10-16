@@ -67,23 +67,15 @@ export default function LoginPage() {
   const [isOverTime, setIsOverTime] = React.useState(false);
   const timerIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Status progression during Google authentication (without numeric countdown)
+  // Status progression during Google authentication following real timing (10-second cap)
   React.useEffect(() => {
     if (googleLoading) {
       setIsOverTime(false);
-      setStepLabel("Opening Google...");
       let elapsedSeconds = 0;
       timerIntervalRef.current = setInterval(() => {
         elapsedSeconds += 1;
-        if (elapsedSeconds >= 15) {
+        if (elapsedSeconds >= 10) {
           setIsOverTime(true);
-          setStepLabel("Almost there...");
-        } else if (elapsedSeconds >= 8) {
-          setStepLabel("Setting up your workspace...");
-        } else if (elapsedSeconds >= 4) {
-          setStepLabel("Verifying your account...");
-        } else if (elapsedSeconds >= 2) {
-          setStepLabel("Connecting to Google...");
         }
       }, 1000);
     } else {
@@ -107,18 +99,11 @@ export default function LoginPage() {
       } catch {}
       fetch("/health", { keepalive: true }).catch(() => {});
       fetch("/api/v1/health", { keepalive: true }).catch(() => {});
-      fetch("/api/v1/auth/oauth/google/url").catch(() => {});
 
       const params = new URLSearchParams(window.location.search);
       const emailParam = params.get("email");
       if (emailParam) {
         setValue("email", emailParam);
-      }
-      const err = params.get("error");
-      if (err === "google_oauth_cancelled") {
-        setFormError("Google sign-in was cancelled. Please try again or log in with your email.");
-      } else if (err === "google_auth_failed") {
-        setFormError("Google authentication failed. Please check your credentials and try again.");
       }
 
       // Check Firebase redirect result if arriving back from mobile or full-page redirect
@@ -127,11 +112,11 @@ export default function LoginPage() {
           .then(async (res) => {
             if (res?.idToken) {
               setGoogleLoading(true);
-              setStepLabel("Authenticating session with server...");
+              setStepLabel("Verifying your account…");
               const user = await authApi.googleAuth({ id_token: res.idToken });
               if (user) {
+                setStepLabel("Setting up your workspace…");
                 setGoogleSuccess(true);
-                setStepLabel("Success! Opening workspace...");
                 setTimeout(() => {
                   window.location.href = getRedirectTarget();
                 }, 300);
@@ -146,11 +131,13 @@ export default function LoginPage() {
   }, [setValue, getRedirectTarget]);
 
   const handleGoogleSignIn = async () => {
+    if (googleLoading) return; // Prevent double-clicks
     setGoogleLoading(true);
     setGoogleSuccess(false);
     setIsOverTime(false);
     setFormError(null);
     setPopupBlocked(false);
+    setStepLabel("Opening Google…");
 
     try {
       const { idToken } = await signInWithGoogle();
@@ -159,13 +146,13 @@ export default function LoginPage() {
         return;
       }
 
-      setStepLabel("Verifying session with server...");
+      setStepLabel("Verifying your account…");
 
       const user = await authApi.googleAuth({ id_token: idToken });
 
       if (user) {
+        setStepLabel("Setting up your workspace…");
         setGoogleSuccess(true);
-        setStepLabel("Verified! Opening workspace...");
         setTimeout(() => {
           window.location.href = getRedirectTarget();
         }, 300);
@@ -174,10 +161,10 @@ export default function LoginPage() {
       setGoogleSuccess(false);
       setGoogleLoading(false);
       if (err?.code === "auth/popup-closed-by-user") {
-        // User closed the popup - clean dismiss without scary error
+        // User closed the popup - clean dismiss quietly without error banner
         setFormError(null);
       } else if (err?.code === "auth/cancelled-popup-request") {
-        // Ignored duplicate
+        // Duplicate popup request cancelled - silent
       } else if (err?.code === "auth/unauthorized-domain") {
         const host = typeof window !== "undefined" ? window.location.hostname : "this domain";
         setFormError(
@@ -186,14 +173,14 @@ export default function LoginPage() {
       } else if (err?.code === "auth/popup-blocked") {
         setPopupBlocked(true);
         setFormError(
-          "The Google sign-in pop-up was blocked by your browser. Click 'Open Google Sign-In' below to proceed."
+          "The Google sign-in pop-up was blocked by your browser. Click 'Open Google Sign-In with Redirect' below to proceed."
         );
       } else if (err?.code === "auth/network-request-failed") {
         setFormError("Network error connecting to Google. Please check your internet connection.");
       } else {
         const rawMsg = err instanceof ApiClientError ? err.message : (err?.message || "");
-        if (rawMsg.includes("QueuePool") || rawMsg.includes("timeout") || rawMsg.includes("timed out")) {
-          setFormError("Server is experiencing high traffic. Please try again or use Email login below.");
+        if (rawMsg.includes("QueuePool") || rawMsg.includes("timeout") || rawMsg.includes("timed out") || rawMsg.includes("database")) {
+          setFormError("Server is experiencing high traffic. Please try again or use Email OTP below.");
         } else {
           setFormError(rawMsg || "Google authentication could not be completed. Please try again.");
         }
@@ -206,9 +193,10 @@ export default function LoginPage() {
   };
 
   const handleGoogleRedirectSignIn = async () => {
+    if (googleLoading) return;
     try {
       setGoogleLoading(true);
-      setStepLabel("Redirecting to Google...");
+      setStepLabel("Redirecting to Google…");
       await signInWithGoogleRedirect();
     } catch (err: any) {
       setGoogleLoading(false);
@@ -423,15 +411,29 @@ export default function LoginPage() {
                             onClick={() => {
                               setGoogleLoading(false);
                               setIsOverTime(false);
+                              setLoginMode("otp_only");
                             }}
                             className="h-8 text-xs font-medium"
                           >
-                            Cancel
+                            <Mail className="h-3 w-3 mr-1" />
+                            Use email OTP instead
                           </Button>
                         </div>
                       </div>
                     )}
                   </div>
+                )}
+
+                {popupBlocked && (
+                  <Button
+                    type="button"
+                    variant="default"
+                    onClick={handleGoogleRedirectSignIn}
+                    className="w-full h-10 mb-3 text-xs font-semibold bg-primary text-black hover:bg-primary/90 flex items-center justify-center gap-2"
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
+                    Open Google Sign-In with Redirect
+                  </Button>
                 )}
 
                 <Button

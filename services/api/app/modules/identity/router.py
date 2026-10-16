@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 
 import asyncpg
@@ -13,10 +14,10 @@ from app.config import Settings, get_settings
 from app.db import platform_db
 from app.deps import AuthContext, get_auth_context, user_db
 from app.modules.identity import service
+from app.modules.identity.firebase_auth import verify_firebase_id_token
+from jkr_db.session import get_session
 from app.modules.identity.schemas import (
-    GoogleOAuthCallbackRequest,
-    GoogleOAuthUrlResponse,
-    FirebaseAuthRequest,
+    GoogleAuthRequest,
     LoginRequest,
     RequestOtpLoginRequest,
     MeResponse,
@@ -299,7 +300,7 @@ async def me(
         user=UserOut.model_validate(auth.user),
         memberships=memberships,
         active_workspace_id=auth.session.active_workspace_id,
-        google_oauth_enabled=bool(settings.google_client_id and settings.google_client_secret),
+        google_oauth_enabled=True,
     )
 
 
@@ -322,83 +323,8 @@ async def set_active_workspace(
         user=UserOut.model_validate(auth.user),
         memberships=memberships,
         active_workspace_id=auth.session.active_workspace_id,
-        google_oauth_enabled=bool(settings.google_client_id and settings.google_client_secret),
+        google_oauth_enabled=True,
     )
-
-
-@router.get("/oauth/google/url", response_model=GoogleOAuthUrlResponse)
-async def get_google_oauth_url_endpoint(
-    state: str | None = None,
-    redirect_uri: str | None = None,
-    settings: Settings = Depends(get_settings),
-) -> GoogleOAuthUrlResponse:
-    url, enabled = await service.get_google_oauth_url(
-        settings=settings, state=state, redirect_uri=redirect_uri
-    )
-    return GoogleOAuthUrlResponse(url=url, enabled=enabled)
-
-
-@router.post("/oauth/google/callback", response_model=UserOut)
-async def google_oauth_callback(
-    payload: GoogleOAuthCallbackRequest,
-    response: Response,
-    request: Request,
-    db: AsyncSession = Depends(platform_db),
-    settings: Settings = Depends(get_settings),
-) -> UserOut:
-    user = await service.authenticate_with_google(
-        db,
-        code=payload.code,
-        id_token=payload.id_token,
-        redirect_uri=payload.redirect_uri,
-        settings=settings,
-    )
-    _session, raw_token = await service.create_session(
-        db,
-        user=user,
-        settings=settings,
-        user_agent=request.headers.get("user-agent"),
-        ip_address=request.client.host if request.client else None,
-    )
-    _set_session_cookie(response, raw_token=raw_token, settings=settings)
-    return UserOut.model_validate(user)
-
-
-@router.post("/firebase/google", response_model=UserOut, dependencies=[Depends(_auth_rate_limit)])
-async def firebase_google_auth(
-    payload: FirebaseAuthRequest,
-    response: Response,
-    request: Request,
-    db: AsyncSession = Depends(platform_db),
-    settings: Settings = Depends(get_settings),
-) -> UserOut:
-    try:
-        user = await service.authenticate_with_google(
-            db,
-            id_token=payload.id_token,
-            settings=settings,
-        )
-        _session, raw_token = await service.create_session(
-            db,
-            user=user,
-            settings=settings,
-            user_agent=request.headers.get("user-agent"),
-            ip_address=request.client.host if request.client else None,
-        )
-        _set_session_cookie(response, raw_token=raw_token, settings=settings)
-        logger.info("Google authentication successful for user_id=%s, email=%s", user.id, user.email)
-        return UserOut.model_validate(user)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        ref_id = f"AUTH-{uuid.uuid4().hex[:6].upper()}"
-        logger.error("[GOOGLE AUTH ERROR %s] Failure during Google authentication: %s", ref_id, exc, exc_info=True)
-        # Never leak raw QueuePool or SQL errors to client
-        is_db_err = "QueuePool" in str(exc) or "database" in str(exc).lower() or "connection timed out" in str(exc).lower()
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE if is_db_err else status.HTTP_400_BAD_REQUEST,
-            detail=f"Google authentication could not be completed right now. Please try again or log in with Email OTP. (Ref: {ref_id})",
-        ) from exc
 
 
 @router.post("/request-otp", response_model=OtpRequiredResponse, dependencies=[Depends(_auth_rate_limit)])
@@ -432,71 +358,68 @@ async def request_otp_login(
         message="A 6-digit verification code has been sent to your email.",
     )
 
-
 @router.post("/google", response_model=UserOut, dependencies=[Depends(_auth_rate_limit)])
 async def google_auth_endpoint(
-    payload: FirebaseAuthRequest,
+    payload: GoogleAuthRequest,
     response: Response,
     request: Request,
-    db: AsyncSession = Depends(platform_db),
     settings: Settings = Depends(get_settings),
 ) -> UserOut:
-    return await firebase_google_auth(
-        payload=payload,
-        response=response,
-        request=request,
-        db=db,
-        settings=settings,
-    )
+    """Verifies Firebase ID token and authenticates or provisions the user.
 
+    Strict DB session hygiene:
+    Token verification against Google's public certs happens completely in memory
+    WITHOUT holding a database connection. The DB connection is checked out for only
+    the few milliseconds needed to lookup/insert the user and session, and is immediately
+    released via async context manager.
+    """
+    t0 = time.perf_counter()
 
+    # 1. Verify token BEFORE acquiring any database connection
+    firebase_project = settings.firebase_project_id or "jkr-calling-d62f9"
+    verified_data = await verify_firebase_id_token(payload.id_token, project_id=firebase_project)
+    t_verified = time.perf_counter()
 
-@router.get("/oauth/google/callback")
-async def google_oauth_browser_redirect(
-    request: Request,
-    response: Response,
-    code: str | None = None,
-    error: str | None = None,
-    db: AsyncSession = Depends(platform_db),
-    settings: Settings = Depends(get_settings),
-):
-    from fastapi.responses import RedirectResponse
-    base_app = settings.app_base_url.rstrip("/")
-    if error or not code:
-        logger.warning("[GOOGLE OAUTH] Browser callback reported error or cancelled: %s", error)
-        return RedirectResponse(url=f"{base_app}/login?error=google_oauth_cancelled", status_code=302)
-
+    # 2. Acquire database connection briefly to link/provision user and create session
     try:
-        user = await service.authenticate_with_google(
-            db,
-            code=code,
-            redirect_uri=None,
-            settings=settings,
+        async with get_session() as db:
+            user = await service.authenticate_with_google(
+                db,
+                verified_data=verified_data,
+                settings=settings,
+            )
+            _session, raw_token = await service.create_session(
+                db,
+                user=user,
+                settings=settings,
+                user_agent=request.headers.get("user-agent"),
+                ip_address=request.client.host if request.client else None,
+            )
+        t_db_done = time.perf_counter()
+
+        _set_session_cookie(response, raw_token=raw_token, settings=settings)
+
+        total_ms = (t_db_done - t0) * 1000
+        verify_ms = (t_verified - t0) * 1000
+        db_ms = (t_db_done - t_verified) * 1000
+        logger.info(
+            "[GOOGLE AUTH SUCCESS] user_id=%s email=%s is_admin=%s (timing: verify=%.1fms, db=%.1fms, total=%.1fms)",
+            user.id,
+            user.email,
+            user.is_platform_super_admin,
+            verify_ms,
+            db_ms,
+            total_ms,
         )
-        _session, raw_token = await service.create_session(
-            db,
-            user=user,
-            settings=settings,
-            user_agent=request.headers.get("user-agent"),
-            ip_address=request.client.host if request.client else None,
-        )
-        redirect_resp = RedirectResponse(url=f"{base_app}/app/dashboard", status_code=302)
-        _set_session_cookie(redirect_resp, raw_token=raw_token, settings=settings)
-        return redirect_resp
+        return UserOut.model_validate(user)
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.error("[GOOGLE OAUTH] Error processing redirect callback: %s", exc, exc_info=True)
-        return RedirectResponse(url=f"{base_app}/login?error=google_auth_failed", status_code=302)
-
-
-@router.post("/oauth/google", response_model=UserOut)
-async def oauth_google_legacy_endpoint(
-    payload: GoogleOAuthCallbackRequest,
-    response: Response,
-    request: Request,
-    db: AsyncSession = Depends(platform_db),
-    settings: Settings = Depends(get_settings),
-) -> UserOut:
-    return await google_oauth_callback(
-        payload=payload, response=response, request=request, db=db, settings=settings
-    )
+        ref_id = f"AUTH-{uuid.uuid4().hex[:6].upper()}"
+        logger.error("[GOOGLE AUTH ERROR %s] Failure during Google authentication: %s", ref_id, exc, exc_info=True)
+        is_db_err = "QueuePool" in str(exc) or "database" in str(exc).lower() or "connection timed out" in str(exc).lower()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE if is_db_err else status.HTTP_400_BAD_REQUEST,
+            detail=f"Google authentication could not be completed right now. Please try again or log in with Email OTP. (Ref: {ref_id})",
+        ) from exc
 
