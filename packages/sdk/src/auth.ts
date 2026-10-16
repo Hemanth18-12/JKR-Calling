@@ -1,7 +1,6 @@
 import type {
+  GoogleAuthRequest,
   FirebaseAuthRequest,
-  GoogleOAuthCallbackRequest,
-  GoogleOAuthUrlResponse,
   LoginRequest,
   MeResponse,
   OtpRequiredResponse,
@@ -34,18 +33,9 @@ export const authApi = {
       method: "POST",
       body: { workspace_id: workspaceId },
     }),
-  getGoogleOAuthUrl: (params?: { redirect_uri?: string; state?: string }, opts?: ApiFetchOptions) => {
-    const query = new URLSearchParams();
-    if (params?.redirect_uri) query.set("redirect_uri", params.redirect_uri);
-    if (params?.state) query.set("state", params.state);
-    const qs = query.toString() ? `?${query.toString()}` : "";
-    return apiFetch<GoogleOAuthUrlResponse>(`/auth/oauth/google/url${qs}`, { ...opts, method: "GET" });
-  },
-  googleOAuthCallback: (data: GoogleOAuthCallbackRequest, opts?: ApiFetchOptions) =>
-    apiFetch<UserOut>("/auth/oauth/google/callback", { ...opts, method: "POST", body: data }),
+  googleAuth: (data: GoogleAuthRequest, opts?: ApiFetchOptions) =>
+    apiFetch<UserOut>("/auth/google", { ...opts, method: "POST", body: data }),
   firebaseGoogleAuth: (data: FirebaseAuthRequest, opts?: ApiFetchOptions) =>
-    apiFetch<UserOut>("/auth/firebase/google", { ...opts, method: "POST", body: data }),
-  googleAuth: (data: FirebaseAuthRequest, opts?: ApiFetchOptions) =>
     apiFetch<UserOut>("/auth/google", { ...opts, method: "POST", body: data }),
 };
 

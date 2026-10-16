@@ -177,5 +177,8 @@ for r in (
 ):
     app.include_router(r, prefix="/api/v1")
 
+# Mount identity router at root prefix as well so both /auth/... and /api/v1/auth/... resolve seamlessly
+app.include_router(identity_router)
+
 # Mount internal tools router at root prefix as well so http://api:8000/internal/tools resolves
 app.include_router(internal_tools_router)

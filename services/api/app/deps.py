@@ -36,8 +36,6 @@ async def get_auth_context(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
     token_hash = hash_session_token(jkr_session)
-    async with user_scoped_session(uuid.UUID("00000000-0000-0000-0000-000000000000")) if False else platform_db() as db:
-        pass
 
     # Use a short-lived platform session that is closed immediately after lookup
     from jkr_db.session import get_session

@@ -10,7 +10,13 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { useForm } from "react-hook-form";
 
-import { signInWithGoogle, checkRedirectResult, isFirebaseConfigured } from "@/lib/firebase";
+import {
+  signInWithGoogle,
+  signInWithGoogleRedirect,
+  checkRedirectResult,
+  isFirebaseConfigured,
+  getFirebaseAuth,
+} from "@/lib/firebase";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -23,6 +29,7 @@ export default function SignupPage() {
   const [resending, setResending] = React.useState(false);
 
   const [formError, setFormError] = React.useState<string | null>(null);
+  const [popupBlocked, setPopupBlocked] = React.useState(false);
   const {
     register,
     handleSubmit,
@@ -53,7 +60,7 @@ export default function SignupPage() {
   const [googleLoading, setGoogleLoading] = React.useState(false);
   const [googleSuccess, setGoogleSuccess] = React.useState(false);
   const [timerSeconds, setTimerSeconds] = React.useState(0);
-  const [stepLabel, setStepLabel] = React.useState("Opening Google sign-up...");
+  const [stepLabel, setStepLabel] = React.useState("Opening Google…");
   const [isOverTime, setIsOverTime] = React.useState(false);
   const timerIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -61,19 +68,12 @@ export default function SignupPage() {
     if (googleLoading) {
       setTimerSeconds(0);
       setIsOverTime(false);
-      setStepLabel("Opening Google sign-up...");
+      setStepLabel("Opening Google…");
       timerIntervalRef.current = setInterval(() => {
         setTimerSeconds((prev) => {
           const next = prev + 1;
           if (next >= 10) {
             setIsOverTime(true);
-            setStepLabel("Almost there...");
-          } else if (next >= 7) {
-            setStepLabel("Almost there...");
-          } else if (next >= 4) {
-            setStepLabel("Setting up your workspace...");
-          } else if (next >= 2) {
-            setStepLabel("Verifying your account...");
           }
           return next;
         });
@@ -93,20 +93,16 @@ export default function SignupPage() {
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
+      try {
+        getFirebaseAuth();
+      } catch {}
       fetch("/health", { keepalive: true }).catch(() => {});
       fetch("/api/v1/health", { keepalive: true }).catch(() => {});
-      fetch("/api/v1/auth/oauth/google/url").catch(() => {});
 
       const params = new URLSearchParams(window.location.search);
       const emailParam = params.get("email");
       if (emailParam) {
         setValue("email", emailParam);
-      }
-      const err = params.get("error");
-      if (err === "google_oauth_cancelled") {
-        setFormError("Google sign-up was cancelled. Please try again or sign up with your email.");
-      } else if (err === "google_auth_failed") {
-        setFormError("Google authentication failed. Please try again.");
       }
 
       // Check Firebase redirect result if returning from mobile redirect
@@ -115,11 +111,11 @@ export default function SignupPage() {
           .then(async (res) => {
             if (res?.idToken) {
               setGoogleLoading(true);
-              setStepLabel("Authenticating session with server...");
+              setStepLabel("Verifying your account…");
               const user = await authApi.googleAuth({ id_token: res.idToken });
               if (user) {
+                setStepLabel("Setting up your workspace…");
                 setGoogleSuccess(true);
-                setStepLabel("Success! Opening workspace...");
                 setTimeout(() => {
                   window.location.href = getRedirectTarget();
                 }, 300);
@@ -134,61 +130,52 @@ export default function SignupPage() {
   }, [setValue, getRedirectTarget]);
 
   const handleGoogleSignUp = async () => {
+    if (googleLoading) return;
     setGoogleLoading(true);
     setGoogleSuccess(false);
     setIsOverTime(false);
     setFormError(null);
+    setPopupBlocked(false);
+    setStepLabel("Opening Google…");
 
     try {
-      if (!isFirebaseConfigured()) {
-        const redirectUri = window.location.origin + "/auth/oauth/google/callback";
-        const res = await authApi.getGoogleOAuthUrl({ redirect_uri: redirectUri });
-        if (res.enabled && res.url) {
-          window.location.href = res.url;
-          return;
-        }
-        setFormError(
-          "Google sign-up is not configured yet. Please configure Firebase environment variables or use email signup."
-        );
-        setGoogleLoading(false);
-        return;
-      }
-
       const { idToken } = await signInWithGoogle();
       if (!idToken) {
         setGoogleLoading(false);
         return;
       }
 
-      setStepLabel("Verifying session with server...");
+      setStepLabel("Verifying your account…");
 
       const user = await authApi.googleAuth({ id_token: idToken });
 
       if (user) {
+        setStepLabel("Setting up your workspace…");
         setGoogleSuccess(true);
-        setStepLabel("Verified! Opening workspace...");
         setTimeout(() => {
           window.location.href = getRedirectTarget();
         }, 300);
       }
     } catch (err: any) {
       setGoogleSuccess(false);
+      setGoogleLoading(false);
       if (err?.code === "auth/popup-closed-by-user") {
         setFormError(null);
       } else if (err?.code === "auth/cancelled-popup-request") {
-        // Ignored duplicate
+        // Ignored
       } else if (err?.code === "auth/unauthorized-domain") {
         const host = typeof window !== "undefined" ? window.location.hostname : "this domain";
         setFormError(
           `Domain "${host}" is not authorized in Firebase. Add "${host}" to Firebase Console > Authentication > Settings > Authorized Domains.`
         );
       } else if (err?.code === "auth/popup-blocked") {
-        setFormError("The Google sign-up pop-up was blocked by your browser. Please allow pop-ups for this site and try again.");
+        setPopupBlocked(true);
+        setFormError("The Google sign-up pop-up was blocked by your browser. Click 'Open Google Sign-Up with Redirect' below to proceed.");
       } else if (err?.code === "auth/network-request-failed") {
         setFormError("Network error connecting to Google. Please check your connection.");
       } else {
         const rawMsg = err instanceof ApiClientError ? err.message : (err?.message || "");
-        if (rawMsg.includes("QueuePool") || rawMsg.includes("timeout") || rawMsg.includes("timed out")) {
+        if (rawMsg.includes("QueuePool") || rawMsg.includes("timeout") || rawMsg.includes("timed out") || rawMsg.includes("database")) {
           setFormError("Server is experiencing high traffic. Please try again or sign up with email below.");
         } else {
           setFormError(rawMsg || "Google authentication could not be completed. Please try again.");
@@ -198,6 +185,18 @@ export default function SignupPage() {
       if (!googleSuccess) {
         setGoogleLoading(false);
       }
+    }
+  };
+
+  const handleGoogleRedirectSignUp = async () => {
+    if (googleLoading) return;
+    try {
+      setGoogleLoading(true);
+      setStepLabel("Redirecting to Google…");
+      await signInWithGoogleRedirect();
+    } catch (err: any) {
+      setGoogleLoading(false);
+      setFormError(err?.message || "Could not redirect to Google. Please check your browser settings.");
     }
   };
 
@@ -380,10 +379,34 @@ export default function SignupPage() {
                             <RefreshCw className="h-3 w-3 mr-1" />
                             Try again
                           </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              setGoogleLoading(false);
+                              setIsOverTime(false);
+                            }}
+                            className="h-8 text-xs font-medium"
+                          >
+                            Use email signup instead
+                          </Button>
                         </div>
                       </div>
                     )}
                   </div>
+                )}
+
+                {popupBlocked && (
+                  <Button
+                    type="button"
+                    variant="default"
+                    onClick={handleGoogleRedirectSignUp}
+                    className="w-full h-10 mb-3 text-xs font-semibold bg-primary text-black hover:bg-primary/90 flex items-center justify-center gap-2"
+                  >
+                    <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
+                    Open Google Sign-Up with Redirect
+                  </Button>
                 )}
 
                 <Button

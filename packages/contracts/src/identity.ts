@@ -90,24 +90,14 @@ export const OtpRequiredResponse = z.object({
 });
 export type OtpRequiredResponse = z.infer<typeof OtpRequiredResponse>;
 
-export const GoogleOAuthUrlResponse = z.object({
-  url: z.string(),
-  enabled: z.boolean(),
-});
-export type GoogleOAuthUrlResponse = z.infer<typeof GoogleOAuthUrlResponse>;
-
-export const GoogleOAuthCallbackRequest = z.object({
-  code: z.string().optional(),
-  id_token: z.string().optional(),
-  redirect_uri: z.string().optional(),
-});
-export type GoogleOAuthCallbackRequest = z.infer<typeof GoogleOAuthCallbackRequest>;
-
-export const FirebaseAuthRequest = z.object({
+export const GoogleAuthRequest = z.object({
   id_token: z.string().min(1, "Firebase ID token is required"),
-  workspace_name: z.string().optional(),
 });
-export type FirebaseAuthRequest = z.infer<typeof FirebaseAuthRequest>;
+export type GoogleAuthRequest = z.infer<typeof GoogleAuthRequest>;
+
+// Backward-compatible alias
+export const FirebaseAuthRequest = GoogleAuthRequest;
+export type FirebaseAuthRequest = GoogleAuthRequest;
 
 export const ApiError = z.object({
   error: z.object({

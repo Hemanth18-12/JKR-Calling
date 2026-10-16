@@ -49,12 +49,9 @@ class Settings(BaseSettings):
     credentials_encryption_key: str = "change_me_dev_only_fernet_key_44_bytes_base64"
     internal_service_token: str = "change_me_dev_only_service_to_service_token"
 
-    google_client_id: str = ""
-    google_client_secret: str = ""
-    google_oauth_redirect_uri: str = "http://localhost:3000/auth/oauth/google/callback"
     firebase_project_id: str = Field(
-        default="jkr-calling",
-        validation_alias=AliasChoices("FIREBASE_PROJECT_ID", "NEXT_PUBLIC_FIREBASE_PROJECT_ID", "firebase_project_id"),
+        default="jkr-calling-d62f9",
+        validation_alias=AliasChoices("FIREBASE_PROJECT_ID", "firebase_project_id"),
     )
 
     enable_live_calls: bool = True
